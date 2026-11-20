@@ -1,0 +1,101 @@
+:root {
+  color: #1f2932;
+  background: #eef3f6;
+  font-family:
+    "Avenir Next",
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    Meiryo,
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 12% 7%, rgba(115, 180, 222, 0.22), transparent 28%),
+    radial-gradient(circle at 91% 16%, rgba(160, 142, 200, 0.15), transparent 27%),
+    linear-gradient(145deg, #f4f7f8 0%, #eaf0f3 48%, #f7f8f9 100%);
+}
+
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    rgba(82, 109, 126, 0.035) 1px,
+    transparent 1px
+  );
+  background-size: 100% 36px;
+  content: "";
+}
+
+.demo-page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 54px 28px 34px;
+}
+
+.demo-heading {
+  width: min(780px, 100%);
+  margin: 0 auto 25px;
+}
+
+.demo-brand {
+  margin: 0 0 8px;
+  color: #668094;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.demo-heading h1 {
+  margin: 0;
+  color: #1d2b35;
+  font-size: clamp(28px, 4.4vw, 47px);
+  letter-spacing: -0.045em;
+  line-height: 1.14;
+}
+
+.demo-heading h1 span {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.demo-heading > p:last-child {
+  max-width: 640px;
+  margin: 12px 0 0;
+  color: #63737f;
+  font-size: 13px;
+}
+
+.demo-note {
+  margin: 18px 0 0;
+  color: #85909a;
+  font-size: 10px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .demo-page {
+    padding: 30px 12px 24px;
+  }
+
+  .demo-heading {
+    padding: 0 8px;
+  }
+}

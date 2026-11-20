@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "networks": [
+    {
+      "id": "internet",
+      "name": "インターネット",
+      "accent": "violet"
+    },
+    {
+      "id": "home-lan",
+      "name": "おうちLAN",
+      "cidr": "192.168.0.0/24",
+      "accent": "blue"
+    },
+    {
+      "id": "oci-network",
+      "name": "OCIネットワーク",
+      "cidr": "192.168.253.0/24",
+      "accent": "orange"
+    }
+  ],
+  "devices": [
+    {
+      "id": "nanopi-r2s",
+      "networkId": "home-lan",
+      "name": "nanopi-r2s",
+      "ip": "192.168.0.19",
+      "isVm": false
+    },
+    {
+      "id": "acemagic",
+      "networkId": "home-lan",
+      "name": "acemagic",
+      "ip": "192.168.0.11",
+      "isVm": false
+    },
+    {
+      "id": "omv-vm",
+      "networkId": "home-lan",
+      "name": "omv",
+      "ip": "192.168.0.21",
+      "isVm": true
+    },
+    {
+      "id": "oci-kuro",
+      "networkId": "oci-network",
+      "name": "oci-kuro",
+      "ip": "192.168.253.1",
+      "isVm": false
+    }
+  ],
+  "services": [
+    {
+      "id": "gitea",
+      "deviceId": "nanopi-r2s",
+      "name": "gitea",
+      "subtitle": "おうちGit",
+      "url": "http://192.168.0.19:3000",
+      "iconKey": "gitea",
+      "status": "up"
+    },
+    {
+      "id": "gatus",
+      "deviceId": "nanopi-r2s",
+      "name": "gatus",
+      "subtitle": "見守り番",
+      "url": "http://192.168.0.19:8080",
+      "iconKey": "gatus",
+      "status": "up"
+    },
+    {
+      "id": "proxmox",
+      "deviceId": "acemagic",
+      "name": "proxmox",
+      "subtitle": "土台",
+      "url": "http://192.168.0.11:8006",
+      "iconKey": "proxmox",
+      "status": "up"
+    },
+    {
+      "id": "omv",
+      "deviceId": "omv-vm",
+      "name": "omv",
+      "subtitle": "データ倉庫",
+      "url": "http://192.168.0.21",
+      "iconKey": "omv",
+      "status": "down"
+    },
+    {
+      "id": "gatus-oci",
+      "deviceId": "oci-kuro",
+      "name": "gatus",
+      "subtitle": "OCI監視",
+      "url": "http://192.168.253.1:8080",
+      "iconKey": "gatus",
+      "status": "up"
+    }
+  ]
+}
