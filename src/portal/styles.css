@@ -675,6 +675,7 @@
 
 .ouchi-list-node {
   padding: 13px 15px;
+  cursor: pointer;
 }
 
 .ouchi-list-node-summary,
@@ -1634,6 +1635,7 @@
   border: 1.5px solid #e0e5eb;
   border-radius: 13px;
   box-shadow: none;
+  cursor: pointer;
   transition:
     border-color 160ms ease,
     background 160ms ease,

@@ -1,4 +1,10 @@
-import { act, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -84,6 +90,46 @@ describe("OuchiPortal", () => {
     expect(
       container.querySelectorAll(".ouchi-same-device-badge"),
     ).toHaveLength(2);
+  });
+
+  it("selects from the device area but keeps service links separate", () => {
+    const { container } = render(<OuchiPortal />);
+    const card = container.querySelector(
+      '[data-device-id="nanopi-r2s"]',
+    );
+    expect(card).not.toBeNull();
+
+    fireEvent.click(card as HTMLElement);
+    expect(card).toHaveClass("ouchi-device-card--selected");
+
+    const serviceLink = card?.querySelector(".ouchi-service-tile");
+    expect(serviceLink).not.toBeNull();
+    serviceLink?.addEventListener("click", (event) => {
+      event.preventDefault();
+    });
+    fireEvent.click(serviceLink as Element);
+
+    expect(card).toHaveClass("ouchi-device-card--selected");
+  });
+
+  it("clears the selected device when clicking outside a node", () => {
+    const { container } = render(<OuchiPortal />);
+    const card = container.querySelector(
+      '[data-device-id="nanopi-r2s"]',
+    );
+    fireEvent.click(card as HTMLElement);
+    expect(card).toHaveClass("ouchi-device-card--selected");
+
+    const canvas = container.querySelector(".ouchi-canvas");
+    fireEvent.click(canvas as HTMLElement);
+
+    expect(card).not.toHaveClass("ouchi-device-card--selected");
+
+    fireEvent.click(card as HTMLElement);
+    expect(card).toHaveClass("ouchi-device-card--selected");
+
+    fireEvent.pointerDown(document.body);
+    expect(card).not.toHaveClass("ouchi-device-card--selected");
   });
 
   it("highlights a generic relation separately from same-device selection", async () => {

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -274,6 +275,15 @@ function DeviceCard({
         .filter(Boolean)
         .join(" ")}
       data-device-id={device.id}
+      onClick={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest("a, button")
+        ) {
+          return;
+        }
+        onSelect(device.id);
+      }}
       style={style}
     >
       <header className="ouchi-node-header">
@@ -531,6 +541,15 @@ function ListBoard({
                         .filter(Boolean)
                         .join(" ")}
                       key={membership.id}
+                      onClick={(event) => {
+                        if (
+                          event.target instanceof Element &&
+                          event.target.closest("a, button")
+                        ) {
+                          return;
+                        }
+                        onSelect(device.id);
+                      }}
                       style={
                         visual.mode === "related" && visual.color
                           ? ({
@@ -636,6 +655,7 @@ export function OuchiPortal({
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(
     initialSelectedDeviceId,
   );
+  const portalRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!message) {
@@ -644,6 +664,26 @@ export function OuchiPortal({
     const timer = window.setTimeout(() => setMessage(undefined), 4500);
     return () => window.clearTimeout(timer);
   }, [message]);
+
+  useEffect(() => {
+    if (!selectedDeviceId || typeof document === "undefined") {
+      return;
+    }
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !portalRef.current?.contains(event.target)
+      ) {
+        setSelectedDeviceId(undefined);
+      }
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointerDown);
+    };
+  }, [selectedDeviceId]);
 
   function openAdd(kind: EntityKind) {
     setManageTab(
@@ -846,6 +886,16 @@ export function OuchiPortal({
     <section
       aria-label="ouchi.local ポータル"
       className={`ouchi-portal${className ? ` ${className}` : ""}`}
+      onClick={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest(".ouchi-node-card, .ouchi-list-node")
+        ) {
+          return;
+        }
+        setSelectedDeviceId(undefined);
+      }}
+      ref={portalRef}
     >
       <header className="ouchi-portal-header">
         <div className="ouchi-title-block">
