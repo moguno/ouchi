@@ -2,6 +2,8 @@ export type PortalStatus = "up" | "down" | "maintenance";
 
 export type AccentTone = "blue" | "green" | "orange" | "violet" | "slate";
 
+export type PortalServiceScheme = "http" | "https";
+
 export type PortalIconKey =
   | "gitea"
   | "gatus"
@@ -20,35 +22,69 @@ export interface PortalNetwork {
   accent: AccentTone;
 }
 
+export interface PortalDeviceResources {
+  memoryPercent: number;
+  diskPercent: number;
+}
+
+export interface PortalSshInfo {
+  user: string;
+  port: number;
+}
+
 export interface PortalDevice {
   id: string;
-  networkId: string;
   name: string;
-  ip: string;
   isVm: boolean;
+  ssh?: PortalSshInfo;
+  resources?: PortalDeviceResources;
+}
+
+export interface PortalDeviceNetwork {
+  id: string;
+  deviceId: string;
+  networkId: string;
+  ip: string;
+  label?: string;
+}
+
+export interface PortalRelation {
+  id: string;
+  fromDeviceId: string;
+  toDeviceId: string;
+  fromLabel: string;
+  toLabel: string;
+  color: string;
 }
 
 export interface PortalService {
   id: string;
-  deviceId: string;
+  deviceNetworkId: string;
   name: string;
   subtitle: string;
-  url: string;
+  scheme: PortalServiceScheme;
+  port: number;
+  topPath: string;
+  monitorPath: string;
+  serviceUrl?: string;
   iconKey: PortalIconKey;
   status: PortalStatus;
 }
 
-export interface PortalDataV1 {
-  version: 1;
+export interface PortalDataV2 {
+  version: 2;
   networks: PortalNetwork[];
   devices: PortalDevice[];
+  deviceNetworks: PortalDeviceNetwork[];
+  relations: PortalRelation[];
   services: PortalService[];
 }
 
 export interface OuchiPortalProps {
-  data?: PortalDataV1;
+  data?: PortalDataV2;
   storageKey?: string;
-  onDataChange?: (data: PortalDataV1) => void;
+  initialSelectedDeviceId?: string;
+  onDataChange?: (data: PortalDataV2) => void;
   className?: string;
 }
 
@@ -66,6 +102,11 @@ export const PORTAL_STATUSES: PortalStatus[] = [
   "up",
   "down",
   "maintenance",
+];
+
+export const PORTAL_SERVICE_SCHEMES: PortalServiceScheme[] = [
+  "http",
+  "https",
 ];
 
 export const ACCENT_TONES: AccentTone[] = [

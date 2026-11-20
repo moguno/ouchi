@@ -1,30 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import type { PortalDataV1, PortalStatus } from "./types";
+import type { PortalDataV2, PortalStatus } from "./types";
 import { validatePortalData } from "./validation";
 
-type PortalDataUpdater = (current: PortalDataV1) => PortalDataV1;
+type PortalDataUpdater = (current: PortalDataV2) => PortalDataV2;
 
 interface UsePortalDataOptions {
-  seed: PortalDataV1;
+  seed: PortalDataV2;
   storageKey: string;
-  onDataChange?: (data: PortalDataV1) => void;
+  onDataChange?: (data: PortalDataV2) => void;
 }
 
 interface UsePortalDataResult {
-  data: PortalDataV1;
+  data: PortalDataV2;
   storageWarning?: string;
   updateData: (updater: PortalDataUpdater) => void;
   resetData: () => void;
 }
 
-function safeClone(data: PortalDataV1): PortalDataV1 {
+function safeClone(data: PortalDataV2): PortalDataV2 {
   return structuredClone(data);
 }
 
 function loadInitialData(
-  seed: PortalDataV1,
+  seed: PortalDataV2,
   storageKey: string,
-): { data: PortalDataV1; warning?: string } {
+): { data: PortalDataV2; warning?: string } {
   if (typeof window === "undefined") {
     return { data: safeClone(seed) };
   }
@@ -79,7 +79,7 @@ export function usePortalData({
   onDataChange,
 }: UsePortalDataOptions): UsePortalDataResult {
   const initial = useRef(loadInitialData(seed, storageKey));
-  const [data, setData] = useState<PortalDataV1>(initial.current.data);
+  const [data, setData] = useState<PortalDataV2>(initial.current.data);
   const [storageWarning, setStorageWarning] = useState<string | undefined>(
     initial.current.warning,
   );

@@ -13,7 +13,7 @@ export default function App() {
           ネットワークとデバイスを整理し、日々使うサービスへすぐ移動できるポータルです。
         </p>
       </div>
-      <OuchiPortal />
+      <OuchiPortal initialSelectedDeviceId="omv-vm" />
       <p className="demo-note">
         Reactコンポーネント・デモ / データはブラウザ内に保存されます
       </p>

@@ -2,12 +2,19 @@ export { OuchiPortal } from "./OuchiPortal";
 export type {
   AccentTone,
   OuchiPortalProps,
-  PortalDataV1,
+  PortalDataV2,
+  PortalDeviceResources,
+  PortalDeviceNetwork,
   PortalIconKey,
   PortalNetwork,
+  PortalRelation,
   PortalDevice,
   PortalService,
+  PortalServiceScheme,
+  PortalSshInfo,
   PortalStatus,
+  ValidationIssue,
+  ValidationResult,
 } from "./types";
 export {
   isCidr,
@@ -16,4 +23,5 @@ export {
   isIpWithinCidr,
   validatePortalData,
 } from "./validation";
+export { buildMonitorUrl, buildServiceUrl } from "./urls";
 export { portalDemoData } from "./demoData";

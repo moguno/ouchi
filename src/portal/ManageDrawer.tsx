@@ -2,11 +2,12 @@ import {
   ACCENT_LABELS,
   ICON_LABELS,
   STATUS_LABELS,
-  type PortalDataV1,
+  type PortalDataV2,
   type PortalDevice,
   type PortalNetwork,
   type PortalService,
 } from "./types";
+import { buildServiceUrl } from "./urls";
 import {
   CloseIcon,
   EditIcon,
@@ -21,7 +22,7 @@ export type EntityKind = "network" | "device" | "service";
 interface ManageDrawerProps {
   open: boolean;
   activeTab: ManageTab;
-  data: PortalDataV1;
+  data: PortalDataV2;
   warning?: string;
   message?: string;
   onClose: () => void;
@@ -67,7 +68,7 @@ export function ManageDrawer({
 
   const addDisabled =
     (activeTab === "devices" && data.networks.length === 0) ||
-    (activeTab === "services" && data.devices.length === 0);
+    (activeTab === "services" && data.deviceNetworks.length === 0);
 
   return (
     <div className="ouchi-overlay" role="presentation" onMouseDown={onClose}>
@@ -80,7 +81,7 @@ export function ManageDrawer({
       >
         <header className="ouchi-drawer-header">
           <div>
-            <p className="ouchi-eyebrow">PORTAL DATA</p>
+            <p className="ouchi-eyebrow">PORTAL DATA V2</p>
             <h3>ポータルを管理</h3>
           </div>
           <button
@@ -123,8 +124,9 @@ export function ManageDrawer({
             <p>
               {activeTab === "networks" && "ネットワークとCIDRを管理します"}
               {activeTab === "devices" &&
-                "ネットワークへデバイスを登録し、VMフラグを設定します"}
-              {activeTab === "services" && "デバイスへサービスを登録します"}
+                "所属IP、資源使用率、関係をデバイス単位で管理します"}
+              {activeTab === "services" &&
+                "サービスをデバイスのアクセスIPへ配置します"}
             </p>
             <button
               className="ouchi-primary-button ouchi-primary-button--compact"
@@ -149,7 +151,7 @@ export function ManageDrawer({
             <p className="ouchi-inline-hint">
               {activeTab === "devices"
                 ? "先にネットワークを追加してください。"
-                : "先にデバイスを追加してください。"}
+                : "先にデバイスと所属IPを追加してください。"}
             </p>
           )}
 
@@ -246,14 +248,16 @@ function NetworkRow({
   onDelete,
 }: {
   network: PortalNetwork;
-  data: PortalDataV1;
+  data: PortalDataV2;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const devices = data.devices.filter(
-    (device) => device.networkId === network.id,
+  const memberships = data.deviceNetworks.filter(
+    (membership) => membership.networkId === network.id,
   );
-  const vmCount = devices.filter((device) => device.isVm).length;
+  const deviceCount = new Set(
+    memberships.map((membership) => membership.deviceId),
+  ).size;
 
   return (
     <article className="ouchi-manage-row">
@@ -264,8 +268,8 @@ function NetworkRow({
       <div className="ouchi-manage-row-main">
         <strong>{network.name}</strong>
         <p>
-          {network.cidr || "CIDRなし"} ・ デバイス {devices.length}件 ・ VM{" "}
-          {vmCount}件
+          {network.cidr || "CIDRなし"} ・ デバイス {deviceCount}件 ・ 所属IP{" "}
+          {memberships.length}件
         </p>
       </div>
       <span className="ouchi-manage-chip">
@@ -288,16 +292,34 @@ function DeviceRow({
   onDelete,
 }: {
   device: PortalDevice;
-  data: PortalDataV1;
+  data: PortalDataV2;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const network = data.networks.find(
-    (item) => item.id === device.networkId,
+  const memberships = data.deviceNetworks.filter(
+    (membership) => membership.deviceId === device.id,
   );
-  const serviceCount = data.services.filter(
-    (service) => service.deviceId === device.id,
+  const membershipIds = new Set(
+    memberships.map((membership) => membership.id),
+  );
+  const serviceCount = data.services.filter((service) =>
+    membershipIds.has(service.deviceNetworkId),
   ).length;
+  const relationCount = data.relations.filter(
+    (relation) =>
+      relation.fromDeviceId === device.id ||
+      relation.toDeviceId === device.id,
+  ).length;
+  const networkNames = memberships
+    .map(
+      (membership) =>
+        data.networks.find(
+          (network) => network.id === membership.networkId,
+        )?.name,
+    )
+    .filter(Boolean)
+    .join(" / ");
+
   return (
     <article className="ouchi-manage-row">
       <span
@@ -311,8 +333,8 @@ function DeviceRow({
       <div className="ouchi-manage-row-main">
         <strong>{device.name}</strong>
         <p>
-          {device.ip} ・ {network?.name ?? "未所属"} ・ サービス{" "}
-          {serviceCount}件
+          {networkNames || "未所属"} ・ サービス {serviceCount}件 ・ 関係{" "}
+          {relationCount}件
         </p>
       </div>
       <span className="ouchi-manage-chip">
@@ -335,16 +357,26 @@ function ServiceRow({
   onDelete,
 }: {
   service: PortalService;
-  data: PortalDataV1;
+  data: PortalDataV2;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const device = data.devices.find(
-    (item) => item.id === service.deviceId,
+  const membership = data.deviceNetworks.find(
+    (item) => item.id === service.deviceNetworkId,
   );
-  const targetLabel = device
-    ? `${device.name}（${device.isVm ? "VM" : "物理"}）`
-    : "配置先なし";
+  const device = data.devices.find(
+    (item) => item.id === membership?.deviceId,
+  );
+  const network = data.networks.find(
+    (item) => item.id === membership?.networkId,
+  );
+  const targetLabel =
+    membership && device
+      ? `${device.name} / ${membership.ip} / ${network?.name ?? "未所属"}`
+      : "配置先IPなし";
+  const serviceUrl = membership
+    ? buildServiceUrl(service, membership)
+    : undefined;
 
   return (
     <article className="ouchi-manage-row">
@@ -354,9 +386,8 @@ function ServiceRow({
       />
       <div className="ouchi-manage-row-main">
         <strong>{service.name}</strong>
-        <p>
-          {service.subtitle || "補足名なし"} ・ {targetLabel} ・{" "}
-          {ICON_LABELS[service.iconKey]}
+        <p title={serviceUrl}>
+          {targetLabel} ・ {ICON_LABELS[service.iconKey]}
         </p>
       </div>
       <span className={`ouchi-status-label ouchi-status-label--${service.status}`}>

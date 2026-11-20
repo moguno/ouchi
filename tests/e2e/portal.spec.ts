@@ -15,7 +15,7 @@ for (const viewport of viewports) {
     });
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "ポータル" }),
+      page.getByRole("heading", { name: "ouchi.local" }),
     ).toBeVisible();
     await page.screenshot({
       path: `成果物/screenshots/portal-${viewport.name}.png`,
@@ -42,7 +42,7 @@ test("management drawer renders without overlap", async ({ page }) => {
 test("list view keeps the network hierarchy readable", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 900 });
   await page.goto("/");
-  await page.getByRole("button", { name: "リスト" }).click();
+  await page.getByRole("button", { name: "リスト表示" }).click();
   await expect(page.getByText("192.168.0.0/24")).toBeVisible();
   await page.screenshot({
     path: "成果物/screenshots/portal-list.png",
@@ -67,7 +67,7 @@ test("service form is usable from the management drawer", async ({ page }) => {
   });
 });
 
-test("device management exposes the VM flag", async ({
+test("device management exposes network addresses and SSH settings", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -76,9 +76,32 @@ test("device management exposes the VM flag", async ({
   await page.getByRole("tab", { name: /デバイス/ }).click();
   const drawer = page.getByRole("dialog", { name: "ポータルを管理" });
   await expect(drawer.getByText("VM", { exact: true }).first()).toBeVisible();
+  await drawer
+    .getByRole("button", { name: "FortiGate 50Eを編集" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "デバイスを編集" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "所属ネットワーク 1" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "所属を追加" }),
+  ).toBeVisible();
   await page.screenshot({
     path: "成果物/screenshots/portal-device-vm-management.png",
     fullPage: false,
+    animations: "disabled",
+  });
+});
+
+test("relation highlight is visible on the portal", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto("/");
+  await expect(page.getByText("親ホスト")).toBeVisible();
+  await page.screenshot({
+    path: "成果物/screenshots/portal-relations.png",
+    fullPage: true,
     animations: "disabled",
   });
 });

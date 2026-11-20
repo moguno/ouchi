@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "networks": [
     {
       "id": "internet",
@@ -21,77 +21,258 @@
   ],
   "devices": [
     {
-      "id": "nanopi-r2s",
-      "networkId": "home-lan",
-      "name": "nanopi-r2s",
-      "ip": "192.168.0.19",
+      "id": "fortigate",
+      "name": "FortiGate 50E",
+      "isVm": false
+    },
+    {
+      "id": "wac505",
+      "name": "WAC505",
+      "isVm": false
+    },
+    {
+      "id": "wac540",
+      "name": "WAC540",
+      "isVm": false
+    },
+    {
+      "id": "gs116ev2",
+      "name": "GS116Ev2",
+      "isVm": false
+    },
+    {
+      "id": "gs308ep",
+      "name": "GS308EP",
       "isVm": false
     },
     {
       "id": "acemagic",
-      "networkId": "home-lan",
-      "name": "acemagic",
-      "ip": "192.168.0.11",
+      "name": "ACEMAGIC",
+      "isVm": false
+    },
+    {
+      "id": "beelink",
+      "name": "Beelink",
+      "isVm": false
+    },
+    {
+      "id": "nanopi-r2s",
+      "name": "NanoPi R2S",
       "isVm": false
     },
     {
       "id": "omv-vm",
-      "networkId": "home-lan",
-      "name": "omv",
-      "ip": "192.168.0.21",
+      "name": "openmediavault",
       "isVm": true
     },
     {
       "id": "oci-kuro",
+      "name": "OCI-Kuro",
+      "isVm": true
+    },
+    {
+      "id": "oci-shiro",
+      "name": "OCI-Shiro",
+      "isVm": true
+    }
+  ],
+  "deviceNetworks": [
+    {
+      "id": "fortigate-home",
+      "deviceId": "fortigate",
+      "networkId": "home-lan",
+      "ip": "192.168.0.1",
+      "label": "管理"
+    },
+    {
+      "id": "wac505-home",
+      "deviceId": "wac505",
+      "networkId": "home-lan",
+      "ip": "192.168.0.2"
+    },
+    {
+      "id": "wac540-home",
+      "deviceId": "wac540",
+      "networkId": "home-lan",
+      "ip": "192.168.0.6"
+    },
+    {
+      "id": "gs116ev2-home",
+      "deviceId": "gs116ev2",
+      "networkId": "home-lan",
+      "ip": "192.168.0.8"
+    },
+    {
+      "id": "gs308ep-home",
+      "deviceId": "gs308ep",
+      "networkId": "home-lan",
+      "ip": "192.168.0.9"
+    },
+    {
+      "id": "acemagic-home",
+      "deviceId": "acemagic",
+      "networkId": "home-lan",
+      "ip": "192.168.0.11"
+    },
+    {
+      "id": "beelink-home",
+      "deviceId": "beelink",
+      "networkId": "home-lan",
+      "ip": "192.168.0.12"
+    },
+    {
+      "id": "nanopi-home",
+      "deviceId": "nanopi-r2s",
+      "networkId": "home-lan",
+      "ip": "192.168.0.19"
+    },
+    {
+      "id": "omv-home",
+      "deviceId": "omv-vm",
+      "networkId": "home-lan",
+      "ip": "192.168.0.21"
+    },
+    {
+      "id": "oci-kuro-network",
+      "deviceId": "oci-kuro",
       "networkId": "oci-network",
-      "name": "oci-kuro",
-      "ip": "192.168.253.1",
-      "isVm": false
+      "ip": "192.168.253.1"
+    },
+    {
+      "id": "oci-shiro-network",
+      "deviceId": "oci-shiro",
+      "networkId": "oci-network",
+      "ip": "192.168.253.3"
+    }
+  ],
+  "relations": [
+    {
+      "id": "omv-host-of-acemagic",
+      "fromDeviceId": "omv-vm",
+      "toDeviceId": "acemagic",
+      "fromLabel": "VM",
+      "toLabel": "親ホスト",
+      "color": "#d5a22b"
     }
   ],
   "services": [
     {
-      "id": "gitea",
-      "deviceId": "nanopi-r2s",
-      "name": "gitea",
-      "subtitle": "おうちGit",
-      "url": "http://192.168.0.19:3000",
-      "iconKey": "gitea",
+      "id": "fortigate-management",
+      "deviceNetworkId": "fortigate-home",
+      "name": "FortiGate 管理",
+      "subtitle": "境界ルーター",
+      "scheme": "https",
+      "port": 443,
+      "topPath": "/",
+      "monitorPath": "/",
+      "iconKey": "server",
       "status": "up"
     },
     {
-      "id": "gatus",
-      "deviceId": "nanopi-r2s",
-      "name": "gatus",
-      "subtitle": "見守り番",
-      "url": "http://192.168.0.19:8080",
-      "iconKey": "gatus",
+      "id": "wac505-management",
+      "deviceNetworkId": "wac505-home",
+      "name": "WAC505 管理",
+      "subtitle": "無線AP",
+      "scheme": "https",
+      "port": 443,
+      "topPath": "/",
+      "monitorPath": "/",
+      "iconKey": "server",
+      "status": "up"
+    },
+    {
+      "id": "wac540-management",
+      "deviceNetworkId": "wac540-home",
+      "name": "WAC540 管理",
+      "subtitle": "無線AP",
+      "scheme": "https",
+      "port": 443,
+      "topPath": "/",
+      "monitorPath": "/",
+      "iconKey": "server",
+      "status": "up"
+    },
+    {
+      "id": "gs116ev2-management",
+      "deviceNetworkId": "gs116ev2-home",
+      "name": "GS116Ev2 管理",
+      "subtitle": "16ポートスイッチ",
+      "scheme": "http",
+      "port": 80,
+      "topPath": "/",
+      "monitorPath": "/",
+      "iconKey": "server",
+      "status": "up"
+    },
+    {
+      "id": "gs308ep-management",
+      "deviceNetworkId": "gs308ep-home",
+      "name": "GS308EP 管理",
+      "subtitle": "8ポートPoE",
+      "scheme": "http",
+      "port": 80,
+      "topPath": "/",
+      "monitorPath": "/",
+      "iconKey": "server",
       "status": "up"
     },
     {
       "id": "proxmox",
-      "deviceId": "acemagic",
-      "name": "proxmox",
-      "subtitle": "土台",
-      "url": "http://192.168.0.11:8006",
+      "deviceNetworkId": "acemagic-home",
+      "name": "Proxmox",
+      "subtitle": "仮想化基盤",
+      "scheme": "https",
+      "port": 8006,
+      "topPath": "/",
+      "monitorPath": "/",
       "iconKey": "proxmox",
       "status": "up"
     },
     {
+      "id": "gitea",
+      "deviceNetworkId": "nanopi-home",
+      "name": "Gitea",
+      "subtitle": "おうちGit",
+      "scheme": "http",
+      "port": 3000,
+      "topPath": "/",
+      "monitorPath": "/explore/repos",
+      "iconKey": "gitea",
+      "status": "up"
+    },
+    {
+      "id": "gatus-home",
+      "deviceNetworkId": "nanopi-home",
+      "name": "Gatus",
+      "subtitle": "見守り番",
+      "scheme": "http",
+      "port": 8080,
+      "topPath": "/",
+      "monitorPath": "/health",
+      "iconKey": "gatus",
+      "status": "up"
+    },
+    {
       "id": "omv",
-      "deviceId": "omv-vm",
-      "name": "omv",
+      "deviceNetworkId": "omv-home",
+      "name": "openmediavault",
       "subtitle": "データ倉庫",
-      "url": "http://192.168.0.21",
+      "scheme": "http",
+      "port": 80,
+      "topPath": "/",
+      "monitorPath": "/",
       "iconKey": "omv",
-      "status": "down"
+      "status": "up"
     },
     {
       "id": "gatus-oci",
-      "deviceId": "oci-kuro",
-      "name": "gatus",
+      "deviceNetworkId": "oci-kuro-network",
+      "name": "Gatus",
       "subtitle": "OCI監視",
-      "url": "http://192.168.253.1:8080",
+      "scheme": "http",
+      "port": 8080,
+      "topPath": "/",
+      "monitorPath": "/health",
       "iconKey": "gatus",
       "status": "up"
     }
