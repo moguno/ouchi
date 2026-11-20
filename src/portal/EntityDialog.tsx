@@ -4,7 +4,9 @@ import { CloseIcon } from "./icons";
 import {
   ACCENT_LABELS,
   ACCENT_TONES,
+  DEVICE_CATEGORY_LABELS,
   ICON_LABELS,
+  PORTAL_DEVICE_CATEGORIES,
   PORTAL_ICON_KEYS,
   PORTAL_SERVICE_SCHEMES,
   PORTAL_STATUSES,
@@ -12,6 +14,7 @@ import {
   type AccentTone,
   type PortalDataV2,
   type PortalDevice,
+  type PortalDeviceCategory,
   type PortalDeviceNetwork,
   type PortalIconKey,
   type PortalNetwork,
@@ -346,7 +349,9 @@ function DeviceForm({
 }) {
   const draftDeviceId = useRef(editing?.id ?? generateId("device"));
   const [name, setName] = useState(editing?.name ?? "");
-  const [isVm, setIsVm] = useState(editing?.isVm ?? false);
+  const [category, setCategory] = useState<PortalDeviceCategory>(
+    editing?.category ?? "physical",
+  );
   const [sshEnabled, setSshEnabled] = useState(Boolean(editing?.ssh));
   const [sshUser, setSshUser] = useState(editing?.ssh?.user ?? "");
   const [sshPort, setSshPort] = useState(String(editing?.ssh?.port ?? 22));
@@ -449,7 +454,8 @@ function DeviceForm({
     const device: PortalDevice = {
       id: editing?.id ?? draftDeviceId.current,
       name: name.trim(),
-      isVm,
+      category,
+      isVm: category === "vm",
       ssh: sshEnabled
         ? {
             user: sshUser.trim(),
@@ -650,18 +656,24 @@ function DeviceForm({
         </div>
       </section>
 
-      <label className="ouchi-checkbox-field">
-        <input
-          checked={isVm}
-          onChange={(event) => setIsVm(event.target.checked)}
-          type="checkbox"
-        />
-        <span>
-          <strong>VMとして登録</strong>
-          <small>
-            VMは物理デバイスに属さず、所属IPを持つ独立したデバイスとして扱います。
-          </small>
-        </span>
+      <label className="ouchi-field">
+        <span>デバイスカテゴリー</span>
+        <select
+          aria-label="デバイスカテゴリー"
+          onChange={(event) =>
+            setCategory(event.target.value as PortalDeviceCategory)
+          }
+          value={category}
+        >
+          {PORTAL_DEVICE_CATEGORIES.map((value) => (
+            <option key={value} value={value}>
+              {DEVICE_CATEGORY_LABELS[value]}
+            </option>
+          ))}
+        </select>
+        <small>
+          VMはネットワーク上の独立したデバイスとして扱います。
+        </small>
       </label>
 
       <section className="ouchi-form-section">

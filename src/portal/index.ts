@@ -3,6 +3,7 @@ export type {
   AccentTone,
   OuchiPortalProps,
   PortalDataV2,
+  PortalDeviceCategory,
   PortalDeviceResources,
   PortalDeviceNetwork,
   PortalIconKey,

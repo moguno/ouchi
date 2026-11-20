@@ -25,6 +25,8 @@ import {
   type ManageTab,
 } from "./ManageDrawer";
 import {
+  DEVICE_CATEGORY_LABELS,
+  PORTAL_DEVICE_CATEGORIES,
   STATUS_LABELS,
   type OuchiPortalProps,
   type PortalDataV2,
@@ -381,32 +383,62 @@ function NetworkCard({
           <p>管理画面から、このネットワークへデバイスを追加できます。</p>
         </div>
       ) : (
-        <div className="ouchi-node-grid">
-          {memberships.map((membership) => {
-            const device = data.devices.find(
-              (item) => item.id === membership.deviceId,
-            );
-            if (!device) {
-              return null;
-            }
-            const services = data.services.filter(
-              (service) => service.deviceNetworkId === membership.id,
+        <div className="ouchi-device-category-stack">
+          {PORTAL_DEVICE_CATEGORIES.map((category) => {
+            const categoryMemberships = memberships.filter(
+              (membership) =>
+                data.devices.find(
+                  (device) => device.id === membership.deviceId,
+                )?.category === category,
             );
             return (
-              <DeviceCard
-                key={membership.id}
-                device={device}
-                membership={membership}
-                onSelect={onSelect}
-                sameDevice={(membershipCounts.get(device.id) ?? 0) > 1}
-                selectedDeviceId={selectedDeviceId}
-                services={services}
-                visual={deviceVisual(
-                  device.id,
-                  selectedDeviceId,
-                  data.relations,
+              <div
+                className={`ouchi-device-category ouchi-device-category--${category}`}
+                key={category}
+              >
+                <header className="ouchi-device-category-header">
+                  <h3 id={`category-${network.id}-${category}`}>
+                    {DEVICE_CATEGORY_LABELS[category]}
+                  </h3>
+                  <span>{categoryMemberships.length}</span>
+                </header>
+                {categoryMemberships.length === 0 ? (
+                  <p className="ouchi-device-category-empty">登録なし</p>
+                ) : (
+                  <div className="ouchi-node-grid">
+                    {categoryMemberships.map((membership) => {
+                      const device = data.devices.find(
+                        (item) => item.id === membership.deviceId,
+                      );
+                      if (!device) {
+                        return null;
+                      }
+                      const services = data.services.filter(
+                        (service) =>
+                          service.deviceNetworkId === membership.id,
+                      );
+                      return (
+                        <DeviceCard
+                          key={membership.id}
+                          device={device}
+                          membership={membership}
+                          onSelect={onSelect}
+                          sameDevice={
+                            (membershipCounts.get(device.id) ?? 0) > 1
+                          }
+                          selectedDeviceId={selectedDeviceId}
+                          services={services}
+                          visual={deviceVisual(
+                            device.id,
+                            selectedDeviceId,
+                            data.relations,
+                          )}
+                        />
+                      );
+                    })}
+                  </div>
                 )}
-              />
+              </div>
             );
           })}
         </div>
@@ -513,109 +545,143 @@ function ListBoard({
             {memberships.length === 0 ? (
               <p className="ouchi-list-empty">デバイス未登録</p>
             ) : (
-              <div className="ouchi-list-node-list">
-                {memberships.map((membership) => {
-                  const device = data.devices.find(
-                    (item) => item.id === membership.deviceId,
+              <div className="ouchi-list-category-stack">
+                {PORTAL_DEVICE_CATEGORIES.map((category) => {
+                  const categoryMemberships = memberships.filter(
+                    (membership) =>
+                      data.devices.find(
+                        (device) => device.id === membership.deviceId,
+                      )?.category === category,
                   );
-                  if (!device) {
-                    return null;
-                  }
-                  const visual = deviceVisual(
-                    device.id,
-                    selectedDeviceId,
-                    data.relations,
-                  );
-                  const services = data.services.filter(
-                    (service) =>
-                      service.deviceNetworkId === membership.id,
-                  );
-                  const selected = device.id === selectedDeviceId;
                   return (
-                    <div
-                      className={[
-                        "ouchi-list-node",
-                        device.isVm ? "ouchi-list-node--vm" : "",
-                        `ouchi-list-node--${visual.mode}`,
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      key={membership.id}
-                      onClick={(event) => {
-                        if (
-                          event.target instanceof Element &&
-                          event.target.closest("a, button")
-                        ) {
-                          return;
-                        }
-                        onSelect(device.id);
-                      }}
-                      style={
-                        visual.mode === "related" && visual.color
-                          ? ({
-                              "--ouchi-relation-color": visual.color,
-                            } as CSSProperties)
-                          : undefined
-                      }
+                    <section
+                      className={`ouchi-list-category ouchi-list-category--${category}`}
+                      key={category}
                     >
-                      <div className="ouchi-list-node-summary">
-                        <div className="ouchi-list-node-meta">
-                          <button
-                            aria-label={`${device.name}を${selected ? "選択解除" : "選択"}`}
-                            aria-pressed={selected}
-                            className="ouchi-list-select-button"
-                            onClick={() => onSelect(device.id)}
-                            type="button"
-                          >
-                            <span
-                              className="ouchi-status-dot"
-                              aria-hidden="true"
-                            />
-                            <strong>{device.name}</strong>
-                          </button>
-                          {device.isVm && (
-                            <span className="ouchi-vm-badge">VM</span>
-                          )}
-                          {selected &&
-                            (membershipCounts.get(device.id) ?? 0) > 1 && (
-                            <span className="ouchi-same-device-badge">
-                              同一デバイス
-                            </span>
-                            )}
-                          <code>{membership.ip}</code>
-                          {membership.label && <small>{membership.label}</small>}
-                          {visual.mode === "related" &&
-                            visual.tags.map((tag, index) => (
-                              <span
-                                className="ouchi-relation-badge"
-                                key={`${tag.label}-${index}`}
+                      <header className="ouchi-list-category-header">
+                        <strong>{DEVICE_CATEGORY_LABELS[category]}</strong>
+                        <span>{categoryMemberships.length}</span>
+                      </header>
+                      {categoryMemberships.length === 0 ? (
+                        <p className="ouchi-list-category-empty">登録なし</p>
+                      ) : (
+                        <div className="ouchi-list-node-list">
+                          {categoryMemberships.map((membership) => {
+                            const device = data.devices.find(
+                              (item) => item.id === membership.deviceId,
+                            );
+                            if (!device) {
+                              return null;
+                            }
+                            const visual = deviceVisual(
+                              device.id,
+                              selectedDeviceId,
+                              data.relations,
+                            );
+                            const services = data.services.filter(
+                              (service) =>
+                                service.deviceNetworkId === membership.id,
+                            );
+                            const selected =
+                              device.id === selectedDeviceId;
+                            return (
+                              <div
+                                className={[
+                                  "ouchi-list-node",
+                                  device.isVm ? "ouchi-list-node--vm" : "",
+                                  `ouchi-list-node--${visual.mode}`,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                key={membership.id}
+                                onClick={(event) => {
+                                  if (
+                                    event.target instanceof Element &&
+                                    event.target.closest("a, button")
+                                  ) {
+                                    return;
+                                  }
+                                  onSelect(device.id);
+                                }}
                                 style={
-                                  {
-                                    "--ouchi-relation-color": tag.color,
-                                  } as CSSProperties
+                                  visual.mode === "related" &&
+                                  visual.color
+                                    ? ({
+                                        "--ouchi-relation-color":
+                                          visual.color,
+                                      } as CSSProperties)
+                                    : undefined
                                 }
                               >
-                                {tag.label}
-                              </span>
-                            ))}
+                                <div className="ouchi-list-node-summary">
+                                  <div className="ouchi-list-node-meta">
+                                    <button
+                                      aria-label={`${device.name}を${selected ? "選択解除" : "選択"}`}
+                                      aria-pressed={selected}
+                                      className="ouchi-list-select-button"
+                                      onClick={() => onSelect(device.id)}
+                                      type="button"
+                                    >
+                                      <span
+                                        className="ouchi-status-dot"
+                                        aria-hidden="true"
+                                      />
+                                      <strong>{device.name}</strong>
+                                    </button>
+                                    {device.isVm && (
+                                      <span className="ouchi-vm-badge">
+                                        VM
+                                      </span>
+                                    )}
+                                    {selected &&
+                                      (membershipCounts.get(device.id) ?? 0) >
+                                        1 && (
+                                        <span className="ouchi-same-device-badge">
+                                          同一デバイス
+                                        </span>
+                                      )}
+                                    <code>{membership.ip}</code>
+                                    {membership.label && (
+                                      <small>{membership.label}</small>
+                                    )}
+                                    {visual.mode === "related" &&
+                                      visual.tags.map((tag, index) => (
+                                        <span
+                                          className="ouchi-relation-badge"
+                                          key={`${tag.label}-${index}`}
+                                          style={
+                                            {
+                                              "--ouchi-relation-color":
+                                                tag.color,
+                                            } as CSSProperties
+                                          }
+                                        >
+                                          {tag.label}
+                                        </span>
+                                      ))}
+                                  </div>
+                                  <div className="ouchi-list-services">
+                                    {services.length === 0 ? (
+                                      <span className="ouchi-list-service-empty">
+                                        サービス未登録
+                                      </span>
+                                    ) : (
+                                      services.map((service) => (
+                                        <ListService
+                                          key={service.id}
+                                          membership={membership}
+                                          service={service}
+                                        />
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="ouchi-list-services">
-                          {services.length === 0 ? (
-                            <span className="ouchi-list-service-empty">
-                              サービス未登録
-                            </span>
-                          ) : (
-                            services.map((service) => (
-                              <ListService
-                                key={service.id}
-                                membership={membership}
-                                service={service}
-                              />
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                      )}
+                    </section>
                   );
                 })}
               </div>
@@ -629,7 +695,7 @@ function ListBoard({
 
 export function OuchiPortal({
   data,
-  storageKey = "ouchi.local.portal.v10",
+  storageKey = "ouchi.local.portal.v11",
   initialSelectedDeviceId,
   onDataChange,
   className,

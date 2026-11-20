@@ -23,56 +23,67 @@
     {
       "id": "fortigate",
       "name": "FortiGate 50E",
+      "category": "network",
       "isVm": false
     },
     {
       "id": "wac505",
       "name": "WAC505",
+      "category": "network",
       "isVm": false
     },
     {
       "id": "wac540",
       "name": "WAC540",
+      "category": "network",
       "isVm": false
     },
     {
       "id": "gs116ev2",
       "name": "GS116Ev2",
+      "category": "network",
       "isVm": false
     },
     {
       "id": "gs308ep",
       "name": "GS308EP",
+      "category": "network",
       "isVm": false
     },
     {
       "id": "acemagic",
       "name": "ACEMAGIC",
+      "category": "physical",
       "isVm": false
     },
     {
       "id": "beelink",
       "name": "Beelink",
+      "category": "physical",
       "isVm": false
     },
     {
       "id": "nanopi-r2s",
       "name": "NanoPi R2S",
+      "category": "physical",
       "isVm": false
     },
     {
       "id": "omv-vm",
       "name": "openmediavault",
+      "category": "vm",
       "isVm": true
     },
     {
       "id": "oci-kuro",
       "name": "OCI-Kuro",
+      "category": "vm",
       "isVm": true
     },
     {
       "id": "oci-shiro",
       "name": "OCI-Shiro",
+      "category": "vm",
       "isVm": true
     }
   ],

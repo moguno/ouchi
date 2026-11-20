@@ -37,6 +37,17 @@ describe("OuchiPortal", () => {
       container.querySelectorAll(".ouchi-node-card"),
     ).toHaveLength(11);
     expect(screen.queryByText("CPU")).not.toBeInTheDocument();
+
+    const homeLan = screen.getByRole("article", { name: "おうちLAN" });
+    expect(
+      within(homeLan).getByRole("heading", { name: "ネットワーク機器" }),
+    ).toBeInTheDocument();
+    expect(
+      within(homeLan).getByRole("heading", { name: "物理マシン" }),
+    ).toBeInTheDocument();
+    expect(
+      within(homeLan).getByRole("heading", { name: "VM" }),
+    ).toBeInTheDocument();
   });
 
   it("switches between icon and list views", async () => {
@@ -226,7 +237,10 @@ describe("OuchiPortal", () => {
       screen.getByRole("textbox", { name: "IPアドレス 1" }),
       "192.168.0.30",
     );
-    await user.click(screen.getByRole("checkbox", { name: /VMとして登録/ }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "デバイスカテゴリー" }),
+      "vm",
+    );
     await user.click(screen.getByRole("button", { name: "追加する" }));
 
     const persisted = JSON.parse(
@@ -235,6 +249,7 @@ describe("OuchiPortal", () => {
     expect(persisted.devices).toContainEqual(
       expect.objectContaining({
         name: "web",
+        category: "vm",
         isVm: true,
       }),
     );

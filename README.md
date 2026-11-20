@@ -68,7 +68,7 @@ export function Dashboard({ data }: { data: PortalDataV2 }) {
   return (
     <OuchiPortal
       data={data}
-      storageKey="example.portal.v10"
+      storageKey="example.portal.v11"
       onDataChange={(next) => console.log(next)}
     />
   );
@@ -95,11 +95,13 @@ localStorageの保存形式も `PortalDataV2` です。
     {
       "id": "fortigate",
       "name": "fortigate",
+      "category": "network",
       "isVm": false
     },
     {
       "id": "nanopi",
       "name": "nanopi-r2s",
+      "category": "physical",
       "isVm": false,
       "ssh": {
         "user": "portal-monitor",
@@ -152,6 +154,13 @@ localStorageの保存形式も `PortalDataV2` です。
   ]
 }
 ```
+
+### デバイスカテゴリー
+
+`devices[].category` は `network`、`physical`、`vm` のいずれかです。
+ポータルではネットワーク配下を「ネットワーク機器」「物理マシン」「VM」の
+3階層に分けて表示します。既存の `isVm` は互換性のため保持し、
+`category: "vm"` と一致させます。
 
 ### ネットワーク所属
 

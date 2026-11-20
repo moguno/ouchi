@@ -4,6 +4,8 @@ export type AccentTone = "blue" | "green" | "orange" | "violet" | "slate";
 
 export type PortalServiceScheme = "http" | "https";
 
+export type PortalDeviceCategory = "network" | "physical" | "vm";
+
 export type PortalIconKey =
   | "gitea"
   | "gatus"
@@ -35,6 +37,7 @@ export interface PortalSshInfo {
 export interface PortalDevice {
   id: string;
   name: string;
+  category: PortalDeviceCategory;
   isVm: boolean;
   ssh?: PortalSshInfo;
   resources?: PortalDeviceResources;
@@ -109,6 +112,12 @@ export const PORTAL_SERVICE_SCHEMES: PortalServiceScheme[] = [
   "https",
 ];
 
+export const PORTAL_DEVICE_CATEGORIES: PortalDeviceCategory[] = [
+  "network",
+  "physical",
+  "vm",
+];
+
 export const ACCENT_TONES: AccentTone[] = [
   "blue",
   "green",
@@ -133,6 +142,12 @@ export const STATUS_LABELS: Record<PortalStatus, string> = {
   up: "稼働中",
   down: "停止",
   maintenance: "メンテナンス",
+};
+
+export const DEVICE_CATEGORY_LABELS: Record<PortalDeviceCategory, string> = {
+  network: "ネットワーク機器",
+  physical: "物理マシン",
+  vm: "VM",
 };
 
 export const ACCENT_LABELS: Record<AccentTone, string> = {

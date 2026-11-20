@@ -1,5 +1,6 @@
 import {
   ACCENT_LABELS,
+  DEVICE_CATEGORY_LABELS,
   ICON_LABELS,
   STATUS_LABELS,
   type PortalDataV2,
@@ -124,7 +125,7 @@ export function ManageDrawer({
             <p>
               {activeTab === "networks" && "ネットワークとCIDRを管理します"}
               {activeTab === "devices" &&
-                "所属IP、資源使用率、関係をデバイス単位で管理します"}
+                "カテゴリー、所属IP、資源使用率、関係を管理します"}
               {activeTab === "services" &&
                 "サービスをデバイスのアクセスIPへ配置します"}
             </p>
@@ -338,7 +339,7 @@ function DeviceRow({
         </p>
       </div>
       <span className="ouchi-manage-chip">
-        {device.isVm ? "VM" : "物理"}
+        {DEVICE_CATEGORY_LABELS[device.category]}
       </span>
       <RowActions
         deleteLabel={`${device.name}を削除`}

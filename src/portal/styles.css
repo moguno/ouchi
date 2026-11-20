@@ -668,6 +668,36 @@
   font-size: 10px;
 }
 
+.ouchi-list-category-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-list-category + .ouchi-list-category {
+  border-top: 1px solid #e8edf1;
+}
+
+.ouchi-list-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 15px 6px;
+  background: rgba(247, 249, 251, 0.74);
+}
+
+.ouchi-list-category-header strong {
+  color: #626c76;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.ouchi-list-category-empty {
+  margin: 0;
+  padding: 8px 15px 11px;
+  color: #a2a8af;
+  font-size: 9px;
+}
+
 .ouchi-list-node-list {
   display: flex;
   flex-direction: column;
@@ -1619,6 +1649,70 @@
 .ouchi-network-meta small {
   color: #8b929c;
   font-size: 9px;
+}
+
+.ouchi-device-category-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.ouchi-device-category {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ouchi-device-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 2px;
+}
+
+.ouchi-device-category-header h3 {
+  margin: 0;
+  color: #626b75;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.ouchi-device-category-header span,
+.ouchi-list-category-header span {
+  display: inline-grid;
+  min-width: 18px;
+  height: 17px;
+  place-items: center;
+  padding: 0 5px;
+  color: #7b848e;
+  background: #eef1f5;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.ouchi-device-category--network .ouchi-device-category-header h3 {
+  color: #536676;
+}
+
+.ouchi-device-category--physical .ouchi-device-category-header h3 {
+  color: #4e6c87;
+}
+
+.ouchi-device-category--vm .ouchi-device-category-header h3 {
+  color: #5c6e68;
+}
+
+.ouchi-device-category-empty {
+  margin: 0;
+  padding: 7px 10px;
+  color: #a2a8af;
+  background: rgba(248, 250, 251, 0.72);
+  border: 1px dashed #e3e7eb;
+  border-radius: 8px;
+  font-size: 8px;
 }
 
 .ouchi-node-grid {

@@ -35,11 +35,13 @@ const data: PortalDataV2 = {
     {
       id: "fortigate",
       name: "fortigate",
+      category: "network",
       isVm: false,
     },
     {
       id: "nanopi",
       name: "nanopi",
+      category: "physical",
       isVm: false,
       ssh: { user: "admin", port: 22 },
       resources: { memoryPercent: 38, diskPercent: 57 },
@@ -47,6 +49,7 @@ const data: PortalDataV2 = {
     {
       id: "omv-vm",
       name: "omv",
+      category: "vm",
       isVm: true,
       resources: { memoryPercent: 52, diskPercent: 81 },
     },
@@ -202,6 +205,7 @@ describe("form validation", () => {
       validateDeviceInput(
         {
           name: "web",
+          category: "vm",
           isVm: true,
           ssh: { user: "monitor", port: 22 },
           resources: { memoryPercent: 40, diskPercent: 60 },
@@ -214,6 +218,7 @@ describe("form validation", () => {
       validateDeviceInput(
         {
           name: "broken",
+          category: "physical",
           isVm: false,
           ssh: { user: "", port: 70_000 },
           resources: { memoryPercent: 120, diskPercent: -1 },

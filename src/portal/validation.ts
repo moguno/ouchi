@@ -1,11 +1,13 @@
 import {
   ACCENT_TONES,
+  PORTAL_DEVICE_CATEGORIES,
   PORTAL_ICON_KEYS,
   PORTAL_SERVICE_SCHEMES,
   PORTAL_STATUSES,
   type AccentTone,
   type PortalDataV2,
   type PortalDevice,
+  type PortalDeviceCategory,
   type PortalDeviceNetwork,
   type PortalIconKey,
   type PortalNetwork,
@@ -148,6 +150,13 @@ function isStatus(value: unknown): value is PortalStatus {
   );
 }
 
+function isDeviceCategory(value: unknown): value is PortalDeviceCategory {
+  return (
+    typeof value === "string" &&
+    PORTAL_DEVICE_CATEGORIES.includes(value as PortalDeviceCategory)
+  );
+}
+
 function isScheme(value: unknown): value is PortalServiceScheme {
   return (
     typeof value === "string" &&
@@ -218,6 +227,20 @@ function validateDevice(
   }
   if (typeof input.isVm !== "boolean") {
     issues.push({ path: `${path}.isVm`, message: "VMフラグが不正です" });
+  }
+  if (!isDeviceCategory(input.category)) {
+    issues.push({
+      path: `${path}.category`,
+      message: "デバイスカテゴリーが不正です",
+    });
+  } else if (
+    typeof input.isVm === "boolean" &&
+    input.isVm !== (input.category === "vm")
+  ) {
+    issues.push({
+      path: `${path}.category`,
+      message: "カテゴリーとVMフラグが一致していません",
+    });
   }
   if (input.ssh !== undefined) {
     if (!isRecord(input.ssh) || !isNonEmptyString(input.ssh.user)) {
@@ -619,7 +642,10 @@ export function validateNetworkInput(
 }
 
 export function validateDeviceInput(
-  input: Pick<PortalDevice, "name" | "isVm" | "ssh" | "resources">,
+  input: Pick<
+    PortalDevice,
+    "name" | "category" | "isVm" | "ssh" | "resources"
+  >,
   editingId: string | undefined,
   data: PortalDataV2,
 ): ValidationIssue[] {
