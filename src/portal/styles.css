@@ -1622,12 +1622,13 @@
 }
 
 .ouchi-node-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
   gap: 11px;
 }
 
 .ouchi-node-card {
   position: relative;
+  min-width: 226px;
   min-height: 174px;
   padding: 12px 13px;
   overflow: hidden;
@@ -1792,7 +1793,7 @@
 
 .ouchi-service-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(86px, 96px));
+  grid-template-columns: repeat(2, minmax(0, 96px));
   justify-content: start;
   gap: 8px;
   padding-top: 10px;
@@ -2177,7 +2178,7 @@
 
 @media (max-width: 1120px) {
   .ouchi-node-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
   }
 
   .ouchi-portal {
@@ -2195,7 +2196,7 @@
   }
 
   .ouchi-node-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
   }
 
   .ouchi-network-header {
@@ -2229,7 +2230,7 @@
 
 @media (max-width: 500px) {
   .ouchi-service-grid {
-    grid-template-columns: repeat(auto-fit, minmax(86px, 96px));
+    grid-template-columns: repeat(2, minmax(0, 96px));
   }
 
   .ouchi-form-section > header {

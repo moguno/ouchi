@@ -5,6 +5,7 @@ const viewports = [
   { name: "laptop-1024", width: 1024, height: 900 },
   { name: "tablet-768", width: 768, height: 1000 },
   { name: "mobile-390", width: 390, height: 1100 },
+  { name: "mobile-320", width: 320, height: 1200 },
 ];
 
 for (const viewport of viewports) {
@@ -17,6 +18,9 @@ for (const viewport of viewports) {
     await expect(
       page.getByRole("heading", { name: "ouchi.local" }),
     ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(viewport.width);
     await page.screenshot({
       path: `成果物/screenshots/portal-${viewport.name}.png`,
       fullPage: true,
