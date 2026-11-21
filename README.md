@@ -1,9 +1,9 @@
 # ouchi.local Portal v1
 
-Vite＋React の SPA と、TypeScript＋Hono の REST API、SQLite 台帳 v0.4 で
-構成した ouchi.local ポータルの v1 プロトタイプです。ブラウザ内データ保存は
-廃止し、SQLite を唯一の正としています。v1 は LAN 内利用を前提とした
-認証なしの構成です。
+Vite＋React の SPA と、TypeScript＋Hono の REST API、SQLite 台帳で構成した、
+自宅ラボのポータルです。台帳に登録したネットワーク／デバイス／サービスを
+ポータルで一覧でき、MCP サーバー経由で AI エージェントからも読み書きできます。
+v1 は LAN 内利用を前提とした認証なしの構成です。
 
 ## できること（v1）
 
@@ -30,6 +30,7 @@ Vite＋React の SPA と、TypeScript＋Hono の REST API、SQLite 台帳 v0.4 �
 - `server/`: Hono API、SQLite リポジトリ、SPA 静的配信
 - `mcp/`: REST API 上に載る MCP サーバー、地図テキスト、MCP ツール
 - `contract-v1/`: 台帳スキーマ v0.4、シード、検証スクリプト
+- `docs/design-notes.md`: 表示仕様や未決事項などの設計メモ（開発者向け）
 - `data/ouchi.sqlite`: 初回起動時に生成される台帳（Git 管理外）
 - `dist/`: 埋め込み用 React ライブラリ
 - `demo-dist/`: SPA の本番ビルド
@@ -73,9 +74,7 @@ npm start
 `contract-v1/migrations/001_add_device_petname.sql` の
 `ALTER TABLE devices ADD COLUMN petname TEXT` を一度だけ適用します。
 
-SQLite は起動時に `foreign_keys=ON`、`busy_timeout=5000`、WAL モード、
-`synchronous=NORMAL` を設定します。バックアップは稼働中に `sqlite3 .backup`
-を使ってください。
+バックアップは稼働中に `sqlite3 .backup` を使ってください。
 
 ## Docker
 
@@ -90,6 +89,11 @@ API と別コンテナ／別プロセスで起動し、`http://<LAN IP>:3333/mcp
 Avahi はホスト側の既存構成へ任せます。
 
 ## MCP サーバー
+
+AI エージェント（Claude など）をこの MCP サーバーに接続すると、台帳の
+ネットワーク構成を「地図」として AI に渡せます。デバイスの保守時に構成を
+踏まえて手伝わせたり、自然言語でデバイスやサービスの登録・変更を任せたり
+できます。
 
 MCP は公式 `@modelcontextprotocol/sdk` 1.32.2 のサーバー／
 Streamable HTTPトランスポートを使い、既存 REST API の薄いクライアントとして
@@ -220,15 +224,8 @@ IP を持たず VM／メーターを無効にする、という規則も REST �
 `title` はポータル左上に表示する名称です。空文字・改行・100文字超は
 HTTP 400 で拒否し、DB を変更しません。
 
-デバイス `petname` は任意です。入力値は前後空白を除去し、空文字は未設定
-（NULL）として保存します。ポータルのデバイスカードと一覧では petname を
-主表示にし、未設定時は hostname へフォールバックします。サブ行にはその
-ネットワークでの所属 IP、カテゴリ、petname 設定時のみ hostname を表示します。
-管理画面のデバイス一覧も petname を主表示にし、hostname を併記します。
-
-サービス状態は v1 では状態プロバイダを接続していないため、レスポンスにも
-`status` を付けません。将来のプロバイダ接続に備えて型と API 境界は残していますが、
-v1 の GUI には状態ドット・状態ラベル・凡例を表示しません。
+デバイス `petname` は任意の愛称です。ポータルでは petname が主表示になり、
+未設定時は hostname を表示します。
 
 ### YAML エクスポート／インポート
 
@@ -288,26 +285,6 @@ Apache-2.0 の独自 SVG です。
 - `monitorUrl`: 監視パス、空ならトップパス、両方空なら `/`
 - 所属 IP が NULL で `service_url` も空なら、どちらも `null`
 
-## SPA
-
-通常のデモ起動では `GET /api/portal` を読み、編集操作は各 REST API を呼んだ
-あと台帳を再取得します。localStorage はデータ保存にも移行期キャッシュにも
-使いません。API 障害時は古い表示を出さず、接続エラーを表示します。
-ポータルタイトルも `settings.title` を表示し、管理画面から
-`PUT /api/settings` で保存します。
-
-カテゴリーは `network / physical / vm / service` です。ポータルでは所属が
-1件以上あるカテゴリー見出しだけを表示し、管理画面では追加導線として全カテゴリーを
-選べます。ネットワーク自体が0件のときだけ「デバイス未登録」のプレースホルダを
-表示します。
-
-関係ラベルは、注目デバイスが from 側なら
-`fromLabel || tag`、to 側なら `toLabel || tag` を使います。
-タグは自由文字列で、同じタグを持つ関係は全件同じ色です。既存タグを
-関係エディタで選ぶと色は固定され、「タグの色を変更」から全関係へ
-一括反映できます。新規タグのときだけ個別に色を選べます。YAML でも
-同じタグに異なる色が指定された場合はインポートを拒否します。
-
 ### GitHub Pages 向け YAML デモ
 
 `npm run build:pages` は `--mode pages` で SPA をビルドし、静的ファイル一式を
@@ -328,20 +305,7 @@ RFC 2544 ベンチマーク用（`198.18.0.0/24`）を割り当てます。
 `l3-switch` は家族用LAN、ホームラボ、個人ネットワークへ所属します。
 物理ホストとVMの関係は `relations` で表し、インターネット上にはデモ自身を
 指すサービスを登録しています。
-`https://moguno.github.io/ouchi/` は公開時に差し替えるプレースホルダです。
-通常の `npm run build:demo` は引き続き REST API モードです。Pages デモは
-表示専用で、管理・編集 UI は表示されません。GitHub への push と Pages の
-有効化はリポジトリ利用者が行います。
-
-### メーターと状態表示
-
-`GET /api/devices/:id/meters` と台帳の SSH 関連列は将来の収集ブロック向けに
-残しています。SSH コレクターは v1 では未接続で、API は
-`memoryPercent: null, diskPercent: null` を返します。
-
-v1 の GUI はメーターのパーセンテージ・「未取得」・メーター設定入力を表示せず、
-サービスの状態ドット・状態ラベル・凡例も表示しません。ダミー値とランダム更新は
-ありません。秘密鍵は DB やソースへ置かず、実装時に SOPS などから供給する想定です。
+Pages デモは表示専用で、管理・編集 UI は表示されません。
 
 ## 埋め込み利用
 
@@ -375,14 +339,6 @@ YAML 往復を検証します。実 HTTP メッセージと公式SDKクライア
 MCP相互運用テストも含みます。
 Playwright はビルド済み SPA と Hono サーバーを起動して表示・GUI編集・
 API永続化を確認します。
-
-## v1 の未決事項
-
-- ネットワーク削除は「紐づく所属が残る場合は削除不可」として実装した。
-- 既存 DB の `settings.title` 追加は、エクスポート→インポートによる移行が前提。
-  自動 `ALTER TABLE` は実装しない。
-- メーター収集用 SSH 秘密鍵の供給方法と収集間隔は未決。API 形状のみ実装。
-- Gatus 状態プロバイダの接続方法は v1 の任意要件。今回は未接続。
 
 ## ライセンス
 
