@@ -1,0 +1,910 @@
+import type {
+  PortalApiData,
+  PortalApiDevice,
+  PortalApiService,
+  PortalDeviceInput,
+  PortalMembershipInput,
+  PortalNetworkInput,
+  PortalRelationInput,
+  PortalServiceInput,
+} from "../src/portal/types";
+import {
+  deviceRelationTags,
+  generateDeviceNeighborhoodText,
+  generateNetworkMapText,
+} from "./mapText";
+import { LedgerRestClient, RestApiError } from "./restClient";
+
+export interface McpToolDefinition {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations: {
+    title: string;
+    readOnlyHint: boolean;
+    destructiveHint: boolean;
+    idempotentHint: boolean;
+    openWorldHint: boolean;
+  };
+}
+
+export interface McpToolResult {
+  text: string;
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+}
+
+type ToolArguments = Record<string, unknown>;
+
+const readAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
+const createAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+};
+
+const updateAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
+const deleteAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
+function withAnnotations(
+  title: string,
+  annotations: Omit<McpToolDefinition["annotations"], "title">,
+): McpToolDefinition["annotations"] {
+  return { title, ...annotations };
+}
+
+function objectSchema(
+  properties: Record<string, unknown>,
+  required: string[] = [],
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+    additionalProperties: false,
+  };
+}
+
+const idSchema = {
+  type: "integer",
+  description: "REST API の正の整数ID",
+};
+
+const nullableStringSchema = {
+  type: ["string", "null"],
+};
+
+const networkInputProperties = {
+  name: { type: "string" },
+  cidr: { type: ["string", "null"] },
+  accent: { type: "string" },
+  note: { type: ["string", "null"] },
+};
+
+const deviceInputProperties = {
+  hostname: { type: "string" },
+  petname: { type: ["string", "null"] },
+  category: {
+    type: "string",
+    description: "network / physical / vm / service",
+  },
+  isVm: { type: "boolean" },
+  sshUser: { type: ["string", "null"] },
+  sshPort: { type: ["integer", "null"] },
+  meterEnabled: { type: "boolean" },
+  note: { type: ["string", "null"] },
+};
+
+const membershipInputProperties = {
+  deviceId: idSchema,
+  networkId: idSchema,
+  ip: { type: ["string", "null"] },
+  label: { type: ["string", "null"] },
+};
+
+const serviceInputProperties = {
+  deviceNetworkId: idSchema,
+  subdomain: { type: "string" },
+  petname: { type: ["string", "null"] },
+  description: { type: ["string", "null"] },
+  port: { type: "integer" },
+  protocol: { type: "string", description: "tcp / udp" },
+  scheme: { type: "string", description: "http / https" },
+  topPath: { type: ["string", "null"] },
+  monitorPath: { type: ["string", "null"] },
+  serviceUrl: { type: ["string", "null"] },
+  iconKey: { type: ["string", "null"] },
+  enabled: { type: "boolean" },
+};
+
+const relationInputProperties = {
+  fromDeviceId: idSchema,
+  toDeviceId: idSchema,
+  tag: { type: "string" },
+  fromLabel: { type: ["string", "null"] },
+  toLabel: { type: ["string", "null"] },
+  color: { type: "string" },
+};
+
+function collectionTool(
+  resource: "networks" | "devices" | "memberships" | "services" | "relations",
+  singular: string,
+): McpToolDefinition {
+  return {
+    name: `list_${resource}`,
+    title: `${singular}一覧`,
+    description: `REST API から${singular}の一覧を取得します。`,
+    inputSchema: objectSchema({}),
+    annotations: withAnnotations(`${singular}一覧`, readAnnotations),
+  };
+}
+
+function getTool(
+  resource: string,
+  singular: string,
+): McpToolDefinition {
+  return {
+    name: `get_${resource}`,
+    title: `${singular}取得`,
+    description:
+      `REST API の一覧から ID で${singular}を取得します。` +
+      "存在しない場合は REST の 404 相当エラーを返します。",
+    inputSchema: objectSchema({ id: idSchema }, ["id"]),
+    annotations: withAnnotations(`${singular}取得`, readAnnotations),
+  };
+}
+
+function createTool(
+  resource: string,
+  singular: string,
+  properties: Record<string, unknown>,
+  required: string[],
+): McpToolDefinition {
+  return {
+    name: `create_${resource}`,
+    title: `${singular}作成`,
+    description: `REST API へ${singular}を作成します。検証は REST と共有です。`,
+    inputSchema: objectSchema(properties, required),
+    annotations: withAnnotations(`${singular}作成`, createAnnotations),
+  };
+}
+
+function updateTool(
+  resource: string,
+  singular: string,
+  properties: Record<string, unknown>,
+  required: string[],
+): McpToolDefinition {
+  return {
+    name: `update_${resource}`,
+    title: `${singular}更新`,
+    description:
+      `REST API の PUT で${singular}を更新します。` +
+      "完全置換なので既存値を含めて指定してください。",
+    inputSchema: objectSchema({ id: idSchema, ...properties }, [
+      "id",
+      ...required,
+    ]),
+    annotations: withAnnotations(`${singular}更新`, updateAnnotations),
+  };
+}
+
+function deleteTool(
+  resource: string,
+  singular: string,
+): McpToolDefinition {
+  return {
+    name: `delete_${resource}`,
+    title: `${singular}削除`,
+    description:
+      `REST API から${singular}を削除します。` +
+      "参照中データがある場合の 409 も REST の結果をそのまま返します。",
+    inputSchema: objectSchema({ id: idSchema }, ["id"]),
+    annotations: withAnnotations(`${singular}削除`, deleteAnnotations),
+  };
+}
+
+export const TOOL_DEFINITIONS: McpToolDefinition[] = [
+  {
+    name: "get_network_map",
+    title: "ネットワーク地図",
+    description:
+      "ネットワーク→デバイス→サービスの階層、方向ラベル・タグ・色を含む" +
+      "関係一覧を構造化テキストで返します。deviceId を指定すると、その" +
+      "デバイスから depth 段の関係トラバースと近傍ビューも含めます。",
+    inputSchema: objectSchema({
+      deviceId: idSchema,
+      depth: {
+        type: "integer",
+        minimum: 0,
+        default: 1,
+        description: "近傍トラバースの深さ。0 は起点のみ。",
+      },
+    }),
+    annotations: withAnnotations("ネットワーク地図", readAnnotations),
+  },
+  {
+    name: "get_device_neighborhood",
+    title: "デバイス近傍",
+    description:
+      "指定デバイスを起点に、関係を双方向へ depth 段たどり、" +
+      "関連デバイス・サービス・関係ラベル・タグ・色を返します。",
+    inputSchema: objectSchema(
+      {
+        deviceId: idSchema,
+        depth: { type: "integer", minimum: 0, default: 1 },
+      },
+      ["deviceId"],
+    ),
+    annotations: withAnnotations("デバイス近傍", readAnnotations),
+  },
+  {
+    name: "search_devices",
+    title: "デバイス検索",
+    description:
+      "ホスト名・ペットネーム・カテゴリ・メモ・IP・所属ラベル・" +
+      "ネットワーク名・関係タグを対象にデバイスを検索します。",
+    inputSchema: objectSchema(
+      {
+        query: { type: "string" },
+        limit: { type: "integer", minimum: 1, default: 50 },
+      },
+      ["query"],
+    ),
+    annotations: withAnnotations("デバイス検索", readAnnotations),
+  },
+  {
+    name: "search_services",
+    title: "サービス検索",
+    description:
+      "サブドメイン・ペットネーム・説明・URL・アイコン・所有デバイス・" +
+      "ネットワーク・関係タグを対象にサービスを検索します。",
+    inputSchema: objectSchema(
+      {
+        query: { type: "string" },
+        limit: { type: "integer", minimum: 1, default: 50 },
+      },
+      ["query"],
+    ),
+    annotations: withAnnotations("サービス検索", readAnnotations),
+  },
+  {
+    name: "resolve_service_url",
+    title: "サービスURL解決",
+    description:
+      "REST API が台帳規則で組み立てた完全なサービスURLを返します。" +
+      "monitor=true の場合は監視URLを返します。",
+    inputSchema: objectSchema(
+      {
+        serviceId: idSchema,
+        monitor: { type: "boolean", default: false },
+      },
+      ["serviceId"],
+    ),
+    annotations: withAnnotations("サービスURL解決", readAnnotations),
+  },
+  collectionTool("networks", "ネットワーク"),
+  getTool("network", "ネットワーク"),
+  createTool(
+    "network",
+    "ネットワーク",
+    networkInputProperties,
+    ["name", "accent"],
+  ),
+  updateTool(
+    "network",
+    "ネットワーク",
+    networkInputProperties,
+    ["name", "cidr", "accent", "note"],
+  ),
+  deleteTool("network", "ネットワーク"),
+  collectionTool("devices", "デバイス"),
+  getTool("device", "デバイス"),
+  createTool(
+    "device",
+    "デバイス",
+    deviceInputProperties,
+    ["hostname", "category", "isVm", "meterEnabled"],
+  ),
+  updateTool(
+    "device",
+    "デバイス",
+    deviceInputProperties,
+    [
+      "hostname",
+      "petname",
+      "category",
+      "isVm",
+      "sshUser",
+      "sshPort",
+      "meterEnabled",
+      "note",
+    ],
+  ),
+  deleteTool("device", "デバイス"),
+  collectionTool("memberships", "ネットワーク所属"),
+  getTool("membership", "ネットワーク所属"),
+  createTool(
+    "membership",
+    "ネットワーク所属",
+    membershipInputProperties,
+    ["deviceId", "networkId"],
+  ),
+  updateTool(
+    "membership",
+    "ネットワーク所属",
+    membershipInputProperties,
+    ["deviceId", "networkId"],
+  ),
+  deleteTool("membership", "ネットワーク所属"),
+  collectionTool("services", "サービス"),
+  getTool("service", "サービス"),
+  createTool(
+    "service",
+    "サービス",
+    serviceInputProperties,
+    [
+      "deviceNetworkId",
+      "subdomain",
+      "port",
+      "protocol",
+      "scheme",
+      "enabled",
+    ],
+  ),
+  updateTool(
+    "service",
+    "サービス",
+    serviceInputProperties,
+    [
+      "deviceNetworkId",
+      "subdomain",
+      "petname",
+      "description",
+      "port",
+      "protocol",
+      "scheme",
+      "topPath",
+      "monitorPath",
+      "serviceUrl",
+      "iconKey",
+      "enabled",
+    ],
+  ),
+  deleteTool("service", "サービス"),
+  collectionTool("relations", "関係"),
+  getTool("relation", "関係"),
+  {
+    name: "get_device_relations",
+    title: "デバイス関係トラバース",
+    description:
+      "REST API の関係トラバースを使い、指定デバイスに直接つながる" +
+      "方向・ラベル・タグ・色・関連デバイスを返します。",
+    inputSchema: objectSchema(
+      {
+        deviceId: idSchema,
+        depth: { type: "integer", minimum: 1, default: 1 },
+      },
+      ["deviceId"],
+    ),
+    annotations: withAnnotations(
+      "デバイス関係トラバース",
+      readAnnotations,
+    ),
+  },
+  createTool(
+    "relation",
+    "関係",
+    relationInputProperties,
+    ["fromDeviceId", "toDeviceId", "tag", "color"],
+  ),
+  updateTool(
+    "relation",
+    "関係",
+    relationInputProperties,
+    [
+      "fromDeviceId",
+      "toDeviceId",
+      "tag",
+      "fromLabel",
+      "toLabel",
+      "color",
+    ],
+  ),
+  deleteTool("relation", "関係"),
+  {
+    name: "export_ledger_yaml",
+    title: "YAMLエクスポート",
+    description:
+      "REST API から台帳全体の ouchi-ledger/1 YAML を取得します。",
+    inputSchema: objectSchema({}),
+    annotations: withAnnotations("YAMLエクスポート", readAnnotations),
+  },
+  {
+    name: "import_ledger_yaml",
+    title: "YAMLインポート",
+    description:
+      "REST API の置き換え型インポートへ YAML を送ります。" +
+      "全件の形式・参照・自然キー・タグ色を REST 側で検証します。",
+    inputSchema: objectSchema({ yaml: { type: "string" } }, ["yaml"]),
+    annotations: withAnnotations("YAMLインポート", {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    }),
+  },
+];
+
+function jsonResult(
+  value: unknown,
+  structuredContent?: Record<string, unknown>,
+): McpToolResult {
+  return {
+    text: JSON.stringify(value, null, 2),
+    structuredContent: structuredContent ?? { result: value },
+  };
+}
+
+function numberArgument(args: ToolArguments, key: string): number {
+  return args[key] as number;
+}
+
+function stringArgument(args: ToolArguments, key: string): string {
+  return args[key] as string;
+}
+
+function booleanArgument(
+  args: ToolArguments,
+  key: string,
+  fallback: boolean,
+): boolean {
+  return typeof args[key] === "boolean" ? args[key] : fallback;
+}
+
+function normalizedLimit(args: ToolArguments): number {
+  const value = args.limit;
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(Math.max(Math.floor(value), 1), 500)
+    : 50;
+}
+
+function normalizedDepth(
+  args: ToolArguments,
+  minimum: 0 | 1,
+  fallback: number,
+): number {
+  const value = args.depth;
+  return typeof value === "number" && Number.isInteger(value) && value >= minimum
+    ? value
+    : fallback;
+}
+
+function queryText(args: ToolArguments): string {
+  const query = args.query;
+  return typeof query === "string" ? query.trim().toLowerCase() : "";
+}
+
+function missingEntity(
+  kind: string,
+  id: number,
+): RestApiError {
+  return new RestApiError(
+    `/api/${kind}/${id}`,
+    404,
+    { error: `${kind} ID ${id} が見つかりません` },
+  );
+}
+
+function membershipContext(data: PortalApiData): {
+  membershipById: Map<
+    number,
+    PortalApiData["devices"][number]["memberships"][number]
+  >;
+  deviceById: Map<number, PortalApiDevice>;
+  networkNameById: Map<number, string>;
+} {
+  return {
+    membershipById: new Map(
+      data.devices.flatMap((device) =>
+        device.memberships.map((membership) => [membership.id, membership]),
+      ),
+    ),
+    deviceById: new Map(data.devices.map((device) => [device.id, device])),
+    networkNameById: new Map(
+      data.networks.map((network) => [network.id, network.name]),
+    ),
+  };
+}
+
+function searchDeviceResults(
+  data: PortalApiData,
+  query: string,
+  limit: number,
+): Array<Record<string, unknown>> {
+  const { networkNameById } = membershipContext(data);
+  return data.devices
+    .map((device) => {
+      const tags = deviceRelationTags(data.relations, device.id);
+      const searchable = [
+        device.hostname,
+        device.petname ?? "",
+        device.category,
+        device.note ?? "",
+        ...device.memberships.flatMap((membership) => [
+          membership.ip ?? "",
+          membership.label ?? "",
+          networkNameById.get(membership.networkId) ?? "",
+        ]),
+        ...tags,
+      ]
+        .join("\n")
+        .toLowerCase();
+      return {
+        device,
+        tags,
+        matches: query === "" || searchable.includes(query),
+      };
+    })
+    .filter((item) => item.matches)
+    .slice(0, limit)
+    .map(({ device, tags }) => ({
+      ...device,
+      networkMemberships: device.memberships.map((membership) => ({
+        ...membership,
+        networkName:
+          networkNameById.get(membership.networkId) ??
+          String(membership.networkId),
+      })),
+      relationTags: tags,
+    }));
+}
+
+function serviceOwner(
+  service: PortalApiService,
+  data: PortalApiData,
+): {
+  membership?: PortalApiData["devices"][number]["memberships"][number];
+  device?: PortalApiDevice;
+  networkName?: string;
+} {
+  const context = membershipContext(data);
+  const membership = context.membershipById.get(service.deviceNetworkId);
+  const device = membership
+    ? context.deviceById.get(membership.deviceId)
+    : undefined;
+  return {
+    membership,
+    device,
+    networkName: membership
+      ? context.networkNameById.get(membership.networkId)
+      : undefined,
+  };
+}
+
+function searchServiceResults(
+  data: PortalApiData,
+  query: string,
+  limit: number,
+): Array<Record<string, unknown>> {
+  return data.services
+    .map((service) => {
+      const owner = serviceOwner(service, data);
+      const tags = owner.device
+        ? deviceRelationTags(data.relations, owner.device.id)
+        : [];
+      const searchable = [
+        service.subdomain,
+        service.petname ?? "",
+        service.description ?? "",
+        service.url ?? "",
+        service.monitorUrl ?? "",
+        service.iconKey ?? "",
+        owner.device?.hostname ?? "",
+        owner.device?.petname ?? "",
+        owner.networkName ?? "",
+        owner.membership?.label ?? "",
+        ...tags,
+      ]
+        .join("\n")
+        .toLowerCase();
+      return {
+        service,
+        owner,
+        tags,
+        matches: query === "" || searchable.includes(query),
+      };
+    })
+    .filter((item) => item.matches)
+    .slice(0, limit)
+    .map(({ service, owner, tags }) => ({
+      ...service,
+      device: owner.device
+        ? {
+            id: owner.device.id,
+            hostname: owner.device.hostname,
+            petname: owner.device.petname,
+            category: owner.device.category,
+          }
+        : null,
+      membership: owner.membership ?? null,
+      networkName: owner.networkName ?? null,
+      relationTags: tags,
+    }));
+}
+
+function networkBody(args: ToolArguments): PortalNetworkInput {
+  return {
+    name: stringArgument(args, "name"),
+    cidr: args.cidr as string | null | undefined,
+    accent: stringArgument(args, "accent"),
+    note: args.note as string | null | undefined,
+  };
+}
+
+function deviceBody(args: ToolArguments): PortalDeviceInput {
+  return {
+    hostname: stringArgument(args, "hostname"),
+    petname: args.petname as string | null | undefined,
+    category:
+      args.category as PortalDeviceInput["category"],
+    isVm: args.isVm as boolean,
+    sshUser: args.sshUser as string | null | undefined,
+    sshPort: args.sshPort as number | null | undefined,
+    meterEnabled: args.meterEnabled as boolean,
+    note: args.note as string | null | undefined,
+  };
+}
+
+function membershipBody(args: ToolArguments): PortalMembershipInput {
+  return {
+    deviceId: numberArgument(args, "deviceId"),
+    networkId: numberArgument(args, "networkId"),
+    ip: args.ip as string | null | undefined,
+    label: args.label as string | null | undefined,
+  };
+}
+
+function serviceBody(args: ToolArguments): PortalServiceInput {
+  return {
+    deviceNetworkId: numberArgument(args, "deviceNetworkId"),
+    subdomain: stringArgument(args, "subdomain"),
+    petname: args.petname as string | null | undefined,
+    description: args.description as string | null | undefined,
+    port: numberArgument(args, "port"),
+    protocol: args.protocol as PortalServiceInput["protocol"],
+    scheme: args.scheme as PortalServiceInput["scheme"],
+    topPath: args.topPath as string | null | undefined,
+    monitorPath: args.monitorPath as string | null | undefined,
+    serviceUrl: args.serviceUrl as string | null | undefined,
+    iconKey:
+      args.iconKey as PortalServiceInput["iconKey"],
+    enabled: args.enabled as boolean,
+  };
+}
+
+function relationBody(args: ToolArguments): PortalRelationInput {
+  return {
+    fromDeviceId: numberArgument(args, "fromDeviceId"),
+    toDeviceId: numberArgument(args, "toDeviceId"),
+    tag: stringArgument(args, "tag"),
+    fromLabel: args.fromLabel as string | null | undefined,
+    toLabel: args.toLabel as string | null | undefined,
+    color: stringArgument(args, "color"),
+  };
+}
+
+export async function callTool(
+  name: string,
+  args: ToolArguments,
+  client: LedgerRestClient,
+): Promise<McpToolResult> {
+  switch (name) {
+    case "get_network_map": {
+      const data = await client.getPortalData();
+      const focus =
+        typeof args.deviceId === "number"
+          ? {
+              deviceId: args.deviceId,
+              depth: normalizedDepth(args, 0, 1),
+            }
+          : undefined;
+      return {
+        text: generateNetworkMapText(data, focus),
+        structuredContent: {
+          focusDeviceId: focus?.deviceId ?? null,
+          depth: focus?.depth ?? null,
+          networks: data.networks.length,
+          devices: data.devices.length,
+          services: data.services.length,
+          relations: data.relations.length,
+        },
+      };
+    }
+    case "get_device_neighborhood": {
+      const data = await client.getPortalData();
+      const deviceId = numberArgument(args, "deviceId");
+      if (!data.devices.some((device) => device.id === deviceId)) {
+        throw missingEntity("devices", deviceId);
+      }
+      const depth = normalizedDepth(args, 0, 1);
+      return {
+        text: generateDeviceNeighborhoodText(data, deviceId, depth),
+        structuredContent: { deviceId, depth },
+      };
+    }
+    case "search_devices": {
+      const data = await client.getPortalData();
+      const results = searchDeviceResults(
+        data,
+        queryText(args),
+        normalizedLimit(args),
+      );
+      return jsonResult(
+        { count: results.length, devices: results },
+        { count: results.length, devices: results },
+      );
+    }
+    case "search_services": {
+      const data = await client.getPortalData();
+      const results = searchServiceResults(
+        data,
+        queryText(args),
+        normalizedLimit(args),
+      );
+      return jsonResult(
+        { count: results.length, services: results },
+        { count: results.length, services: results },
+      );
+    }
+    case "resolve_service_url": {
+      const serviceId = numberArgument(args, "serviceId");
+      const service = await client.getService(serviceId);
+      if (!service) {
+        throw missingEntity("services", serviceId);
+      }
+      const monitor = booleanArgument(args, "monitor", false);
+      const url = monitor ? service.monitorUrl : service.url;
+      const result = {
+        serviceId,
+        subdomain: service.subdomain,
+        kind: monitor ? "monitor" : "service",
+        url,
+      };
+      return jsonResult(result, result);
+    }
+    case "list_networks":
+      return jsonResult(await client.listNetworks());
+    case "get_network": {
+      const id = numberArgument(args, "id");
+      const network = await client.getNetwork(id);
+      if (!network) {
+        throw missingEntity("networks", id);
+      }
+      return jsonResult(network);
+    }
+    case "create_network":
+      return jsonResult(await client.createNetwork(networkBody(args)));
+    case "update_network": {
+      const id = numberArgument(args, "id");
+      return jsonResult(await client.updateNetwork(id, networkBody(args)));
+    }
+    case "delete_network":
+      return jsonResult(await client.deleteNetwork(numberArgument(args, "id")));
+    case "list_devices":
+      return jsonResult(await client.listDevices());
+    case "get_device": {
+      const id = numberArgument(args, "id");
+      const device = await client.getDevice(id);
+      if (!device) {
+        throw missingEntity("devices", id);
+      }
+      return jsonResult(device);
+    }
+    case "create_device":
+      return jsonResult(await client.createDevice(deviceBody(args)));
+    case "update_device": {
+      const id = numberArgument(args, "id");
+      return jsonResult(await client.updateDevice(id, deviceBody(args)));
+    }
+    case "delete_device":
+      return jsonResult(await client.deleteDevice(numberArgument(args, "id")));
+    case "list_memberships":
+      return jsonResult(await client.listMemberships());
+    case "get_membership": {
+      const id = numberArgument(args, "id");
+      const membership = await client.getMembership(id);
+      if (!membership) {
+        throw missingEntity("memberships", id);
+      }
+      return jsonResult(membership);
+    }
+    case "create_membership":
+      return jsonResult(await client.createMembership(membershipBody(args)));
+    case "update_membership": {
+      const id = numberArgument(args, "id");
+      return jsonResult(
+        await client.updateMembership(id, membershipBody(args)),
+      );
+    }
+    case "delete_membership":
+      return jsonResult(
+        await client.deleteMembership(numberArgument(args, "id")),
+      );
+    case "list_services":
+      return jsonResult(await client.listServices());
+    case "get_service": {
+      const id = numberArgument(args, "id");
+      const service = await client.getService(id);
+      if (!service) {
+        throw missingEntity("services", id);
+      }
+      return jsonResult(service);
+    }
+    case "create_service":
+      return jsonResult(await client.createService(serviceBody(args)));
+    case "update_service": {
+      const id = numberArgument(args, "id");
+      return jsonResult(await client.updateService(id, serviceBody(args)));
+    }
+    case "delete_service":
+      return jsonResult(await client.deleteService(numberArgument(args, "id")));
+    case "list_relations":
+      return jsonResult(await client.listRelations());
+    case "get_relation": {
+      const id = numberArgument(args, "id");
+      const relation = await client.getRelation(id);
+      if (!relation) {
+        throw missingEntity("relations", id);
+      }
+      return jsonResult(relation);
+    }
+    case "get_device_relations": {
+      const deviceId = numberArgument(args, "deviceId");
+      const depth = normalizedDepth(args, 1, 1);
+      return jsonResult(
+        await client.traverseDeviceRelations(deviceId, depth),
+      );
+    }
+    case "create_relation":
+      return jsonResult(await client.createRelation(relationBody(args)));
+    case "update_relation": {
+      const id = numberArgument(args, "id");
+      return jsonResult(await client.updateRelation(id, relationBody(args)));
+    }
+    case "delete_relation":
+      return jsonResult(await client.deleteRelation(numberArgument(args, "id")));
+    case "export_ledger_yaml": {
+      const yaml = await client.exportYaml();
+      return {
+        text: yaml,
+        structuredContent: { yaml },
+      };
+    }
+    case "import_ledger_yaml": {
+      const result = await client.importYaml(stringArgument(args, "yaml"));
+      return jsonResult(result, result);
+    }
+    default:
+      throw new Error(`未知のMCPツールです: ${name}`);
+  }
+}

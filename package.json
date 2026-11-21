@@ -25,15 +25,18 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx watch server/index.ts",
+    "dev:mcp": "tsx watch mcp/index.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.build.json",
     "build:demo": "vite build",
     "build:pages": "vite build --mode pages --outDir 成果物/demo-pages",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=server-dist/index.js --packages=external",
+    "build:mcp": "esbuild mcp/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=mcp-dist/index.js --packages=external",
     "generate:icon-index": "node scripts/generate-dashboard-icon-index.mjs",
-    "build": "npm run typecheck && npm run build:lib && npm run build:demo && npm run build:server",
+    "build": "npm run typecheck && npm run build:lib && npm run build:demo && npm run build:server && npm run build:mcp",
     "start": "node server-dist/index.js",
+    "start:mcp": "node mcp-dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "screenshots": "playwright test"
@@ -64,6 +67,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.14",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "hono": "^4.12.14",
     "yaml": "^2.9.0"
   }

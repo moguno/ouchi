@@ -2,6 +2,8 @@
 
 - `v1/demo/`: SQLite＋Hono REST API 駆動の v1 SPA 本番ビルド
 - `v1/server/index.js`: SPA も配信する v1 Hono サーバービルド
+- `v1/mcp/index.js`: REST API を読み書きする v1 MCP サーバービルド
+- `v1/compose.yaml`: API と MCP を別サービスで起動する Docker Compose 定義
 - `v1/package/ouchi-local-portal-1.0.0.tgz`: v1 埋め込み用 React コンポーネント
 - `v1/LICENSE`: プロジェクト本体と同じ Apache License 2.0
 - `v1/Dockerfile`: `node:22-alpine` を使う v1 マルチステージビルド定義

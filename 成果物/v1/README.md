@@ -15,21 +15,26 @@ Vite＋React の SPA と、TypeScript＋Hono の REST API、SQLite 台帳 v0.4 �
 - 外部 SaaS（Notion など）もサービスとして登録可能
 - ポータルのタイトルを管理画面から変更可能
 - 設定一式を YAML でエクスポート／インポート（バックアップとバージョン移行用）
+- AI エージェントから台帳を読み書きする TypeScript 製 MCP サーバー
+  （Streamable HTTP、別プロセス）
 - ログインなし（LAN 内での利用が前提）
 
 ## v1 に含まれないもの
 
-稼働監視（状態表示）、メーター収集、MCP、SSO、Avahi 広告は v1 に含まれない。後続のブロックで追加予定。
+稼働監視（状態表示）、メーター収集、SSO、Avahi 広告は v1 に含まれない。
+後続のブロックで追加予定。
 
 ## 構成
 
 - `src/portal/`: 表示・編集 UI、API クライアント、共有型・検証
 - `server/`: Hono API、SQLite リポジトリ、SPA 静的配信
+- `mcp/`: REST API 上に載る MCP サーバー、地図テキスト、MCP ツール
 - `contract-v1/`: 台帳スキーマ v0.4、シード、検証スクリプト
 - `data/ouchi.sqlite`: 初回起動時に生成される台帳（Git 管理外）
 - `dist/`: 埋め込み用 React ライブラリ
 - `demo-dist/`: SPA の本番ビルド
 - `server-dist/`: API サーバーの本番ビルド
+- `mcp-dist/`: MCP サーバーの本番ビルド
 
 API は `node:sqlite` を使うためネイティブ npm モジュールが不要です。
 Node.js 22.22 以降を想定しています。
@@ -80,8 +85,89 @@ docker compose up --build -d
 
 build / runtime とも `node:22-alpine` を使います。`ouchi-data` ボリュームが
 `/app/data` にマウントされます。API とビルド済み SPA は同一コンテナで動作し、
-プロセスは `node` ユーザーで実行されます。Avahi はホスト側の既存構成へ
-任せます。
+プロセスは `node` ユーザーで実行されます。MCP は `ouchi-mcp` サービスとして
+API と別コンテナ／別プロセスで起動し、`http://<LAN IP>:3333/mcp` を公開します。
+Avahi はホスト側の既存構成へ任せます。
+
+## MCP サーバー
+
+MCP は公式 `@modelcontextprotocol/sdk` 1.32.2 のサーバー／
+Streamable HTTPトランスポートを使い、既存 REST API の薄いクライアントとして
+動作します。ネットワーク／デバイス／サービス／関係のドメイン検証は
+REST 側だけにあります。MCP には認証を
+設けていません。**LAN 内利用だけを前提とし、ポート `3333` を WAN や
+インターネットへ公開しないでください。** ルーターのポート開放、WAN 向け
+リバースプロキシ、公開クラウドへのデプロイは禁止です。
+
+開発時は REST API を起動したまま、MCP を別プロセスで起動します。
+
+```bash
+npm run dev:api
+npm run dev:mcp
+```
+
+本番相当では次のいずれかを使います。
+
+```bash
+npm run build
+npm start
+# 別ターミナル
+npm run start:mcp
+```
+
+```bash
+docker compose up --build -d
+```
+
+| 変数 | 既定値 | 用途 |
+| --- | --- | --- |
+| `MCP_HOST` | `0.0.0.0` | LAN へ待ち受けるホスト |
+| `MCP_PORT` | `3333` | MCP の待受ポート |
+| `OUCHI_REST_URL` | `http://127.0.0.1:3000` | REST API のベース URL |
+
+接続先は Streamable HTTP の `http://<LAN IP>:3333/mcp` です。ステートレスな
+JSON-RPC サーバーなので、セッション ID は返しません。MCP クライアントの
+リモート MCP 設定でこの URL を指定してください。認証ヘッダーはありません。
+
+初期化の最小 HTTP リクエストは次のとおりです。
+
+```bash
+curl -sS http://192.168.0.32:3333/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-06-18",
+      "capabilities": {},
+      "clientInfo": {"name": "curl", "version": "1.0.0"}
+    }
+  }'
+```
+
+利用できるツールは次の系統です。
+
+- 読み取り: `get_network_map`、`get_device_neighborhood`、
+  `search_devices`、`search_services`、`resolve_service_url`
+- 台帳 CRUD: `list/get/create/update/delete` の
+  `network`、`device`、`membership`、`service`、`relation`
+- 関係: `get_device_relations`、`create_relation`、`update_relation`、
+  `delete_relation`
+- 一括転送: `export_ledger_yaml`、`import_ledger_yaml`
+
+地図テキストはネットワーク→デバイス→サービスの階層を含み、関係の
+`fromLabel` / `toLabel` フォールバック、タグ、色、方向を表示します。
+`get_network_map` に `deviceId` と `depth` を渡すと、関係を双方向に
+たどった近傍ビューも同じ結果へ含めます。検索は名前、ホスト名、
+ペットネーム、IP、所属、説明、URL、関係タグを対象にします。
+
+書き込みツールは REST の POST/PUT/DELETE をそのまま呼びます。REST が
+HTTP 400 の `issues` を返した場合は MCP の `isError: true` と
+`structuredContent.error.body.issues` に同じ内容を返します。削除時の
+HTTP 409 も同様です。同じタグは同じ色、カテゴリ `service` の疑似デバイスは
+IP を持たず VM／メーターを無効にする、という規則も REST 側で判定されます。
 
 ## REST API
 
@@ -283,7 +369,11 @@ npm run screenshots
 
 Vitest は共有検証、SPA の API 読み込み／管理 UI、Hono API の in-process CRUD、
 関係トラバース、URL 組み立て、YAML のラウンドトリップと不正時の DB 無変更を
-検証します。Playwright はビルド済み SPA と Hono サーバーを起動して表示・GUI編集・
+検証します。MCP は初期化、ツール一覧、地図トラバース、URL 解決、
+CRUD 往復、REST と同一の検証エラー、タグ色／疑似デバイス規則、
+YAML 往復を検証します。実 HTTP メッセージと公式SDKクライアントを使う
+MCP相互運用テストも含みます。
+Playwright はビルド済み SPA と Hono サーバーを起動して表示・GUI編集・
 API永続化を確認します。
 
 ## v1 の未決事項
