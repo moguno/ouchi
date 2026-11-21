@@ -2,7 +2,7 @@ node_modules/
 dist/
 demo-dist/
 server-dist/
-data/
+/data/
 coverage/
 test-results/
 playwright-report/
