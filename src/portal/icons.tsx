@@ -72,6 +72,29 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+export function LockIcon(props: IconProps) {
+  return (
+    <SvgBase {...props}>
+      <rect
+        x="5"
+        y="10"
+        width="14"
+        height="10"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <path
+        d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.9"
+      />
+      <circle cx="12" cy="15" r="1.2" fill="currentColor" />
+    </SvgBase>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <SvgBase {...props}>

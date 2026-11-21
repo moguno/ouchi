@@ -86,6 +86,9 @@ export interface PortalDataV2 {
 export interface OuchiPortalProps {
   data?: PortalDataV2;
   storageKey?: string;
+  showTitle?: boolean;
+  portalTitle?: string;
+  onPortalTitleChange?: (title: string) => void;
   initialSelectedDeviceId?: string;
   onDataChange?: (data: PortalDataV2) => void;
   className?: string;

@@ -33,6 +33,7 @@ import {
   validateRelationInput,
   validateServiceInput,
 } from "./validation";
+import { sortNetworksForDisplay } from "./networkOrder";
 import { buildMonitorUrl, buildServiceUrl } from "./urls";
 
 export interface DeviceMutation {
@@ -596,7 +597,7 @@ function DeviceForm({
                     }
                     value={membership.networkId}
                   >
-                    {data.networks.map((network) => (
+                    {sortNetworksForDisplay(data.networks).map((network) => (
                       <option key={network.id} value={network.id}>
                         {network.name}
                         {network.cidr ? `（${network.cidr}）` : ""}
@@ -1003,7 +1004,7 @@ function ServiceForm({
           required
           value={deviceNetworkId}
         >
-          {data.networks.map((network) => (
+          {sortNetworksForDisplay(data.networks).map((network) => (
             <optgroup key={network.id} label={network.name}>
               {data.deviceNetworks
                 .filter(

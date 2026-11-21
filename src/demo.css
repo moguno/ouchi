@@ -46,41 +46,28 @@ body::before {
 .demo-page {
   width: min(1580px, 100%);
   margin: 0 auto;
-  padding: 54px 28px 34px;
+  padding: 34px 28px 34px;
 }
 
-.demo-heading {
-  width: min(780px, 100%);
-  margin: 0 auto 25px;
+.demo-portal-title {
+  width: min(1500px, 100%);
+  margin: 0 auto 14px;
 }
 
-.demo-brand {
-  margin: 0 0 8px;
-  color: #668094;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.demo-portal-title .ouchi-home-mark {
+  width: 46px;
+  height: 46px;
+  flex-basis: 46px;
+  border-radius: 13px;
+  font-size: 21px;
 }
 
-.demo-heading h1 {
-  margin: 0;
-  color: #1d2b35;
-  font-size: clamp(28px, 4.4vw, 47px);
-  letter-spacing: -0.045em;
-  line-height: 1.14;
+.demo-portal-title .ouchi-title-block {
+  gap: 11px;
 }
 
-.demo-heading h1 span {
-  display: inline-block;
-  white-space: nowrap;
-}
-
-.demo-heading > p:last-child {
-  max-width: 640px;
-  margin: 12px 0 0;
-  color: #63737f;
-  font-size: 13px;
+.demo-portal-title .ouchi-summary {
+  font-size: 12px;
 }
 
 .demo-note {
@@ -92,10 +79,10 @@ body::before {
 
 @media (max-width: 640px) {
   .demo-page {
-    padding: 30px 12px 24px;
+    padding: 24px 12px 24px;
   }
 
-  .demo-heading {
+  .demo-portal-title {
     padding: 0 8px;
   }
 }

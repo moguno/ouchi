@@ -36,7 +36,20 @@ describe("OuchiPortal", () => {
     expect(
       container.querySelectorAll(".ouchi-node-card"),
     ).toHaveLength(11);
+    const networkCards = container.querySelectorAll(".ouchi-network-card");
+    expect(networkCards[0]).toHaveAttribute(
+      "aria-labelledby",
+      "network-home-lan",
+    );
+    expect(networkCards[networkCards.length - 1]).toHaveAttribute(
+      "aria-labelledby",
+      "network-internet",
+    );
     expect(screen.queryByText("CPU")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "管理" }),
+    ).toHaveAccessibleDescription("ログインが必要です");
+    expect(container.querySelector(".ouchi-manage-lock")).toBeInTheDocument();
 
     const homeLan = screen.getByRole("article", { name: "おうちLAN" });
     expect(
@@ -62,6 +75,31 @@ describe("OuchiPortal", () => {
     expect(
       screen.getByRole("button", { name: "リスト表示" }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("edits a user-defined portal title", async () => {
+    const user = userEvent.setup();
+    const onTitleChange = vi.fn();
+    render(
+      <OuchiPortal
+        onPortalTitleChange={onTitleChange}
+        portalTitle="あなたのホームラボ"
+        showTitle={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("textbox", { name: "ポータルタイトル" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const input = screen.getByRole("textbox", { name: "ポータルタイトル" });
+    await user.clear(input);
+    await user.type(input, "我が家のネットワーク");
+    await user.click(
+      screen.getByRole("button", { name: "タイトルを保存" }),
+    );
+
+    expect(onTitleChange).toHaveBeenCalledWith("我が家のネットワーク");
   });
 
   it("highlights all appearances of the selected device by device ID", async () => {

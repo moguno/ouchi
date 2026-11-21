@@ -26,3 +26,4 @@ export {
 } from "./validation";
 export { buildMonitorUrl, buildServiceUrl } from "./urls";
 export { portalDemoData } from "./demoData";
+export { sortNetworksForDisplay } from "./networkOrder";

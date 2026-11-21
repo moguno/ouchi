@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,6 +17,7 @@ import {
   ExternalLinkIcon,
   GridIcon,
   ListIcon,
+  LockIcon,
   ServiceIcon,
   SettingsIcon,
 } from "./icons";
@@ -24,6 +26,7 @@ import {
   type EntityKind,
   type ManageTab,
 } from "./ManageDrawer";
+import { sortNetworksForDisplay } from "./networkOrder";
 import {
   DEVICE_CATEGORY_LABELS,
   PORTAL_DEVICE_CATEGORIES,
@@ -59,6 +62,22 @@ interface DeviceVisual {
   tags: Array<{ label: string; color: string }>;
   color?: string;
 }
+
+interface RelationConnector {
+  id: string;
+  kind: "same-device" | "relation";
+  color: string;
+  d: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+type ConnectorRect = Pick<
+  DOMRect,
+  "left" | "right" | "top" | "bottom" | "width" | "height"
+>;
 
 const EMPTY_DATA: PortalDataV2 = {
   version: 2,
@@ -144,6 +163,54 @@ function deviceVisual(
     };
   }
   return { mode: "muted", tags: [] };
+}
+
+function connectorAnchors(
+  from: ConnectorRect,
+  to: ConnectorRect,
+): {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  d: string;
+} {
+  const fromCenterX = from.left + from.width / 2;
+  const fromCenterY = from.top + from.height / 2;
+  const toCenterX = to.left + to.width / 2;
+  const toCenterY = to.top + to.height / 2;
+  const deltaX = toCenterX - fromCenterX;
+  const deltaY = toCenterY - fromCenterY;
+
+  if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+    const direction = deltaX >= 0 ? 1 : -1;
+    const startX = direction > 0 ? from.right : from.left;
+    const endX = direction > 0 ? to.left : to.right;
+    const startY = fromCenterY;
+    const endY = toCenterY;
+    const curve = Math.max(28, Math.abs(endX - startX) * 0.45);
+    return {
+      startX,
+      startY,
+      endX,
+      endY,
+      d: `M ${startX} ${startY} C ${startX + direction * curve} ${startY}, ${endX - direction * curve} ${endY}, ${endX} ${endY}`,
+    };
+  }
+
+  const direction = deltaY >= 0 ? 1 : -1;
+  const startX = fromCenterX;
+  const endX = toCenterX;
+  const startY = direction > 0 ? from.bottom : from.top;
+  const endY = direction > 0 ? to.top : to.bottom;
+  const curve = Math.max(24, Math.abs(endY - startY) * 0.42);
+  return {
+    startX,
+    startY,
+    endX,
+    endY,
+    d: `M ${startX} ${startY} C ${startX} ${startY + direction * curve}, ${endX} ${endY - direction * curve}, ${endX} ${endY}`,
+  };
 }
 
 function ResourceMeter({
@@ -458,7 +525,7 @@ function IconBoard({
 }) {
   return (
     <div className="ouchi-network-stack">
-      {data.networks.map((network) => (
+      {sortNetworksForDisplay(data.networks).map((network) => (
         <NetworkCard
           data={data}
           key={network.id}
@@ -515,7 +582,7 @@ function ListBoard({
 
   return (
     <div className="ouchi-list-stack">
-      {data.networks.map((network) => {
+      {sortNetworksForDisplay(data.networks).map((network) => {
         const memberships = data.deviceNetworks.filter(
           (membership) => membership.networkId === network.id,
         );
@@ -593,6 +660,7 @@ function ListBoard({
                                 ]
                                   .filter(Boolean)
                                   .join(" ")}
+                                data-device-id={device.id}
                                 key={membership.id}
                                 onClick={(event) => {
                                   if (
@@ -696,6 +764,9 @@ function ListBoard({
 export function OuchiPortal({
   data,
   storageKey = "ouchi.local.portal.v11",
+  showTitle = true,
+  portalTitle,
+  onPortalTitleChange,
   initialSelectedDeviceId,
   onDataChange,
   className,
@@ -722,6 +793,10 @@ export function OuchiPortal({
     initialSelectedDeviceId,
   );
   const portalRef = useRef<HTMLElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [relationConnectors, setRelationConnectors] = useState<
+    RelationConnector[]
+  >([]);
 
   useEffect(() => {
     if (!message) {
@@ -750,6 +825,109 @@ export function OuchiPortal({
       document.removeEventListener("pointerdown", handleOutsidePointerDown);
     };
   }, [selectedDeviceId]);
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !selectedDeviceId) {
+      setRelationConnectors([]);
+      return;
+    }
+
+    let animationFrame = 0;
+    const updateConnectors = () => {
+      const canvasRect = canvas.getBoundingClientRect();
+      if (canvasRect.width === 0 || canvasRect.height === 0) {
+        setRelationConnectors([]);
+        return;
+      }
+
+      const cards = Array.from(
+        canvas.querySelectorAll<HTMLElement>("[data-device-id]"),
+      ).filter((card) => card.getClientRects().length > 0);
+      const cardsFor = (deviceId: string) =>
+        cards.filter((card) => card.dataset.deviceId === deviceId);
+      const localRect = (card: HTMLElement): ConnectorRect => {
+        const rect = card.getBoundingClientRect();
+        return {
+          left: rect.left - canvasRect.left,
+          right: rect.right - canvasRect.left,
+          top: rect.top - canvasRect.top,
+          bottom: rect.bottom - canvasRect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      };
+
+      const connectors: RelationConnector[] = [];
+      const selectedCards = cardsFor(selectedDeviceId);
+      selectedCards.forEach((selectedCard, selectedIndex) => {
+        selectedCards.slice(selectedIndex + 1).forEach((sameDeviceCard) => {
+          const relatedIndex = selectedCards.indexOf(sameDeviceCard);
+          const anchors = connectorAnchors(
+            localRect(selectedCard),
+            localRect(sameDeviceCard),
+          );
+          connectors.push({
+            id: `same-device-${selectedIndex}-${relatedIndex}`,
+            kind: "same-device",
+            color: "#6259d8",
+            ...anchors,
+          });
+        });
+      });
+
+      for (const relation of portalData.relations) {
+        if (
+          relation.fromDeviceId !== selectedDeviceId &&
+          relation.toDeviceId !== selectedDeviceId
+        ) {
+          continue;
+        }
+        const relatedDeviceId =
+          relation.fromDeviceId === selectedDeviceId
+            ? relation.toDeviceId
+            : relation.fromDeviceId;
+        const relatedCards = cardsFor(relatedDeviceId);
+
+        selectedCards.forEach((selectedCard, selectedIndex) => {
+          relatedCards.forEach((relatedCard, relatedIndex) => {
+            const anchors = connectorAnchors(
+              localRect(selectedCard),
+              localRect(relatedCard),
+            );
+            connectors.push({
+              id: `${relation.id}-${selectedIndex}-${relatedIndex}`,
+              kind: "relation",
+              color: relation.color,
+              ...anchors,
+            });
+          });
+        });
+      }
+      setRelationConnectors(connectors);
+    };
+
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(updateConnectors);
+    };
+
+    updateConnectors();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(scheduleUpdate);
+    resizeObserver?.observe(canvas);
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+    };
+  }, [portalData, selectedDeviceId, viewMode]);
 
   function openAdd(kind: EntityKind) {
     setManageTab(
@@ -950,7 +1128,7 @@ export function OuchiPortal({
 
   return (
     <section
-      aria-label="ouchi.local ポータル"
+      aria-label={`${portalTitle || "ouchi.local"} ポータル`}
       className={`ouchi-portal${className ? ` ${className}` : ""}`}
       onClick={(event) => {
         if (
@@ -963,19 +1141,38 @@ export function OuchiPortal({
       }}
       ref={portalRef}
     >
-      <header className="ouchi-portal-header">
-        <div className="ouchi-title-block">
-          <span className="ouchi-home-mark" aria-hidden="true">
-            家
-          </span>
-          <div>
-            <h2>ouchi.local</h2>
-            <p className="ouchi-summary">
-              ポータル — おうちのサービスは、ここから全部入る
-            </p>
-            <span className="ouchi-visually-hidden">{screenReaderSummary}</span>
+      <header
+        className={`ouchi-portal-header${
+          showTitle || portalTitle ? "" : " ouchi-portal-header--actions-only"
+        }`}
+      >
+        {showTitle ? (
+          <div className="ouchi-title-block">
+            <span className="ouchi-home-mark" aria-hidden="true">
+              家
+            </span>
+            <div>
+              <h2>ouchi.local</h2>
+              <p className="ouchi-summary">
+                ポータル — おうちのサービスは、ここから全部入る
+              </p>
+              <span className="ouchi-visually-hidden">
+                {screenReaderSummary}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : portalTitle ? (
+          <div className="ouchi-user-title">
+            <span className="ouchi-visually-hidden">
+              {screenReaderSummary}
+            </span>
+            <h2>{portalTitle}</h2>
+          </div>
+        ) : (
+          <span className="ouchi-visually-hidden">
+            {screenReaderSummary}
+          </span>
+        )}
 
         <div className="ouchi-header-actions">
           <div
@@ -1003,20 +1200,52 @@ export function OuchiPortal({
             </button>
           </div>
           <button
+            aria-description="ログインが必要です"
             className="ouchi-manage-button"
             onClick={() => {
               setManageOpen(true);
               setMessage(undefined);
             }}
+            title="ログインが必要です"
             type="button"
           >
             <SettingsIcon size={19} />
             管理
+            <span className="ouchi-manage-lock" aria-hidden="true">
+              <LockIcon size={13} />
+            </span>
           </button>
         </div>
       </header>
 
-      <div className="ouchi-canvas">
+      <div className="ouchi-canvas" ref={canvasRef}>
+        {relationConnectors.length > 0 && (
+          <svg
+            aria-hidden="true"
+            className="ouchi-relation-connectors"
+            focusable="false"
+          >
+            {relationConnectors.map((connector) => (
+              <g
+                className={`ouchi-relation-connector ouchi-relation-connector--${connector.kind}`}
+                key={connector.id}
+                style={{ "--ouchi-relation-color": connector.color } as CSSProperties}
+              >
+                <path d={connector.d} />
+                <circle
+                  cx={connector.startX}
+                  cy={connector.startY}
+                  r="3.5"
+                />
+                <circle
+                  cx={connector.endX}
+                  cy={connector.endY}
+                  r="3.5"
+                />
+              </g>
+            ))}
+          </svg>
+        )}
         {portalData.networks.length === 0 ? (
           <div className="ouchi-global-empty">
             <strong>ネットワークがありません</strong>
@@ -1087,6 +1316,7 @@ export function OuchiPortal({
         activeTab={manageTab}
         data={portalData}
         message={message}
+        onPortalTitleChange={onPortalTitleChange}
         onAdd={openAdd}
         onClose={() => {
           setManageOpen(false);
@@ -1101,6 +1331,7 @@ export function OuchiPortal({
           setMessage(undefined);
         }}
         open={manageOpen}
+        portalTitle={portalTitle}
         warning={seedWarning ?? storageWarning}
       />
 

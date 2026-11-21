@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ACCENT_LABELS,
   DEVICE_CATEGORY_LABELS,
@@ -9,6 +10,7 @@ import {
   type PortalService,
 } from "./types";
 import { buildServiceUrl } from "./urls";
+import { sortNetworksForDisplay } from "./networkOrder";
 import {
   CloseIcon,
   EditIcon,
@@ -24,8 +26,10 @@ interface ManageDrawerProps {
   open: boolean;
   activeTab: ManageTab;
   data: PortalDataV2;
+  portalTitle?: string;
   warning?: string;
   message?: string;
+  onPortalTitleChange?: (title: string) => void;
   onClose: () => void;
   onTabChange: (tab: ManageTab) => void;
   onAdd: (kind: EntityKind) => void;
@@ -48,8 +52,10 @@ export function ManageDrawer({
   open,
   activeTab,
   data,
+  portalTitle,
   warning,
   message,
+  onPortalTitleChange,
   onClose,
   onTabChange,
   onAdd,
@@ -57,6 +63,14 @@ export function ManageDrawer({
   onDelete,
   onReset,
 }: ManageDrawerProps) {
+  const [titleDraft, setTitleDraft] = useState(portalTitle ?? "");
+
+  useEffect(() => {
+    if (open) {
+      setTitleDraft(portalTitle ?? "");
+    }
+  }, [open, portalTitle]);
+
   if (!open) {
     return null;
   }
@@ -70,6 +84,17 @@ export function ManageDrawer({
   const addDisabled =
     (activeTab === "devices" && data.networks.length === 0) ||
     (activeTab === "services" && data.deviceNetworks.length === 0);
+  const normalizedTitle = titleDraft.trim();
+  const titleSaveDisabled =
+    !normalizedTitle || normalizedTitle === portalTitle;
+
+  function savePortalTitle(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!normalizedTitle) {
+      return;
+    }
+    onPortalTitleChange?.(normalizedTitle);
+  }
 
   return (
     <div className="ouchi-overlay" role="presentation" onMouseDown={onClose}>
@@ -102,6 +127,36 @@ export function ManageDrawer({
           >
             {message ?? warning}
           </div>
+        )}
+
+        {portalTitle !== undefined && (
+          <section
+            aria-labelledby="ouchi-portal-title-settings"
+            className="ouchi-portal-title-settings"
+          >
+            <div>
+              <p className="ouchi-eyebrow">PORTAL LABEL</p>
+              <h4 id="ouchi-portal-title-settings">
+                ポータルのタイトル
+              </h4>
+              <p>ポータル左上に表示する名前を設定できます。</p>
+            </div>
+            <form onSubmit={savePortalTitle}>
+              <input
+                aria-label="ポータルタイトル"
+                maxLength={40}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                value={titleDraft}
+              />
+              <button
+                className="ouchi-primary-button ouchi-primary-button--compact"
+                disabled={titleSaveDisabled}
+                type="submit"
+              >
+                タイトルを保存
+              </button>
+            </form>
+          </section>
         )}
 
         <div className="ouchi-drawer-tabs" role="tablist" aria-label="編集対象">
@@ -158,7 +213,7 @@ export function ManageDrawer({
 
           <div className="ouchi-manage-list">
             {activeTab === "networks" &&
-              data.networks.map((network) => (
+              sortNetworksForDisplay(data.networks).map((network) => (
                 <NetworkRow
                   data={data}
                   key={network.id}
