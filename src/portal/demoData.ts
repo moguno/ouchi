@@ -1,4 +1,0 @@
-import rawPortalData from "../data/portal-data.json";
-import type { PortalDataV2 } from "./types";
-
-export const portalDemoData = rawPortalData as PortalDataV2;

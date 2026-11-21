@@ -1,0 +1,13 @@
+.git
+.codex
+node_modules
+dist
+demo-dist
+server-dist
+data
+coverage
+test-results
+playwright-report
+成果物
+*.sqlite
+*.log

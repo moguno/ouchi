@@ -11,7 +11,9 @@ export type {
   PortalRelation,
   PortalDevice,
   PortalService,
+  PortalServiceProtocol,
   PortalServiceScheme,
+  PortalSettings,
   PortalSshInfo,
   PortalStatus,
   ValidationIssue,
@@ -25,5 +27,4 @@ export {
   validatePortalData,
 } from "./validation";
 export { buildMonitorUrl, buildServiceUrl } from "./urls";
-export { portalDemoData } from "./demoData";
 export { sortNetworksForDisplay } from "./networkOrder";

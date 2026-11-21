@@ -13,12 +13,17 @@ import {
   type PortalNetwork,
   type PortalRelation,
   type PortalService,
+  type PortalServiceProtocol,
   type PortalServiceScheme,
+  type PortalSettings,
   type PortalSshInfo,
   type PortalStatus,
   type ValidationIssue,
   type ValidationResult,
 } from "./types";
+
+export const DEFAULT_PORTAL_TITLE = "あなたのホームラボ";
+export const MAX_PORTAL_TITLE_LENGTH = 100;
 
 interface Ipv4Parts {
   octets: [number, number, number, number];
@@ -35,6 +40,41 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+export function validateSettingsTitle(title: string): ValidationIssue[] {
+  const normalized = title.trim();
+  const issues: ValidationIssue[] = [];
+  if (!normalized) {
+    issues.push({ path: "title", message: "ポータルタイトルを入力してください" });
+  }
+  if (/[\r\n]/.test(title)) {
+    issues.push({
+      path: "title",
+      message: "ポータルタイトルに改行は使用できません",
+    });
+  }
+  if ([...normalized].length > MAX_PORTAL_TITLE_LENGTH) {
+    issues.push({
+      path: "title",
+      message: `ポータルタイトルは${MAX_PORTAL_TITLE_LENGTH}文字以内で入力してください`,
+    });
+  }
+  return issues;
+}
+
+export function validateSettingsPayload(
+  input: unknown,
+): ValidationIssue[] {
+  if (!isRecord(input) || typeof input.title !== "string") {
+    return [
+      {
+        path: "title",
+        message: "ポータルタイトルを文字列で入力してください",
+      },
+    ];
+  }
+  return validateSettingsTitle(input.title);
 }
 
 export function parseIpv4(value: string): Ipv4Parts | undefined {
@@ -132,39 +172,41 @@ export function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value.trim());
 }
 
-function isAccent(value: unknown): value is AccentTone {
+export function isAccent(value: unknown): value is AccentTone {
   return typeof value === "string" && ACCENT_TONES.includes(value as AccentTone);
 }
 
-function isIconKey(value: unknown): value is PortalIconKey {
+export function isIconKey(value: unknown): value is PortalIconKey {
   return (
     typeof value === "string" &&
     PORTAL_ICON_KEYS.includes(value as PortalIconKey)
   );
 }
 
-function isStatus(value: unknown): value is PortalStatus {
+export function isStatus(value: unknown): value is PortalStatus {
   return (
     typeof value === "string" &&
     PORTAL_STATUSES.includes(value as PortalStatus)
   );
 }
 
-function isDeviceCategory(value: unknown): value is PortalDeviceCategory {
+export function isDeviceCategory(
+  value: unknown,
+): value is PortalDeviceCategory {
   return (
     typeof value === "string" &&
     PORTAL_DEVICE_CATEGORIES.includes(value as PortalDeviceCategory)
   );
 }
 
-function isScheme(value: unknown): value is PortalServiceScheme {
+export function isScheme(value: unknown): value is PortalServiceScheme {
   return (
     typeof value === "string" &&
     PORTAL_SERVICE_SCHEMES.includes(value as PortalServiceScheme)
   );
 }
 
-function isPort(value: unknown): value is number {
+export function isPort(value: unknown): value is number {
   return (
     typeof value === "number" &&
     Number.isInteger(value) &&
@@ -180,6 +222,10 @@ function isPercent(value: unknown): value is number {
     value >= 0 &&
     value <= 100
   );
+}
+
+export function isProtocol(value: unknown): value is PortalServiceProtocol {
+  return value === "tcp" || value === "udp";
 }
 
 function validateNetwork(
@@ -295,7 +341,10 @@ function validateDeviceNetwork(
       message: "ネットワークIDは必須です",
     });
   }
-  if (!isNonEmptyString(input.ip) || !isIpv4(input.ip)) {
+  if (
+    typeof input.ip !== "string" ||
+    (input.ip.trim() !== "" && !isIpv4(input.ip))
+  ) {
     issues.push({ path: `${path}.ip`, message: "IPv4アドレスの形式が不正です" });
   }
   if (!isOptionalString(input.label)) {
@@ -329,22 +378,19 @@ function validateRelation(
       message: "関係先デバイスIDは必須です",
     });
   }
-  if (!isNonEmptyString(input.fromLabel)) {
-    issues.push({
-      path: `${path}.fromLabel`,
-      message: "from側ラベルは必須です",
-    });
+  if (!isOptionalString(input.tag)) {
+    issues.push({ path: `${path}.tag`, message: "タグが不正です" });
   }
-  if (!isNonEmptyString(input.toLabel)) {
-    issues.push({
-      path: `${path}.toLabel`,
-      message: "to側ラベルは必須です",
-    });
+  if (!isOptionalString(input.fromLabel)) {
+    issues.push({ path: `${path}.fromLabel`, message: "from側ラベルが不正です" });
   }
-  if (!isNonEmptyString(input.color) || !isHexColor(input.color)) {
+  if (!isOptionalString(input.toLabel)) {
+    issues.push({ path: `${path}.toLabel`, message: "to側ラベルが不正です" });
+  }
+  if (!isNonEmptyString(input.color)) {
     issues.push({
       path: `${path}.color`,
-      message: "色は #RRGGBB 形式で指定してください",
+      message: "関係色は必須です",
     });
   }
   return issues;
@@ -369,11 +415,21 @@ function validateService(
       message: "配置先IPは必須です",
     });
   }
-  if (!isNonEmptyString(input.name)) {
-    issues.push({ path: `${path}.name`, message: "サービス名は必須です" });
+  if (!isNonEmptyString(input.subdomain)) {
+    issues.push({
+      path: `${path}.subdomain`,
+      message: "サブドメインは必須です",
+    });
   }
-  if (typeof input.subtitle !== "string") {
-    issues.push({ path: `${path}.subtitle`, message: "補足名が不正です" });
+  if (input.petname !== undefined && input.petname !== null && typeof input.petname !== "string") {
+    issues.push({ path: `${path}.petname`, message: "ペットネームが不正です" });
+  }
+  if (
+    input.description !== undefined &&
+    input.description !== null &&
+    typeof input.description !== "string"
+  ) {
+    issues.push({ path: `${path}.description`, message: "説明が不正です" });
   }
   if (!isScheme(input.scheme)) {
     issues.push({ path: `${path}.scheme`, message: "スキームが不正です" });
@@ -381,15 +437,21 @@ function validateService(
   if (!isPort(input.port)) {
     issues.push({ path: `${path}.port`, message: "ポートが不正です" });
   }
-  if (!isNonEmptyString(input.topPath) || !isHttpPath(input.topPath)) {
+  if (!isProtocol(input.protocol)) {
+    issues.push({ path: `${path}.protocol`, message: "プロトコルが不正です" });
+  }
+  if (
+    typeof input.topPath !== "string" ||
+    (input.topPath.trim() !== "" && !isHttpPath(input.topPath))
+  ) {
     issues.push({
       path: `${path}.topPath`,
       message: "トップパスは / から入力してください",
     });
   }
   if (
-    !isNonEmptyString(input.monitorPath) ||
-    !isHttpPath(input.monitorPath)
+    typeof input.monitorPath !== "string" ||
+    (input.monitorPath.trim() !== "" && !isHttpPath(input.monitorPath))
   ) {
     issues.push({
       path: `${path}.monitorPath`,
@@ -409,8 +471,8 @@ function validateService(
   if (!isIconKey(input.iconKey)) {
     issues.push({ path: `${path}.iconKey`, message: "アイコンが不正です" });
   }
-  if (!isStatus(input.status)) {
-    issues.push({ path: `${path}.status`, message: "状態が不正です" });
+  if (typeof input.enabled !== "boolean") {
+    issues.push({ path: `${path}.enabled`, message: "有効フラグが不正です" });
   }
   return issues;
 }
@@ -459,6 +521,34 @@ export function validatePortalData(
       issues.push({ path: key, message: `${key}は配列で指定してください` });
     }
   }
+  if (input.settings !== undefined) {
+    if (!isRecord(input.settings)) {
+      issues.push({
+        path: "settings",
+        message: "settingsはオブジェクトで指定してください",
+      });
+    } else {
+      if (!isNonEmptyString(input.settings.domain)) {
+        issues.push({
+          path: "settings.domain",
+          message: "ドメイン名を入力してください",
+        });
+      }
+      if (typeof input.settings.title !== "string") {
+        issues.push({
+          path: "settings.title",
+          message: "ポータルタイトルを文字列で入力してください",
+        });
+      } else {
+        issues.push(
+          ...validateSettingsTitle(input.settings.title).map((issue) => ({
+            ...issue,
+            path: `settings.${issue.path}`,
+          })),
+        );
+      }
+    }
+  }
 
   if (issues.length > 0) {
     return { issues };
@@ -497,6 +587,9 @@ export function validatePortalData(
     deviceNetworks: deviceNetworks as PortalDeviceNetwork[],
     relations: relations as PortalRelation[],
     services: services as PortalService[],
+    ...(input.settings !== undefined
+      ? { settings: input.settings as unknown as PortalSettings }
+      : {}),
   };
   issues.push(...duplicateIssues(data.networks, "networks"));
   issues.push(...duplicateIssues(data.devices, "devices"));
@@ -531,7 +624,11 @@ export function validatePortalData(
       });
       continue;
     }
-    if (network.cidr && !isIpWithinCidr(membership.ip, network.cidr)) {
+    if (
+      network.cidr &&
+      membership.ip &&
+      !isIpWithinCidr(membership.ip, network.cidr)
+    ) {
       issues.push({
         path: `deviceNetworks.${membership.id}.ip`,
         message: `IP ${membership.ip} は ${network.cidr} の範囲外です`,
@@ -541,6 +638,9 @@ export function validatePortalData(
 
   const ipOwner = new Map<string, string>();
   for (const membership of data.deviceNetworks) {
+    if (!membership.ip) {
+      continue;
+    }
     const owner = ipOwner.get(membership.ip);
     if (owner) {
       issues.push({
@@ -644,7 +744,7 @@ export function validateNetworkInput(
 export function validateDeviceInput(
   input: Pick<
     PortalDevice,
-    "name" | "category" | "isVm" | "ssh" | "resources"
+    "name" | "category" | "isVm" | "ssh" | "resources" | "meterEnabled"
   >,
   editingId: string | undefined,
   data: PortalDataV2,
@@ -661,6 +761,12 @@ export function validateDeviceInput(
   issues.push(...validateDevice(candidate, 0).filter((issue) =>
     !issue.message.includes("ID"),
   ));
+  if (input.category === "service" && input.meterEnabled) {
+    issues.push({
+      path: "meterEnabled",
+      message: "サービスカテゴリーではSSHメーターを有効にできません",
+    });
+  }
 
   if (
     data.devices.some(
@@ -692,21 +798,24 @@ export function validateDeviceNetworkInput(
       message: "所属ネットワークを選択してください",
     });
   }
-  if (!isIpv4(input.ip)) {
+  const normalizedIp = input.ip.trim();
+  if (normalizedIp && !isIpv4(normalizedIp)) {
     issues.push({ path: "ip", message: "IPv4アドレスの形式が不正です" });
   }
   if (
+    normalizedIp &&
     data.deviceNetworks.some(
       (membership) =>
-        membership.id !== editingId && membership.ip === input.ip.trim(),
+        membership.id !== editingId && membership.ip === normalizedIp,
     )
   ) {
     issues.push({ path: "ip", message: "同じIPが登録されています" });
   }
   if (
     network?.cidr &&
-    isIpv4(input.ip) &&
-    !isIpWithinCidr(input.ip, network.cidr)
+    normalizedIp &&
+    isIpv4(normalizedIp) &&
+    !isIpWithinCidr(normalizedIp, network.cidr)
   ) {
     issues.push({
       path: "ip",
@@ -719,7 +828,12 @@ export function validateDeviceNetworkInput(
 export function validateRelationInput(
   input: Pick<
     PortalRelation,
-    "fromDeviceId" | "toDeviceId" | "fromLabel" | "toLabel" | "color"
+    | "fromDeviceId"
+    | "toDeviceId"
+    | "tag"
+    | "fromLabel"
+    | "toLabel"
+    | "color"
   >,
   data: PortalDataV2,
 ): ValidationIssue[] {
@@ -742,22 +856,22 @@ export function validateRelationInput(
       message: "同じデバイス自身へ関係は定義できません",
     });
   }
-  if (!input.fromLabel.trim()) {
+  if (!(input.tag?.trim() || input.fromLabel?.trim())) {
     issues.push({
-      path: "fromLabel",
-      message: "from側ラベルを入力してください",
+      path: "tag",
+      message: "タグまたはfrom側ラベルを入力してください",
     });
   }
-  if (!input.toLabel.trim()) {
+  if (!(input.tag?.trim() || input.toLabel?.trim())) {
     issues.push({
-      path: "toLabel",
-      message: "to側ラベルを入力してください",
+      path: "tag",
+      message: "タグまたはto側ラベルを入力してください",
     });
   }
-  if (!isHexColor(input.color)) {
+  if (!input.color.trim()) {
     issues.push({
       path: "color",
-      message: "関係色は #RRGGBB 形式で指定してください",
+      message: "関係色を入力してください",
     });
   }
   return issues;
@@ -766,21 +880,36 @@ export function validateRelationInput(
 export function validateServiceInput(
   input: Pick<
     PortalService,
-    | "name"
+    | "subdomain"
+    | "petname"
+    | "description"
     | "deviceNetworkId"
     | "scheme"
     | "port"
+    | "protocol"
     | "topPath"
     | "monitorPath"
     | "serviceUrl"
     | "iconKey"
-    | "status"
+    | "enabled"
   >,
   data: PortalDataV2,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  if (!input.name.trim()) {
-    issues.push({ path: "name", message: "サービス名を入力してください" });
+  if (!input.subdomain.trim()) {
+    issues.push({
+      path: "subdomain",
+      message: "サブドメインを入力してください",
+    });
+  } else if (
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(
+      input.subdomain.trim(),
+    )
+  ) {
+    issues.push({
+      path: "subdomain",
+      message: "サブドメインは英数字とハイフンで入力してください",
+    });
   }
   if (
     !data.deviceNetworks.some(
@@ -800,6 +929,9 @@ export function validateServiceInput(
       path: "port",
       message: "ポートは1〜65535で入力してください",
     });
+  }
+  if (!isProtocol(input.protocol)) {
+    issues.push({ path: "protocol", message: "プロトコルを選択してください" });
   }
   if (!isHttpPath(input.topPath)) {
     issues.push({
@@ -822,8 +954,213 @@ export function validateServiceInput(
   if (!isIconKey(input.iconKey)) {
     issues.push({ path: "iconKey", message: "アイコンを選択してください" });
   }
-  if (!isStatus(input.status)) {
-    issues.push({ path: "status", message: "状態を選択してください" });
+  if (typeof input.enabled !== "boolean") {
+    issues.push({ path: "enabled", message: "有効状態が不正です" });
+  }
+  return issues;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+export function validateNetworkPayload(input: unknown): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "ネットワークの形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isNonEmptyString(input.name)) {
+    issues.push({ path: "name", message: "ネットワーク名は必須です" });
+  }
+  if (
+    input.cidr !== undefined &&
+    input.cidr !== null &&
+    input.cidr !== "" &&
+    (!isNonEmptyString(input.cidr) || !isCidr(input.cidr))
+  ) {
+    issues.push({ path: "cidr", message: "CIDRの形式が不正です" });
+  }
+  if (!isNonEmptyString(input.accent)) {
+    issues.push({ path: "accent", message: "アクセント色は必須です" });
+  }
+  if (input.note !== undefined && !isNullableString(input.note)) {
+    issues.push({ path: "note", message: "メモが不正です" });
+  }
+  return issues;
+}
+
+export function validateDevicePayload(input: unknown): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "デバイスの形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isNonEmptyString(input.hostname)) {
+    issues.push({ path: "hostname", message: "ホスト名は必須です" });
+  }
+  if (!isDeviceCategory(input.category)) {
+    issues.push({ path: "category", message: "デバイスカテゴリーが不正です" });
+  }
+  if (typeof input.isVm !== "boolean") {
+    issues.push({ path: "isVm", message: "VMフラグが不正です" });
+  } else if (
+    isDeviceCategory(input.category) &&
+    input.isVm !== (input.category === "vm")
+  ) {
+    issues.push({
+      path: "category",
+      message: "カテゴリーとVMフラグが一致していません",
+    });
+  }
+  if (input.sshUser !== undefined && !isNullableString(input.sshUser)) {
+    issues.push({ path: "sshUser", message: "SSHユーザーが不正です" });
+  }
+  if (
+    input.sshPort !== undefined &&
+    input.sshPort !== null &&
+    !isPort(input.sshPort)
+  ) {
+    issues.push({ path: "sshPort", message: "SSHポートが不正です" });
+  }
+  if (typeof input.meterEnabled !== "boolean") {
+    issues.push({ path: "meterEnabled", message: "メーター設定が不正です" });
+  }
+  if (input.note !== undefined && !isNullableString(input.note)) {
+    issues.push({ path: "note", message: "メモが不正です" });
+  }
+  if (
+    input.category === "service" &&
+    (input.isVm === true || input.meterEnabled === true)
+  ) {
+    issues.push({
+      path: "category",
+      message: "サービスカテゴリーはVM・メーターを有効にできません",
+    });
+  }
+  return issues;
+}
+
+export function validateMembershipPayload(input: unknown): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "所属の形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isPositiveInteger(input.deviceId)) {
+    issues.push({ path: "deviceId", message: "デバイスIDが不正です" });
+  }
+  if (!isPositiveInteger(input.networkId)) {
+    issues.push({ path: "networkId", message: "ネットワークIDが不正です" });
+  }
+  if (
+    input.ip !== undefined &&
+    input.ip !== null &&
+    input.ip !== "" &&
+    (!isNonEmptyString(input.ip) || !isIpv4(input.ip))
+  ) {
+    issues.push({ path: "ip", message: "IPv4アドレスの形式が不正です" });
+  }
+  if (input.label !== undefined && !isNullableString(input.label)) {
+    issues.push({ path: "label", message: "所属ラベルが不正です" });
+  }
+  return issues;
+}
+
+export function validateRelationPayload(input: unknown): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "関係の形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isPositiveInteger(input.fromDeviceId)) {
+    issues.push({ path: "fromDeviceId", message: "関係元IDが不正です" });
+  }
+  if (!isPositiveInteger(input.toDeviceId)) {
+    issues.push({ path: "toDeviceId", message: "関係先IDが不正です" });
+  }
+  if (
+    isPositiveInteger(input.fromDeviceId) &&
+    input.fromDeviceId === input.toDeviceId
+  ) {
+    issues.push({
+      path: "toDeviceId",
+      message: "同じデバイス自身へ関係は定義できません",
+    });
+  }
+  for (const field of ["tag", "fromLabel", "toLabel"] as const) {
+    if (input[field] !== undefined && !isNullableString(input[field])) {
+      issues.push({ path: field, message: `${field}が不正です` });
+    }
+  }
+  if (!isNonEmptyString(input.color)) {
+    issues.push({ path: "color", message: "関係色は必須です" });
+  }
+  return issues;
+}
+
+export function validateServicePayload(input: unknown): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "サービスの形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isPositiveInteger(input.deviceNetworkId)) {
+    issues.push({
+      path: "deviceNetworkId",
+      message: "所属IDが不正です",
+    });
+  }
+  if (!isNonEmptyString(input.subdomain)) {
+    issues.push({ path: "subdomain", message: "サブドメインは必須です" });
+  } else if (
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(input.subdomain.trim())
+  ) {
+    issues.push({
+      path: "subdomain",
+      message: "サブドメインは英数字とハイフンで入力してください",
+    });
+  }
+  for (const field of ["petname", "description", "iconKey"] as const) {
+    if (input[field] !== undefined && !isNullableString(input[field])) {
+      issues.push({ path: field, message: `${field}が不正です` });
+    }
+  }
+  for (const field of ["topPath", "monitorPath", "serviceUrl"] as const) {
+    if (input[field] !== undefined && !isNullableString(input[field])) {
+      issues.push({ path: field, message: `${field}が不正です` });
+    }
+  }
+  if (!isPort(input.port)) {
+    issues.push({ path: "port", message: "ポートは1〜65535で入力してください" });
+  }
+  if (!isProtocol(input.protocol)) {
+    issues.push({ path: "protocol", message: "プロトコルが不正です" });
+  }
+  if (!isScheme(input.scheme)) {
+    issues.push({ path: "scheme", message: "スキームが不正です" });
+  }
+  for (const field of ["topPath", "monitorPath"] as const) {
+    const value = input[field];
+    if (
+      typeof value === "string" &&
+      value.trim() !== "" &&
+      !isHttpPath(value)
+    ) {
+      issues.push({ path: field, message: `${field}は / から入力してください` });
+    }
+  }
+  if (
+    typeof input.serviceUrl === "string" &&
+    input.serviceUrl.trim() !== "" &&
+    !isHttpUrl(input.serviceUrl)
+  ) {
+    issues.push({
+      path: "serviceUrl",
+      message: "サービスURLはHTTPまたはHTTPSで入力してください",
+    });
+  }
+  if (typeof input.enabled !== "boolean") {
+    issues.push({ path: "enabled", message: "有効フラグが不正です" });
   }
   return issues;
 }

@@ -77,6 +77,19 @@ body::before {
   text-align: center;
 }
 
+.demo-mode-badge {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 4px 8px;
+  color: #665f91;
+  background: #eeecff;
+  border: 1px solid #dad5ff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
 @media (max-width: 640px) {
   .demo-page {
     padding: 24px 12px 24px;

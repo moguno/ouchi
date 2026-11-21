@@ -1,7 +1,8 @@
 {
   "name": "ouchi-local-portal",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/ouchi-portal.js",
   "module": "./dist/ouchi-portal.js",
@@ -17,15 +18,20 @@
     "./styles.css": "./dist/ouchi-portal.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "vite",
+    "dev:api": "tsx watch server/index.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.build.json",
     "build:demo": "vite build",
-    "build": "npm run typecheck && npm run build:lib && npm run build:demo",
+    "build:pages": "vite build --mode pages --outDir 成果物/demo-pages",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=server-dist/index.js --packages=external",
+    "build": "npm run typecheck && npm run build:lib && npm run build:demo && npm run build:server",
+    "start": "node server-dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "screenshots": "playwright test"
@@ -45,11 +51,18 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "axe-core": "^4.14.1",
+    "esbuild": "0.28.2",
     "jsdom": "^27.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vitest": "^4.0.15"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.14",
+    "hono": "^4.12.14",
+    "yaml": "^2.9.0"
   }
 }

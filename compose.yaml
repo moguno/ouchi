@@ -1,0 +1,12 @@
+services:
+  ouchi-portal:
+    build: .
+    container_name: ouchi-portal
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ouchi-data:/app/data
+
+volumes:
+  ouchi-data:

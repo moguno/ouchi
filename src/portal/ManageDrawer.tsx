@@ -3,21 +3,23 @@ import {
   ACCENT_LABELS,
   DEVICE_CATEGORY_LABELS,
   ICON_LABELS,
-  STATUS_LABELS,
   type PortalDataV2,
   type PortalDevice,
   type PortalNetwork,
   type PortalService,
 } from "./types";
-import { buildServiceUrl } from "./urls";
 import { sortNetworksForDisplay } from "./networkOrder";
 import {
   CloseIcon,
   EditIcon,
   PlusIcon,
-  ResetIcon,
   TrashIcon,
 } from "./icons";
+import { PortalApiError } from "./apiClient";
+import {
+  MAX_PORTAL_TITLE_LENGTH,
+  validateSettingsTitle,
+} from "./validation";
 
 export type ManageTab = "networks" | "devices" | "services";
 export type EntityKind = "network" | "device" | "service";
@@ -29,13 +31,14 @@ interface ManageDrawerProps {
   portalTitle?: string;
   warning?: string;
   message?: string;
-  onPortalTitleChange?: (title: string) => void;
+  onSavePortalTitle: (title: string) => Promise<void>;
+  onExportLedger: () => Promise<string>;
+  onImportLedger: (yaml: string) => Promise<string>;
   onClose: () => void;
   onTabChange: (tab: ManageTab) => void;
   onAdd: (kind: EntityKind) => void;
   onEdit: (kind: EntityKind, id: string) => void;
   onDelete: (kind: EntityKind, id: string) => void;
-  onReset: () => void;
 }
 
 const TAB_LABELS: Record<ManageTab, string> = {
@@ -44,10 +47,6 @@ const TAB_LABELS: Record<ManageTab, string> = {
   services: "サービス",
 };
 
-function statusLabel(service: PortalService) {
-  return STATUS_LABELS[service.status];
-}
-
 export function ManageDrawer({
   open,
   activeTab,
@@ -55,19 +54,30 @@ export function ManageDrawer({
   portalTitle,
   warning,
   message,
-  onPortalTitleChange,
+  onSavePortalTitle,
+  onExportLedger,
+  onImportLedger,
   onClose,
   onTabChange,
   onAdd,
   onEdit,
   onDelete,
-  onReset,
 }: ManageDrawerProps) {
   const [titleDraft, setTitleDraft] = useState(portalTitle ?? "");
+  const [importFile, setImportFile] = useState<{
+    name: string;
+    yaml: string;
+  }>();
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferNotice, setTransferNotice] = useState<string>();
+  const [transferError, setTransferError] = useState<string>();
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string>();
 
   useEffect(() => {
     if (open) {
       setTitleDraft(portalTitle ?? "");
+      setTitleError(undefined);
     }
   }, [open, portalTitle]);
 
@@ -86,14 +96,84 @@ export function ManageDrawer({
     (activeTab === "services" && data.deviceNetworks.length === 0);
   const normalizedTitle = titleDraft.trim();
   const titleSaveDisabled =
-    !normalizedTitle || normalizedTitle === portalTitle;
+    !normalizedTitle || normalizedTitle === portalTitle || titleSaving;
 
-  function savePortalTitle(event: React.FormEvent<HTMLFormElement>) {
+  async function savePortalTitle(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!normalizedTitle) {
+    const issues = validateSettingsTitle(titleDraft);
+    if (issues.length > 0) {
+      setTitleError(issues.map((issue) => issue.message).join(" / "));
       return;
     }
-    onPortalTitleChange?.(normalizedTitle);
+    setTitleSaving(true);
+    setTitleError(undefined);
+    try {
+      await onSavePortalTitle(normalizedTitle);
+    } catch (cause) {
+      setTitleError(transferFailure(cause));
+    } finally {
+      setTitleSaving(false);
+    }
+  }
+
+  function transferFailure(cause: unknown) {
+    if (cause instanceof PortalApiError) {
+      if (cause.issues.length > 0) {
+        return cause.issues.map((issue) => issue.message).join(" / ");
+      }
+      return cause.message;
+    }
+    return cause instanceof Error
+      ? cause.message
+      : "設定の移行処理に失敗しました";
+  }
+
+  async function selectImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    setTransferNotice(undefined);
+    setTransferError(undefined);
+    if (!file) {
+      setImportFile(undefined);
+      return;
+    }
+    try {
+      setImportFile({ name: file.name, yaml: await file.text() });
+    } catch (cause) {
+      setImportFile(undefined);
+      setTransferError(transferFailure(cause));
+    }
+  }
+
+  async function exportLedgerFile() {
+    setTransferBusy(true);
+    setTransferNotice(undefined);
+    setTransferError(undefined);
+    try {
+      const filename = await onExportLedger();
+      setTransferNotice(`${filename} をダウンロードしました。`);
+    } catch (cause) {
+      setTransferError(transferFailure(cause));
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
+  async function applyImport() {
+    if (!importFile) {
+      return;
+    }
+    setTransferBusy(true);
+    setTransferNotice(undefined);
+    setTransferError(undefined);
+    try {
+      const result = await onImportLedger(importFile.yaml);
+      setTransferNotice(result);
+      setImportFile(undefined);
+    } catch (cause) {
+      setTransferError(transferFailure(cause));
+    } finally {
+      setTransferBusy(false);
+    }
   }
 
   return (
@@ -142,22 +222,112 @@ export function ManageDrawer({
               <p>ポータル左上に表示する名前を設定できます。</p>
             </div>
             <form onSubmit={savePortalTitle}>
-              <input
-                aria-label="ポータルタイトル"
-                maxLength={40}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                value={titleDraft}
-              />
+              <div className="ouchi-setting-fields">
+                <label>
+                  <span>ドメイン</span>
+                  <input
+                    aria-label="ポータルドメイン"
+                    readOnly
+                    value={data.settings?.domain ?? "ouchi.local"}
+                  />
+                </label>
+                <label>
+                  <span>ポータルタイトル</span>
+                  <input
+                    aria-label="ポータルタイトル"
+                    maxLength={MAX_PORTAL_TITLE_LENGTH}
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                    value={titleDraft}
+                  />
+                </label>
+              </div>
               <button
                 className="ouchi-primary-button ouchi-primary-button--compact"
                 disabled={titleSaveDisabled}
                 type="submit"
               >
-                タイトルを保存
+                {titleSaving ? "保存中" : "タイトルを保存"}
               </button>
             </form>
+            {titleError && (
+              <p className="ouchi-portal-title-error" role="alert">
+                {titleError}
+              </p>
+            )}
           </section>
         )}
+
+        <section
+          aria-labelledby="ouchi-ledger-transfer"
+          className="ouchi-ledger-transfer"
+        >
+          <div className="ouchi-ledger-transfer-heading">
+            <div>
+              <p className="ouchi-eyebrow">TEXT TRANSFER</p>
+              <h4 id="ouchi-ledger-transfer">設定のエクスポート／インポート</h4>
+              <p>
+                YAMLで台帳一式を移行します。公開鍵だけを出力し、秘密情報は含めません。
+              </p>
+            </div>
+            <button
+              className="ouchi-secondary-button ouchi-primary-button--compact"
+              disabled={transferBusy}
+              onClick={() => void exportLedgerFile()}
+              type="button"
+            >
+              YAMLをエクスポート
+            </button>
+          </div>
+
+          <div className="ouchi-ledger-import">
+            <label className="ouchi-ledger-file-picker">
+              <span>インポートするYAML</span>
+              <input
+                accept=".yaml,.yml,application/yaml,text/yaml"
+                aria-label="インポートするYAMLファイル"
+                disabled={transferBusy}
+                onChange={(event) => void selectImportFile(event)}
+                type="file"
+              />
+            </label>
+
+            {importFile && (
+              <div className="ouchi-ledger-preview">
+                <div>
+                  <strong>{importFile.name}</strong>
+                  <span>{importFile.yaml.length.toLocaleString()} 文字</span>
+                </div>
+                <pre aria-label="インポート内容のプレビュー">
+                  {importFile.yaml.slice(0, 3000)}
+                  {importFile.yaml.length > 3000 ? "\n…" : ""}
+                </pre>
+                <p className="ouchi-ledger-warning" role="alert">
+                  適用すると現在のネットワーク、デバイス、所属IP、関係、サービス、鍵情報は
+                  すべて置き換わります。内容を確認してから適用してください。
+                </p>
+                <button
+                  className="ouchi-danger-button ouchi-primary-button--compact"
+                  disabled={transferBusy}
+                  onClick={() => void applyImport()}
+                  type="button"
+                >
+                  内容を確認して全置き換え
+                </button>
+              </div>
+            )}
+          </div>
+
+          {transferError && (
+            <p className="ouchi-ledger-transfer-error" role="alert">
+              {transferError}
+            </p>
+          )}
+          {transferNotice && (
+            <p className="ouchi-ledger-transfer-notice" role="status">
+              {transferNotice}
+            </p>
+          )}
+        </section>
 
         <div className="ouchi-drawer-tabs" role="tablist" aria-label="編集対象">
           {(Object.keys(TAB_LABELS) as ManageTab[]).map((tab) => (
@@ -180,7 +350,7 @@ export function ManageDrawer({
             <p>
               {activeTab === "networks" && "ネットワークとCIDRを管理します"}
               {activeTab === "devices" &&
-                "カテゴリー、所属IP、資源使用率、関係を管理します"}
+                "カテゴリー、所属IP、SSH接続情報、関係を管理します"}
               {activeTab === "services" &&
                 "サービスをデバイスのアクセスIPへ配置します"}
             </p>
@@ -253,11 +423,7 @@ export function ManageDrawer({
         </div>
 
         <footer className="ouchi-drawer-footer">
-          <button className="ouchi-text-button" onClick={onReset} type="button">
-            <ResetIcon size={18} />
-            初期データへ戻す
-          </button>
-          <span>localStorageへ自動保存</span>
+          <span>SQLite台帳（API）へ保存</span>
         </footer>
       </aside>
     </div>
@@ -430,28 +596,19 @@ function ServiceRow({
     membership && device
       ? `${device.name} / ${membership.ip} / ${network?.name ?? "未所属"}`
       : "配置先IPなし";
-  const serviceUrl = membership
-    ? buildServiceUrl(service, membership)
-    : undefined;
+  const serviceUrl = service.url;
 
   return (
     <article className="ouchi-manage-row">
-      <span
-        className={`ouchi-manage-status ouchi-status--${service.status}`}
-        title={statusLabel(service)}
-      />
       <div className="ouchi-manage-row-main">
-        <strong>{service.name}</strong>
-        <p title={serviceUrl}>
+        <strong>{service.petname?.trim() || service.subdomain}</strong>
+        <p title={serviceUrl ?? undefined}>
           {targetLabel} ・ {ICON_LABELS[service.iconKey]}
         </p>
       </div>
-      <span className={`ouchi-status-label ouchi-status-label--${service.status}`}>
-        {statusLabel(service)}
-      </span>
       <RowActions
-        deleteLabel={`${service.name}を削除`}
-        editLabel={`${service.name}を編集`}
+        deleteLabel={`${service.petname?.trim() || service.subdomain}を削除`}
+        editLabel={`${service.petname?.trim() || service.subdomain}を編集`}
         onDelete={onDelete}
         onEdit={onEdit}
       />

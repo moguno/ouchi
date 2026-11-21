@@ -9,8 +9,6 @@ import {
   PORTAL_DEVICE_CATEGORIES,
   PORTAL_ICON_KEYS,
   PORTAL_SERVICE_SCHEMES,
-  PORTAL_STATUSES,
-  STATUS_LABELS,
   type AccentTone,
   type PortalDataV2,
   type PortalDevice,
@@ -20,8 +18,8 @@ import {
   type PortalNetwork,
   type PortalRelation,
   type PortalService,
+  type PortalServiceProtocol,
   type PortalServiceScheme,
-  type PortalStatus,
   type ValidationIssue,
 } from "./types";
 import {
@@ -356,14 +354,6 @@ function DeviceForm({
   const [sshEnabled, setSshEnabled] = useState(Boolean(editing?.ssh));
   const [sshUser, setSshUser] = useState(editing?.ssh?.user ?? "");
   const [sshPort, setSshPort] = useState(String(editing?.ssh?.port ?? 22));
-  const [memoryPercent, setMemoryPercent] = useState(
-    editing?.resources
-      ? String(editing.resources.memoryPercent)
-      : "",
-  );
-  const [diskPercent, setDiskPercent] = useState(
-    editing?.resources ? String(editing.resources.diskPercent) : "",
-  );
   const [memberships, setMemberships] = useState<PortalDeviceNetwork[]>(() => {
     const existing = data.deviceNetworks.filter(
       (membership) => membership.deviceId === editing?.id,
@@ -415,7 +405,7 @@ function DeviceForm({
     id: string,
     field: keyof Pick<
       PortalRelation,
-      "toDeviceId" | "fromLabel" | "toLabel" | "color"
+      "toDeviceId" | "tag" | "fromLabel" | "toLabel" | "color"
     >,
     value: string,
   ) {
@@ -436,34 +426,31 @@ function DeviceForm({
         id: generateId("relation"),
         fromDeviceId: editing.id,
         toDeviceId: relationTargets[0].id,
+        tag: "ホストOS",
         fromLabel: "",
         toLabel: "",
-        color: "#d5a22b",
+        color: "yellow",
       },
     ]);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const resources =
-      memoryPercent.trim() || diskPercent.trim()
-        ? {
-            memoryPercent: Number(memoryPercent),
-            diskPercent: Number(diskPercent),
-          }
-        : undefined;
     const device: PortalDevice = {
       id: editing?.id ?? draftDeviceId.current,
       name: name.trim(),
       category,
       isVm: category === "vm",
-      ssh: sshEnabled
+      meterEnabled:
+        category === "service"
+          ? false
+          : editing?.meterEnabled ?? false,
+      ssh: sshEnabled && category !== "service"
         ? {
             user: sshUser.trim(),
             port: Number(sshPort),
           }
         : undefined,
-      resources,
     };
 
     const issues = validateDeviceInput(device, editing?.id, data);
@@ -496,12 +483,17 @@ function DeviceForm({
     const localIps = new Set<string>();
     normalizedMemberships.forEach((membership, index) => {
       if (localIps.has(membership.ip)) {
+        if (!membership.ip) {
+          return;
+        }
         issues.push({
           path: `deviceNetworks[${index}].ip`,
           message: "同じフォーム内でIPが重複しています",
         });
       }
-      localIps.add(membership.ip);
+      if (membership.ip) {
+        localIps.add(membership.ip);
+      }
     });
 
     normalizedMemberships.forEach((membership, index) => {
@@ -511,19 +503,14 @@ function DeviceForm({
           message: "所属ネットワークを選択してください",
         });
       }
-      if (!membership.ip) {
-        issues.push({
-          path: `deviceNetworks[${index}].ip`,
-          message: "IPアドレスを入力してください",
-        });
-      }
     });
 
     const normalizedRelations = relations.map((relation) => ({
       ...relation,
       fromDeviceId: device.id,
-      fromLabel: relation.fromLabel.trim(),
-      toLabel: relation.toLabel.trim(),
+      tag: relation.tag?.trim(),
+      fromLabel: relation.fromLabel?.trim(),
+      toLabel: relation.toLabel?.trim(),
     }));
     normalizedRelations.forEach((relation, index) => {
       issues.push(
@@ -661,9 +648,13 @@ function DeviceForm({
         <span>デバイスカテゴリー</span>
         <select
           aria-label="デバイスカテゴリー"
-          onChange={(event) =>
-            setCategory(event.target.value as PortalDeviceCategory)
-          }
+          onChange={(event) => {
+            const next = event.target.value as PortalDeviceCategory;
+            setCategory(next);
+            if (next === "service") {
+              setSshEnabled(false);
+            }
+          }}
           value={category}
         >
           {PORTAL_DEVICE_CATEGORIES.map((value) => (
@@ -673,91 +664,50 @@ function DeviceForm({
           ))}
         </select>
         <small>
-          VMはネットワーク上の独立したデバイスとして扱います。
+          VMは独立したデバイス、サービスは外部SaaSの疑似デバイスです。
         </small>
       </label>
 
       <section className="ouchi-form-section">
         <header>
           <div>
-            <strong>SSHリソース収集</strong>
-            <small>秘密鍵は保存せず、収集済みの使用率だけを保持します。</small>
+            <strong>SSH接続情報</strong>
+            <small>
+              任意の接続先情報です。パスワードや秘密鍵はDBへ保存しません。
+            </small>
           </div>
         </header>
         <label className="ouchi-checkbox-field">
           <input
             checked={sshEnabled}
+            disabled={category === "service"}
             onChange={(event) => setSshEnabled(event.target.checked)}
             type="checkbox"
           />
           <span>
-            <strong>このデバイスをSSH計測する</strong>
-            <small>スイッチ、AP、FortiGateなどはOFFにします。</small>
+            <strong>SSH接続情報を保存する</strong>
+            <small>接続先を使わない機器はOFFにします。</small>
           </span>
         </label>
-        {sshEnabled && (
-          <>
-            <div className="ouchi-form-grid">
-              <label className="ouchi-field">
-                <span>SSHユーザー</span>
-                <input
-                  onChange={(event) => setSshUser(event.target.value)}
-                  placeholder="例: portal-monitor"
-                  value={sshUser}
-                />
-              </label>
-              <label className="ouchi-field">
-                <span>SSHポート</span>
-                <input
-                  inputMode="numeric"
-                  onChange={(event) => setSshPort(event.target.value)}
-                  value={sshPort}
-                />
-              </label>
-            </div>
-            <div className="ouchi-form-grid">
-              <label className="ouchi-field">
-                <span>メモリ使用率（%）</span>
-                <input
-                  aria-describedby={
-                    errors["resources.memoryPercent"]
-                      ? "device-memory-error"
-                      : undefined
-                  }
-                  aria-invalid={Boolean(errors["resources.memoryPercent"])}
-                  inputMode="decimal"
-                  max="100"
-                  min="0"
-                  onChange={(event) => setMemoryPercent(event.target.value)}
-                  type="number"
-                  value={memoryPercent}
-                />
-                <FieldError id="device-memory-error">
-                  {errors["resources.memoryPercent"]}
-                </FieldError>
-              </label>
-              <label className="ouchi-field">
-                <span>ディスク使用率（%）</span>
-                <input
-                  aria-describedby={
-                    errors["resources.diskPercent"]
-                      ? "device-disk-error"
-                      : undefined
-                  }
-                  aria-invalid={Boolean(errors["resources.diskPercent"])}
-                  inputMode="decimal"
-                  max="100"
-                  min="0"
-                  onChange={(event) => setDiskPercent(event.target.value)}
-                  type="number"
-                  value={diskPercent}
-                />
-                <FieldError id="device-disk-error">
-                  {errors["resources.diskPercent"]}
-                </FieldError>
-              </label>
-            </div>
-          </>
+        {sshEnabled && category !== "service" && (
+          <div className="ouchi-form-grid">
+            <label className="ouchi-field">
+              <span>SSHユーザー</span>
+              <input
+                onChange={(event) => setSshUser(event.target.value)}
+                placeholder="例: portal-monitor"
+                value={sshUser}
+              />
+            </label>
+            <label className="ouchi-field">
+              <span>SSHポート</span>
+              <input
+                inputMode="numeric"
+                onChange={(event) => setSshPort(event.target.value)}
+                value={sshPort}
+              />
+            </label>
+          </div>
         )}
       </section>
 
@@ -786,6 +736,17 @@ function DeviceForm({
         <div className="ouchi-editor-stack">
           {relations.map((relation, index) => (
             <div className="ouchi-relation-row" key={relation.id}>
+              <label className="ouchi-field">
+                <span>タグ {index + 1}</span>
+                <input
+                  aria-label={`関係タグ ${index + 1}`}
+                  onChange={(event) =>
+                    updateRelation(relation.id, "tag", event.target.value)
+                  }
+                  placeholder="例: ホストOS"
+                  value={relation.tag ?? ""}
+                />
+              </label>
               <label className="ouchi-field">
                 <span>関係先 {index + 1}</span>
                 <select
@@ -818,7 +779,7 @@ function DeviceForm({
                     )
                   }
                   placeholder="例: VM"
-                  value={relation.fromLabel}
+                  value={relation.fromLabel ?? ""}
                 />
               </label>
               <label className="ouchi-field">
@@ -833,7 +794,7 @@ function DeviceForm({
                     )
                   }
                   placeholder="例: 親ホスト"
-                  value={relation.toLabel}
+                  value={relation.toLabel ?? ""}
                 />
               </label>
               <div className="ouchi-color-field">
@@ -844,7 +805,7 @@ function DeviceForm({
                     onChange={(event) =>
                       updateRelation(relation.id, "color", event.target.value)
                     }
-                    type="color"
+                    placeholder="例: yellow または #d5a22b"
                     value={relation.color}
                   />
                 </label>
@@ -888,13 +849,19 @@ function ServiceForm({
   onClose: () => void;
   onSave: EntityDialogProps["onSave"];
 }) {
-  const [name, setName] = useState(editing?.name ?? "");
-  const [subtitle, setSubtitle] = useState(editing?.subtitle ?? "");
+  const [subdomain, setSubdomain] = useState(editing?.subdomain ?? "");
+  const [petname, setPetname] = useState(editing?.petname ?? "");
+  const [description, setDescription] = useState(
+    editing?.description ?? "",
+  );
   const [deviceNetworkId, setDeviceNetworkId] = useState(
     editing?.deviceNetworkId ?? data.deviceNetworks[0]?.id ?? "",
   );
   const [scheme, setScheme] = useState<PortalServiceScheme>(
     editing?.scheme ?? "http",
+  );
+  const [protocol, setProtocol] = useState<PortalServiceProtocol>(
+    editing?.protocol ?? "tcp",
   );
   const [port, setPort] = useState(String(editing?.port ?? 80));
   const [topPath, setTopPath] = useState(editing?.topPath ?? "/");
@@ -905,9 +872,7 @@ function ServiceForm({
   const [iconKey, setIconKey] = useState<PortalIconKey>(
     editing?.iconKey ?? "monitor",
   );
-  const [status, setStatus] = useState<PortalStatus>(
-    editing?.status ?? "up",
-  );
+  const [enabled, setEnabled] = useState(editing?.enabled ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formIssues, setFormIssues] = useState<ValidationIssue[]>([]);
 
@@ -931,15 +896,18 @@ function ServiceForm({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const input = {
-      name,
+      subdomain,
+      petname,
+      description,
       deviceNetworkId,
       scheme,
       port: Number(port),
+      protocol,
       topPath: topPath.trim(),
       monitorPath: monitorPath.trim(),
       serviceUrl: serviceUrl.trim() || undefined,
       iconKey,
-      status,
+      enabled,
     };
     const issues = validateServiceInput(input, data);
     if (issues.length > 0) {
@@ -952,16 +920,18 @@ function ServiceForm({
     setFormIssues([]);
     onSave("service", {
       id: editing?.id ?? generateId("service"),
-      name: name.trim(),
-      subtitle: subtitle.trim(),
+      subdomain: subdomain.trim().toLowerCase(),
+      petname: petname.trim() || undefined,
+      description: description.trim() || undefined,
       deviceNetworkId,
       scheme,
       port: Number(port),
+      protocol,
       topPath: topPath.trim(),
       monitorPath: monitorPath.trim(),
       serviceUrl: serviceUrl.trim() || undefined,
       iconKey,
-      status,
+      enabled,
     });
   }
 
@@ -969,28 +939,43 @@ function ServiceForm({
     <form className="ouchi-entity-form" onSubmit={handleSubmit}>
       <FormNotice issues={formIssues} />
       <label className="ouchi-field">
-        <span>サービス名</span>
+        <span>サブドメイン</span>
         <input
-          aria-describedby={errors.name ? "service-name-error" : undefined}
-          aria-invalid={Boolean(errors.name)}
-          onChange={(event) => setName(event.target.value)}
+          aria-label="サブドメイン"
+          aria-describedby={
+            errors.subdomain ? "service-subdomain-error" : undefined
+          }
+          aria-invalid={Boolean(errors.subdomain)}
+          onChange={(event) => setSubdomain(event.target.value)}
           placeholder="例: gitea"
           ref={firstFieldRef as React.RefObject<HTMLInputElement>}
           required
-          value={name}
+          value={subdomain}
         />
-        <FieldError id="service-name-error">{errors.name}</FieldError>
+        <small>`ouchi.local/&lt;サブドメイン&gt;` のパス名になります。</small>
+        <FieldError id="service-subdomain-error">
+          {errors.subdomain}
+        </FieldError>
       </label>
 
       <label className="ouchi-field">
-        <span id="service-subtitle-label">補足名</span>
+        <span id="service-petname-label">ペットネーム</span>
         <input
-          aria-labelledby="service-subtitle-label"
-          onChange={(event) => setSubtitle(event.target.value)}
+          aria-labelledby="service-petname-label"
+          onChange={(event) => setPetname(event.target.value)}
           placeholder="例: おうちGit"
-          value={subtitle}
+          value={petname}
         />
-        <small>タイル内でサービス名の下に表示します。</small>
+        <small>未入力ならサブドメインを表示します。</small>
+      </label>
+
+      <label className="ouchi-field">
+        <span>説明</span>
+        <input
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="例: Gitサーバ"
+          value={description}
+        />
       </label>
 
       <label className="ouchi-field">
@@ -1016,7 +1001,8 @@ function ServiceForm({
                   );
                   return (
                     <option key={membership.id} value={membership.id}>
-                      {device?.name ?? membership.deviceId} / {membership.ip}
+                      {device?.name ?? membership.deviceId} /{" "}
+                      {membership.ip || "IPなし"}
                       {membership.label ? ` / ${membership.label}` : ""}
                     </option>
                   );
@@ -1055,6 +1041,18 @@ function ServiceForm({
             value={port}
           />
           <FieldError id="service-port-error">{errors.port}</FieldError>
+        </label>
+        <label className="ouchi-field">
+          <span>プロトコル</span>
+          <select
+            onChange={(event) =>
+              setProtocol(event.target.value as PortalServiceProtocol)
+            }
+            value={protocol}
+          >
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+          </select>
         </label>
       </div>
 
@@ -1109,8 +1107,8 @@ function ServiceForm({
         <div className="ouchi-url-preview">
           <span>サービス</span>
           <code>{servicePreview}</code>
-          <span>Gatus監視</span>
-          <code>{monitorPreview}</code>
+          <span>監視URL</span>
+          <code>{monitorPreview || "IP未登録のためリンクなし"}</code>
         </div>
       )}
 
@@ -1132,25 +1130,18 @@ function ServiceForm({
           </select>
         </label>
 
-        <label className="ouchi-field">
-          <span>初期状態</span>
-          <select
-            onChange={(event) => setStatus(event.target.value as PortalStatus)}
-            required
-            value={status}
-          >
-            {PORTAL_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {STATUS_LABELS[value]}
-              </option>
-            ))}
-          </select>
+        <label className="ouchi-checkbox-field">
+          <input
+            checked={enabled}
+            onChange={(event) => setEnabled(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            <strong>サービスを有効にする</strong>
+            <small>リダイレクトと監視設定の生成対象にします。</small>
+          </span>
         </label>
       </div>
-
-      <p className="ouchi-form-note">
-        状態は10秒ごとにランダム更新されます。ここで選んだ値は登録時の初期値です。
-      </p>
 
       <FormActions
         onClose={onClose}

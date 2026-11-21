@@ -8,196 +8,180 @@ const viewports = [
   { name: "mobile-320", width: 320, height: 1200 },
 ];
 
+async function openPortal(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  await expect(page.getByText("nanopi-r2s", { exact: true })).toBeVisible();
+}
+
 for (const viewport of viewports) {
   test(`portal layout at ${viewport.name}`, async ({ page }) => {
     await page.setViewportSize({
       width: viewport.width,
       height: viewport.height,
     });
-    await page.goto("/");
+    await openPortal(page);
+
     await expect(
       page.getByRole("heading", { level: 1, name: "ouchi.local" }),
     ).toBeVisible();
-    await expect(
-      page.locator(".demo-portal-subtitle"),
-    ).toHaveText(
-      /^(これがあなたのホームラボです|AIと創る、おうちネットワーク)$/,
+    await expect(page.locator(".demo-portal-subtitle")).toHaveText(
+      "AIと創る、おうちネットワーク",
     );
-    await expect(
-      page.getByText(
-        "ネットワークとデバイスを整理し、日々使うサービスへすぐ移動できるポータルです。",
-        { exact: true },
-      ),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("heading", {
-        level: 2,
-        name: "ouchi.local",
-      }),
-    ).toHaveCount(0);
+    await expect(page.getByText("おうちGit", { exact: true })).toBeVisible();
+    await expect(page.getByText("Notion", { exact: true })).toBeVisible();
+    await expect(page.getByText("pCloud", { exact: true })).toBeVisible();
+    await expect(page.locator(".ouchi-service-status")).toHaveCount(0);
+    await expect(page.locator(".ouchi-status-legend")).toHaveCount(0);
+    await expect(page.locator(".ouchi-status-dot")).toHaveCount(0);
+    await expect(page.locator(".ouchi-resource-meters")).toHaveCount(0);
+    await expect(page.locator(".ouchi-resource-meter")).toHaveCount(0);
+    await expect(page.getByText("未取得", { exact: true })).toHaveCount(0);
     await expect(page.locator(".ouchi-device-card--selected")).toHaveCount(0);
     await expect(page.locator(".ouchi-device-card--related")).toHaveCount(0);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(viewport.width);
+
     await page.screenshot({
-      path: `成果物/screenshots/portal-${viewport.name}.png`,
+      path: `成果物/screenshots/portal-v1-${viewport.name}.png`,
       fullPage: true,
       animations: "disabled",
     });
   });
 }
 
-test("portal subtitle alternates on each page load", async ({ page }) => {
-  await page.goto("/");
-  const subtitle = page.locator(".demo-portal-subtitle");
-  const first = await subtitle.textContent();
+test("API data survives localStorage removal", async ({ page }) => {
+  await openPortal(page);
+  await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  const second = await subtitle.textContent();
-
-  expect([
-    "これがあなたのホームラボです",
-    "AIと創る、おうちネットワーク",
-  ]).toContain(first);
-  expect([
-    "これがあなたのホームラボです",
-    "AIと創る、おうちネットワーク",
-  ]).toContain(second);
-  expect(second).not.toBe(first);
+  await expect(page.getByText("nanopi-r2s", { exact: true })).toBeVisible();
+  await expect(page.getByText("おうちGit", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => window.localStorage.length),
+  ).toBe(0);
 });
 
-test("user-defined portal title can be changed and persisted", async ({
-  page,
-}) => {
-  await page.goto("/");
+test("management edit is persisted through the REST API", async ({ page }) => {
+  await openPortal(page);
+  await page.getByRole("button", { name: "管理" }).click();
+  await page.getByRole("button", { name: "追加" }).click();
+  await page
+    .getByRole("textbox", { name: "ネットワーク名" })
+    .fill("E2Eネットワーク");
+  await page.getByRole("button", { name: "追加する" }).click();
+  await expect(page.getByText("E2Eネットワーク").first()).toBeVisible();
+  await page.getByRole("button", { name: "管理画面を閉じる" }).click();
+  await expect(
+    page.getByRole("article", { name: "E2Eネットワーク" }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.getByRole("article", { name: "E2Eネットワーク" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "管理" }).click();
+  await page
+    .getByRole("button", { name: "E2Eネットワークを削除" })
+    .click();
+  await page.getByRole("button", { name: "削除する" }).click();
+  await expect(page.getByText("E2Eネットワーク")).toHaveCount(0);
+});
+
+test("portal title is persisted through the REST API", async ({ page }) => {
+  await openPortal(page);
+  await page.getByRole("button", { name: "管理" }).click();
+  const titleInput = page.getByRole("textbox", {
+    name: "ポータルタイトル",
+  });
+  await titleInput.fill("E2Eポータル");
+  await page.getByRole("button", { name: "タイトルを保存" }).click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "E2Eポータル" }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "E2Eポータル" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "管理" }).click();
+  await page
+    .getByRole("textbox", { name: "ポータルタイトル" })
+    .fill("あなたのホームラボ");
+  await page.getByRole("button", { name: "タイトルを保存" }).click();
   await expect(
     page.getByRole("heading", {
       level: 2,
       name: "あなたのホームラボ",
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "管理" }).click();
-  await page
-    .getByRole("textbox", { name: "ポータルタイトル" })
-    .fill("我が家のネットワーク");
-  await page.getByRole("button", { name: "タイトルを保存" }).click();
-  await page.getByRole("button", { name: "管理画面を閉じる" }).click();
-  await expect(
-    page.getByRole("heading", {
-      level: 2,
-      name: "我が家のネットワーク",
-    }),
-  ).toBeVisible();
-
-  await page.reload();
-  await expect(
-    page.getByRole("heading", {
-      level: 2,
-      name: "我が家のネットワーク",
-    }),
-  ).toBeVisible();
 });
 
-test("management drawer renders without overlap", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "管理" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "ポータルを管理" }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "成果物/screenshots/portal-management.png",
-    fullPage: false,
-    animations: "disabled",
-  });
-});
-
-test("list view keeps the network hierarchy readable", async ({ page }) => {
-  await page.setViewportSize({ width: 1024, height: 900 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "リスト表示" }).click();
-  await expect(page.getByText("192.168.0.0/24")).toBeVisible();
-  const networks = page.locator(".ouchi-list-network");
-  await expect(networks.first()).toContainText("おうちLAN");
-  await expect(networks.last()).toContainText("インターネット");
-  await page.screenshot({
-    path: "成果物/screenshots/portal-list.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-});
-
-test("service form is usable from the management drawer", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "管理" }).click();
-  await page.getByRole("tab", { name: /サービス/ }).click();
-  await page.getByRole("button", { name: "追加" }).click();
-  await expect(
-    page.getByRole("dialog", { name: "サービスを追加" }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "成果物/screenshots/portal-service-form.png",
-    fullPage: false,
-    animations: "disabled",
-  });
-});
-
-test("device management exposes network addresses and SSH settings", async ({
+test("management drawer and service form expose v1 fields", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
+  await openPortal(page);
   await page.getByRole("button", { name: "管理" }).click();
-  await page.getByRole("tab", { name: /デバイス/ }).click();
   const drawer = page.getByRole("dialog", { name: "ポータルを管理" });
-  await expect(drawer.getByText("VM", { exact: true }).first()).toBeVisible();
-  await drawer
-    .getByRole("button", { name: "FortiGate 50Eを編集" })
-    .click();
+  await expect(drawer.getByText("SQLite台帳（API）へ保存")).toBeVisible();
+  await expect(drawer.getByText(/localStorage/)).toHaveCount(0);
+
+  await page.getByRole("tab", { name: /サービス/ }).click();
+  await page.getByRole("button", { name: "追加" }).click();
+  const dialog = page.getByRole("dialog", { name: "サービスを追加" });
   await expect(
-    page.getByRole("dialog", { name: "デバイスを編集" }),
+    dialog.getByRole("textbox", { name: "サブドメイン" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("combobox", { name: "所属ネットワーク 1" }),
+    dialog.getByRole("combobox", { name: "プロトコル" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "所属を追加" }),
-  ).toBeVisible();
+    dialog.getByText(/状態プロバイダ|稼働状態/),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("combobox", { name: "初期状態" }),
+  ).toHaveCount(0);
+
   await page.screenshot({
-    path: "成果物/screenshots/portal-device-vm-management.png",
+    path: "成果物/screenshots/portal-v1-service-form.png",
     fullPage: false,
     animations: "disabled",
   });
 });
 
-test("connects duplicate device displays with a same-device line", async ({
+test("device management keeps SSH metadata without meter controls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openPortal(page);
+  await page.getByRole("button", { name: "管理" }).click();
+  await page.getByRole("tab", { name: /デバイス/ }).click();
+  await page.getByRole("button", { name: "fortigateを編集" }).click();
+  const dialog = page.getByRole("dialog", { name: "デバイスを編集" });
+  await expect(
+    dialog.getByRole("combobox", { name: "所属ネットワーク 2" }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("textbox", { name: "IPアドレス 2" }),
+  ).toHaveValue("");
+  await expect(dialog.getByText("SSH接続情報")).toBeVisible();
+  await expect(dialog.getByText(/メモリ|ディスク|使用率/)).toHaveCount(0);
+  await page.screenshot({
+    path: "成果物/screenshots/portal-v1-device-form.png",
+    fullPage: false,
+    animations: "disabled",
+  });
+});
+
+test("same-device connector is drawn from seeded memberships", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1200 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "管理" }).click();
-  await page.getByRole("tab", { name: /デバイス/ }).click();
-  await page
-    .getByRole("button", { name: "FortiGate 50Eを編集" })
-    .click();
-  await page.getByRole("button", { name: "所属を追加" }).click();
-  await page
-    .getByRole("combobox", { name: "所属ネットワーク 2" })
-    .selectOption("internet");
-  await page
-    .getByRole("textbox", { name: "IPアドレス 2" })
-    .fill("203.0.113.10");
-  await page
-    .getByRole("textbox", { name: "表示ラベル 2" })
-    .fill("WAN");
-  await page
-    .getByRole("button", { name: "保存", exact: true })
-    .click();
-  await page.getByRole("button", { name: "管理画面を閉じる" }).click();
-
+  await openPortal(page);
   const deviceButtons = page.getByRole("button", {
-    name: "FortiGate 50Eを選択",
+    name: "fortigateを選択",
   });
   await expect(deviceButtons).toHaveCount(2);
   await deviceButtons.first().click();
@@ -208,66 +192,104 @@ test("connects duplicate device displays with a same-device line", async ({
     "z-index",
     "2",
   );
-  await expect(
-    page.locator(".ouchi-relation-connectors title"),
-  ).toHaveCount(0);
-  await expect(
-    page.locator(
-      ".ouchi-relation-connector--same-device .ouchi-relation-hit-area",
-    ),
-  ).not.toHaveCSS("cursor", "help");
-  await page
+  const sameDeviceLine = page
     .locator(
-      ".ouchi-relation-connector--same-device .ouchi-relation-hit-area",
+      ".ouchi-relation-connector--same-device .ouchi-relation-visible",
     )
-    .hover();
-  await expect(page.getByRole("tooltip")).toContainText(
-    "同一デバイス",
-  );
+    .first();
+  await expect(sameDeviceLine).toHaveCSS("stroke-width", "2px");
+  await expect(sameDeviceLine).toHaveCSS("opacity", "0.62");
   await page.screenshot({
-    path: "成果物/screenshots/portal-same-device-line.png",
+    path: "成果物/screenshots/portal-v1-same-device-line.png",
     fullPage: true,
     animations: "disabled",
   });
 });
 
-test("relation highlight is visible on the portal", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.goto("/");
+test("duplicate aura-gw displays draw adjacent-point connectors", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  await openPortal(page);
+  const serverSegment = page
+    .locator(".ouchi-network-card")
+    .filter({ has: page.getByText("サーバーセグメント", { exact: true }) });
+  const auraButtons = page.getByRole("button", { name: "aura-gwを選択" });
+  await expect(auraButtons).toHaveCount(3);
+  await serverSegment
+    .getByRole("button", { name: "aura-gwを選択" })
+    .click();
+
+  await expect(
+    page.locator(".ouchi-relation-connector--same-device"),
+  ).toHaveCount(2);
+  await expect(page.locator(".ouchi-relation-card-mask")).toHaveCount(0);
+  await expect(
+    page.locator(".ouchi-relation-connector--same-device circle"),
+  ).toHaveCount(4);
+  await expect(
+    page.locator(".ouchi-device-card--selected").first(),
+  ).toHaveCSS("border-top-width", "3px");
+
+  await expect(page.locator(".ouchi-relation-connectors")).toHaveCSS(
+    "z-index",
+    "2",
+  );
+
+  await page
+    .locator(".ouchi-relation-connector--same-device .ouchi-relation-hit-area")
+    .first()
+    .hover({ force: true });
+  await expect(page.getByRole("tooltip")).toHaveText("同一デバイス");
+  await expect(page.getByRole("tooltip")).toHaveCSS("z-index", "3");
+
+  await page.screenshot({
+    path: "成果物/screenshots/portal-v1-aura-gw-connectors-after.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+});
+
+test("relation labels and connectors use seeded tag fallbacks", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  await openPortal(page);
   await page
     .getByRole("button", { name: "openmediavaultを選択" })
     .click();
+  await expect(page.getByText("ホストOS", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("親ホスト", { exact: true }),
+    page.getByText("バックアップ先", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".ouchi-relation-connector")).toHaveCount(1);
-  const relationHitArea = page.locator(
-    ".ouchi-relation-connector--relation .ouchi-relation-hit-area",
+  await expect(page.locator(".ouchi-relation-connector--relation")).toHaveCount(
+    2,
   );
-  const hoverPoint = await relationHitArea.evaluate((path) => {
-    const svgPath = path as SVGPathElement;
-    const localPoint = svgPath.getPointAtLength(
-      svgPath.getTotalLength() / 2,
-    );
-    const svgPoint = svgPath.ownerSVGElement!.createSVGPoint();
-    svgPoint.x = localPoint.x;
-    svgPoint.y = localPoint.y;
-    const screenPoint = svgPoint.matrixTransform(
-      svgPath.getScreenCTM()!,
-    );
-    return { x: screenPoint.x, y: screenPoint.y };
-  });
-  await page.mouse.move(hoverPoint.x, hoverPoint.y);
-  await expect(page.getByRole("tooltip")).toContainText(
-    "親ホスト⇒VMホスト",
-  );
-  const tooltipBox = await page.getByRole("tooltip").boundingBox();
-  expect(tooltipBox).not.toBeNull();
-  expect(
-    Math.abs(tooltipBox!.y + tooltipBox!.height - hoverPoint.y),
-  ).toBeLessThanOrEqual(1);
+  const relationLine = page
+    .locator(".ouchi-relation-connector--relation .ouchi-relation-visible")
+    .first();
+  await expect(relationLine).toHaveCSS("stroke-width", "2.5px");
+  await expect(relationLine).toHaveCSS("opacity", "0.82");
   await page.screenshot({
-    path: "成果物/screenshots/portal-relations.png",
+    path: "成果物/screenshots/portal-v1-relations.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+});
+
+test("list view keeps category headings for populated categories only", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await openPortal(page);
+  await page.getByRole("button", { name: "リスト表示" }).click();
+  const networks = page.locator(".ouchi-list-network");
+  await expect(networks.first()).toContainText("おうちLAN");
+  await expect(networks.last()).toContainText("インターネット");
+  await expect(networks.first()).not.toContainText("登録なし");
+  await expect(networks.last()).toContainText("サービス");
+  await page.screenshot({
+    path: "成果物/screenshots/portal-v1-list.png",
     fullPage: true,
     animations: "disabled",
   });

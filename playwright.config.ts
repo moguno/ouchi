@@ -18,7 +18,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run preview -- --host 127.0.0.1 --port 4173",
+    command:
+      "OUCHI_DB_PATH=/tmp/ouchi-playwright-$$.sqlite PORT=4173 HOST=127.0.0.1 npm start",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: true,
     timeout: 30_000,

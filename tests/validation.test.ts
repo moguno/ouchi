@@ -8,24 +8,33 @@ import {
   isIpWithinCidr,
   validateDeviceInput,
   validateDeviceNetworkInput,
+  validateMembershipPayload,
   validateNetworkInput,
   validatePortalData,
   validateRelationInput,
+  validateRelationPayload,
   validateServiceInput,
+  validateServicePayload,
+  validateSettingsPayload,
+  validateSettingsTitle,
 } from "../src/portal/validation";
 
 const data: PortalDataV2 = {
   version: 2,
   networks: [
-    { id: "internet", name: "インターネット", accent: "violet" },
     {
-      id: "home",
+      id: "1",
+      name: "インターネット",
+      accent: "violet",
+    },
+    {
+      id: "2",
       name: "おうちLAN",
       cidr: "192.168.0.0/24",
       accent: "blue",
     },
     {
-      id: "oci",
+      id: "3",
       name: "OCI",
       cidr: "192.168.253.0/24",
       accent: "orange",
@@ -33,83 +42,116 @@ const data: PortalDataV2 = {
   ],
   devices: [
     {
-      id: "fortigate",
+      id: "1",
       name: "fortigate",
       category: "network",
       isVm: false,
+      meterEnabled: false,
     },
     {
-      id: "nanopi",
-      name: "nanopi",
+      id: "2",
+      name: "nanopi-r2s",
       category: "physical",
       isVm: false,
-      ssh: { user: "admin", port: 22 },
-      resources: { memoryPercent: 38, diskPercent: 57 },
+      meterEnabled: true,
+      ssh: { user: "monitor", port: 22 },
     },
     {
-      id: "omv-vm",
+      id: "3",
       name: "omv",
       category: "vm",
       isVm: true,
-      resources: { memoryPercent: 52, diskPercent: 81 },
+      meterEnabled: true,
+    },
+    {
+      id: "4",
+      name: "notion",
+      category: "service",
+      isVm: false,
+      meterEnabled: false,
     },
   ],
   deviceNetworks: [
     {
-      id: "fortigate-wan",
-      deviceId: "fortigate",
-      networkId: "internet",
-      ip: "203.0.113.254",
+      id: "10",
+      deviceId: "1",
+      networkId: "1",
+      ip: "",
       label: "WAN",
     },
     {
-      id: "fortigate-lan",
-      deviceId: "fortigate",
-      networkId: "home",
+      id: "11",
+      deviceId: "1",
+      networkId: "2",
       ip: "192.168.0.1",
       label: "LAN",
     },
     {
-      id: "nanopi-home",
-      deviceId: "nanopi",
-      networkId: "home",
+      id: "12",
+      deviceId: "2",
+      networkId: "2",
       ip: "192.168.0.19",
     },
     {
-      id: "omv-home",
-      deviceId: "omv-vm",
-      networkId: "home",
+      id: "13",
+      deviceId: "3",
+      networkId: "2",
       ip: "192.168.0.21",
+    },
+    {
+      id: "14",
+      deviceId: "4",
+      networkId: "1",
+      ip: "",
     },
   ],
   relations: [
     {
-      id: "omv-to-fortigate",
-      fromDeviceId: "omv-vm",
-      toDeviceId: "fortigate",
-      fromLabel: "VM",
-      toLabel: "親ホスト",
-      color: "#d5a22b",
+      id: "20",
+      fromDeviceId: "3",
+      toDeviceId: "2",
+      tag: "バックアップ先",
+      color: "blue",
     },
   ],
   services: [
     {
-      id: "gitea",
-      deviceNetworkId: "nanopi-home",
-      name: "gitea",
-      subtitle: "おうちGit",
+      id: "30",
+      deviceNetworkId: "12",
+      subdomain: "gitea",
+      petname: "おうちGit",
+      description: "Gitサーバ",
       scheme: "http",
       port: 3000,
-      topPath: "/",
-      monitorPath: "/explore/repos",
+      protocol: "tcp",
+      topPath: "",
+      monitorPath: "/api/v1/version",
       iconKey: "gitea",
-      status: "up",
+      enabled: true,
+    },
+    {
+      id: "31",
+      deviceNetworkId: "14",
+      subdomain: "notion",
+      petname: "Notion",
+      scheme: "https",
+      port: 443,
+      protocol: "tcp",
+      topPath: "",
+      monitorPath: "/",
+      serviceUrl: "https://www.notion.so/",
+      iconKey: "globe",
+      enabled: true,
     },
   ],
 };
 
-describe("network and address validation", () => {
-  it("validates IPv4 and CIDR values", () => {
+describe("v0.4 data and address validation", () => {
+  it("accepts nullable membership IPs, free tags, and category service", () => {
+    expect(validatePortalData(data)).toEqual({ value: data, issues: [] });
+  });
+
+  it("validates IPv4 and CIDR values per membership", () => {
     expect(isIpv4("192.168.0.19")).toBe(true);
     expect(isIpv4("192.168.0.999")).toBe(false);
     expect(isCidr("192.168.0.0/24")).toBe(true);
@@ -118,213 +160,193 @@ describe("network and address validation", () => {
     expect(isIpWithinCidr("192.168.1.19", "192.168.0.0/24")).toBe(false);
   });
 
-  it("accepts the v2 model with multi-network devices and relations", () => {
-    const result = validatePortalData(data);
-    expect(result.value).toEqual(data);
-    expect(result.issues).toEqual([]);
-  });
-
-  it("rejects an address outside its network CIDR", () => {
-    const invalid: PortalDataV2 = {
-      ...data,
-      deviceNetworks: data.deviceNetworks.map((membership) =>
-        membership.id === "nanopi-home"
-          ? { ...membership, ip: "192.168.1.19" }
-          : membership,
-      ),
-    };
-    expect(validatePortalData(invalid).issues).toContainEqual({
-      path: "deviceNetworks.nanopi-home.ip",
-      message: "IP 192.168.1.19 は 192.168.0.0/24 の範囲外です",
-    });
-  });
-
-  it("rejects duplicate and missing references", () => {
-    const invalid = {
-      ...data,
-      networks: [data.networks[0], data.networks[0]],
-      deviceNetworks: [
-        { ...data.deviceNetworks[0], networkId: "missing" },
-      ],
-      relations: [
-        { ...data.relations[0], toDeviceId: "missing-device" },
-      ],
-      services: [
-        { ...data.services[0], deviceNetworkId: "missing-network" },
-      ],
-    };
-    const result = validatePortalData(invalid);
-    expect(result.issues.some((issue) => issue.message.includes("重複"))).toBe(
-      true,
-    );
+  it("allows an empty IP but rejects one outside the network CIDR", () => {
     expect(
-      result.issues.some((issue) => issue.message.includes("存在しません")),
-    ).toBe(true);
-  });
-});
-
-describe("form validation", () => {
-  it("allows a CIDR-less Internet network", () => {
-    expect(
-      validateNetworkInput(
-        { name: "インターネット", cidr: undefined, accent: "violet" },
-        data,
-      ),
+      validateDeviceNetworkInput({ networkId: "1", ip: "" }, data),
     ).toEqual([]);
-  });
-
-  it("allows a device address in a network without CIDR", () => {
     expect(
       validateDeviceNetworkInput(
-        {
-          networkId: "internet",
-          ip: "198.51.100.10",
-        },
-        data,
-      ),
-    ).toEqual([]);
-  });
-
-  it("rejects duplicate device IP addresses", () => {
-    expect(
-      validateDeviceNetworkInput(
-        {
-          networkId: "home",
-          ip: "192.168.0.19",
-        },
+        { networkId: "2", ip: "192.168.1.20" },
         data,
       ),
     ).toContainEqual({
       path: "ip",
-      message: "同じIPが登録されています",
+      message: "IPは 192.168.0.0/24 の範囲内で入力してください",
     });
   });
 
-  it("validates device resources and SSH metadata", () => {
+  it("rejects duplicate non-null IP addresses", () => {
+    const invalid = structuredClone(data);
+    invalid.deviceNetworks[2].ip = "192.168.0.21";
+    const result = validatePortalData(invalid);
     expect(
-      validateDeviceInput(
-        {
-          name: "web",
-          category: "vm",
-          isVm: true,
-          ssh: { user: "monitor", port: 22 },
-          resources: { memoryPercent: 40, diskPercent: 60 },
-        },
-        undefined,
-        data,
-      ),
+      result.issues.some((issue) => issue.message.includes("重複")),
+    ).toBe(true);
+  });
+});
+
+describe("shared REST validation", () => {
+  it("validates portal titles as non-empty single-line text up to 100 characters", () => {
+    expect(validateSettingsTitle("我が家のポータル")).toEqual([]);
+    expect(validateSettingsTitle("a".repeat(100))).toEqual([]);
+    expect(validateSettingsTitle("   ")).toContainEqual({
+      path: "title",
+      message: "ポータルタイトルを入力してください",
+    });
+    expect(validateSettingsTitle("1行目\n2行目")).toContainEqual({
+      path: "title",
+      message: "ポータルタイトルに改行は使用できません",
+    });
+    expect(validateSettingsPayload({ title: "a".repeat(101) })).toContainEqual({
+      path: "title",
+      message: "ポータルタイトルは100文字以内で入力してください",
+    });
+  });
+
+  it("accepts nullable API membership IPs", () => {
+    expect(
+      validateMembershipPayload({
+        deviceId: 4,
+        networkId: 1,
+        ip: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("treats relation colors and tags as free strings", () => {
+    expect(
+      validateRelationPayload({
+        fromDeviceId: 3,
+        toDeviceId: 2,
+        tag: "夜間バックアップ",
+        color: "blue",
+      }),
     ).toEqual([]);
     expect(
+      validateRelationPayload({
+        fromDeviceId: 3,
+        toDeviceId: 2,
+        tag: "tag",
+        color: "",
+      }),
+    ).toContainEqual({ path: "color", message: "関係色は必須です" });
+  });
+
+  it("does not accept service status as an input field", () => {
+    const serviceInput = {
+      deviceNetworkId: 12,
+      subdomain: "health",
+      port: 8080,
+      protocol: "tcp",
+      scheme: "http",
+      topPath: "",
+      monitorPath: "/health",
+      enabled: true,
+    };
+    expect(validateServicePayload(serviceInput)).toEqual([]);
+    expect(
+      validateServicePayload({ ...serviceInput, serviceUrl: "ftp://bad" }),
+    ).toContainEqual({
+      path: "serviceUrl",
+      message: "サービスURLはHTTPまたはHTTPSで入力してください",
+    });
+  });
+
+  it("keeps device category and VM flag consistent", () => {
+    expect(
       validateDeviceInput(
         {
-          name: "broken",
-          category: "physical",
+          name: "bad",
+          category: "service",
           isVm: false,
-          ssh: { user: "", port: 70_000 },
-          resources: { memoryPercent: 120, diskPercent: -1 },
+          meterEnabled: true,
         },
         undefined,
         data,
-      ).length,
-    ).toBeGreaterThan(0);
+      ),
+    ).toContainEqual({
+      path: "meterEnabled",
+      message: "サービスカテゴリーではSSHメーターを有効にできません",
+    });
   });
 
-  it("allows one device to use addresses in different networks", () => {
+  it("validates free-tag relations using the label fallback", () => {
     expect(
-      validateDeviceNetworkInput(
+      validateRelationInput(
         {
-          networkId: "oci",
-          ip: "192.168.253.20",
+          fromDeviceId: "3",
+          toDeviceId: "2",
+          tag: "バックアップ",
+          color: "blue",
         },
         data,
-        "fortigate-wan",
       ),
     ).toEqual([]);
   });
 
-  it("validates a free-tag relation", () => {
-    expect(
-      validateRelationInput(
-        {
-          fromDeviceId: "omv-vm",
-          toDeviceId: "nanopi",
-          fromLabel: "バックアップ元",
-          toLabel: "バックアップ先",
-          color: "#3988c7",
-        },
-        data,
-      ),
-    ).toEqual([]);
-    expect(
-      validateRelationInput(
-        {
-          fromDeviceId: "omv-vm",
-          toDeviceId: "omv-vm",
-          fromLabel: "",
-          toLabel: "",
-          color: "yellow",
-        },
-        data,
-      ).length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("accepts a service assigned to a specific device IP", () => {
+  it("validates the v0.4 service form", () => {
     expect(
       validateServiceInput(
         {
-          name: "omv-web",
-          deviceNetworkId: "omv-home",
+          subdomain: "health",
+          deviceNetworkId: "12",
           scheme: "http",
-          port: 80,
+          port: 8080,
+          protocol: "tcp",
           topPath: "/",
           monitorPath: "/health",
-          iconKey: "omv",
-          status: "up",
+          iconKey: "monitor",
+          enabled: true,
         },
         data,
       ),
     ).toEqual([]);
   });
 
-  it("generates redirect and Gatus monitor URLs from the selected IP", () => {
+  it("accepts CIDR-less networks", () => {
+    expect(
+      validateNetworkInput(
+        { name: "ゲスト", accent: "green" },
+        data,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("URL assembly", () => {
+  it("always includes the port and uses monitor_path fallback", () => {
     const service = data.services[0];
     const membership = data.deviceNetworks[2];
     expect(buildServiceUrl(service, membership)).toBe(
       "http://192.168.0.19:3000/",
     );
     expect(buildMonitorUrl(service, membership)).toBe(
-      "http://192.168.0.19:3000/explore/repos",
+      "http://192.168.0.19:3000/api/v1/version",
     );
   });
 
-  it("accepts only HTTP and HTTPS explicit service URLs", () => {
-    const base = {
-      name: "service",
-      deviceNetworkId: "nanopi-home",
-      scheme: "http" as const,
-      port: 80,
-      topPath: "/",
-      monitorPath: "/",
-      iconKey: "monitor" as const,
-      status: "up" as const,
-    };
+  it("returns null when an IP and explicit URL are both absent", () => {
+    expect(
+      buildServiceUrl(
+        {
+          scheme: "http",
+          port: 80,
+          topPath: "/",
+        },
+        { ip: "" },
+      ),
+    ).toBeNull();
+  });
 
+  it("uses an explicit URL for redirect and monitor URLs", () => {
+    const service = data.services[1];
     expect(
-      validateServiceInput(
-        { ...base, serviceUrl: "https://example.com" },
-        data,
-      ),
-    ).toEqual([]);
+      buildServiceUrl(service, data.deviceNetworks[4]),
+    ).toBe("https://www.notion.so/");
     expect(
-      validateServiceInput(
-        { ...base, serviceUrl: "javascript:alert(1)" },
-        data,
-      ),
-    ).toContainEqual({
-      path: "serviceUrl",
-      message: "サービスURLはHTTPまたはHTTPSで入力してください",
-    });
-    expect(isHttpUrl("ftp://example.com")).toBe(false);
+      buildMonitorUrl(service, data.deviceNetworks[4]),
+    ).toBe("https://www.notion.so/");
+    expect(isHttpUrl("https://example.com")).toBe(true);
+    expect(isHttpUrl("javascript:alert(1)")).toBe(false);
   });
 });

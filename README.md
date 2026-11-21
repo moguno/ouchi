@@ -1,218 +1,244 @@
-# ouchi.local Portal
+# ouchi.local Portal v1
 
-ネットワーク、デバイス、所属IP、サービス、方向別ラベル付き関係を表示する、
-埋め込み可能なReactポータルです。
+Vite＋React の SPA と、TypeScript＋Hono の REST API、SQLite 台帳 v0.4 で
+構成した ouchi.local ポータルの v1 プロトタイプです。ブラウザ内データ保存は
+廃止し、SQLite を唯一の正としています。v1 は LAN 内利用を前提とした
+認証なしの構成です。
 
-2026-11-20の設計更新と `portal-screen-v7.png` に合わせて、データモデルを
-`PortalDataV2` へ更新しました。ネットワーク所属IPとサービス配置を分離しつつ、
-同一デバイスの複数ネットワーク表示、メモリ／ディスクメーター、
-Explorer風サービスタイルを備えています。
+## できること（v1）
 
-## 現在のテストデータ
+- ホームラボのネットワーク／デバイス／サービスを台帳に登録し、ポータルに一覧表示
+- サービスのタイルからワンクリックで各サービスの画面へ移動
+- デバイス同士の関係を自由なタグと色で表現。デバイスを選ぶと関係先が色とタグで分かる
+- 管理画面からネットワーク／デバイス／サービス／関係を追加・編集・削除
+- 外部 SaaS（Notion など）もサービスとして登録可能
+- ポータルのタイトルを管理画面から変更可能
+- 設定一式を YAML でエクスポート／インポート（バックアップとバージョン移行用）
+- ログインなし（LAN 内での利用が前提）
 
-2026-11-20時点のGatus監視登録と、RAGの
-`サーバー保守/IPアドレス命名ルール.md`（commit `4be1dd9`）を基にしています。
+## v1 に含まれないもの
 
-- `インターネット`: Gatus／RAGからWANアドレスを取得できないため、所属ノードなし
-- `おうちLAN` `192.168.0.0/24`: 9デバイス、9所属IP
-- `OCIネットワーク` `192.168.253.0/24`: 2デバイス、2所属IP
+稼働監視（状態表示）、メーター収集、MCP、SSO、Avahi 広告は v1 に含まれない。後続のブロックで追加予定。
 
-おうちLANの登録デバイスは次のとおりです。
+## 構成
 
-| IP | デバイス | 種別 |
-| --- | --- | --- |
-| `192.168.0.1` | FortiGate 50E | ネットワーク機器 |
-| `192.168.0.2` | WAC505 | 無線AP |
-| `192.168.0.6` | WAC540 | 無線AP |
-| `192.168.0.8` | GS116Ev2 | L2スイッチ |
-| `192.168.0.9` | GS308EP | PoEスイッチ |
-| `192.168.0.11` | ACEMAGIC | Proxmoxホスト |
-| `192.168.0.12` | Beelink | 物理サーバー |
-| `192.168.0.19` | NanoPi R2S | Gitea／Gatus |
-| `192.168.0.21` | openmediavault | NAS |
+- `src/portal/`: 表示・編集 UI、API クライアント、共有型・検証
+- `server/`: Hono API、SQLite リポジトリ、SPA 静的配信
+- `contract-v1/`: 台帳スキーマ v0.4、シード、検証スクリプト
+- `data/ouchi.sqlite`: 初回起動時に生成される台帳（Git 管理外）
+- `dist/`: 埋め込み用 React ライブラリ
+- `demo-dist/`: SPA の本番ビルド
+- `server-dist/`: API サーバーの本番ビルド
 
-OCIネットワークには`OCI-Kuro`（`192.168.253.1`）と
-`OCI-Shiro`（`192.168.253.3`）を登録しています。
-
-サービスタイルには、FortiGate、WAC505、WAC540、GS116Ev2、GS308EPの管理画面、
-Proxmox、Gitea、Gatus、openmediavault、OCI上のGatusを登録しています。
-状態は取得時点のGatus成功状態に合わせています。
+API は `node:sqlite` を使うためネイティブ npm モジュールが不要です。
+Node.js 22.22 以降を想定しています。
 
 ## 起動
 
+開発時は API と Vite を別プロセスで起動します。
+
 ```bash
 npm install
+npm run dev:api
 npm run dev
 ```
 
-## ビルドとテスト
+Vite は `/api` を `http://127.0.0.1:3000` へプロキシします。
+
+本番相当の単一プロセスでは、SPA と API を同じ Hono サーバーから配信します。
 
 ```bash
-npm run typecheck
-npm test
 npm run build
-npm run screenshots
+npm start
 ```
 
-- `dist/`: Reactライブラリと型定義
-- `demo-dist/`: 確認用デモの本番ビルド
-- `成果物/`: デモ、npmパッケージ、確認用スクリーンショット
+既定値は `http://0.0.0.0:3000`、台帳は `data/ouchi.sqlite` です。
+必要に応じて次の環境変数を指定できます。
 
-## 埋め込み
+| 変数 | 既定値 |
+| --- | --- |
+| `PORT` | `3000` |
+| `HOST` | `0.0.0.0` |
+| `OUCHI_DB_PATH` | `data/ouchi.sqlite` |
+
+初回起動時は `contract-v1/schema.sql` と `contract-v1/seed.sql` から
+16デバイス・17所属・9サービスの実ラボ台帳を作成します。既存 DB がある場合は
+シードを上書きしません。
+
+SQLite は起動時に `foreign_keys=ON`、`busy_timeout=5000`、WAL モード、
+`synchronous=NORMAL` を設定します。バックアップは稼働中に `sqlite3 .backup`
+を使ってください。
+
+## Docker
+
+```bash
+docker compose up --build -d
+```
+
+build / runtime とも `node:22-alpine` を使います。`ouchi-data` ボリュームが
+`/app/data` にマウントされます。API とビルド済み SPA は同一コンテナで動作し、
+プロセスは `node` ユーザーで実行されます。Avahi はホスト側の既存構成へ
+任せます。
+
+## REST API
+
+ベースパスは `/api` です。ID は SQLite の整数 ID をそのまま返します。
+入力検証に失敗した場合は HTTP 400 と
+`{ "issues": [{ "path": "...", "message": "..." }] }` を返します。
+
+| メソッド・パス | 役割 |
+| --- | --- |
+| `GET /api/portal` | SPA 初期表示用スナップショット |
+| `GET /api/networks` | ネットワーク一覧 |
+| `POST /api/networks` | ネットワーク作成 |
+| `PUT /api/networks/:id` | ネットワーク更新 |
+| `DELETE /api/networks/:id` | ネットワーク削除（所属が残る場合は409） |
+| `GET /api/devices` | デバイス一覧（所属を内包） |
+| `POST /api/devices` | デバイス作成 |
+| `PUT /api/devices/:id` | デバイス更新 |
+| `DELETE /api/devices/:id` | デバイス削除（サービス・関係が残る場合は409） |
+| `GET /api/memberships` | 所属一覧 |
+| `POST /api/memberships` | 所属作成（IPはNULL可） |
+| `PUT /api/memberships/:id` | 所属更新 |
+| `DELETE /api/memberships/:id` | 所属削除（サービスが残る場合は409） |
+| `GET /api/services` | サービス一覧 |
+| `POST /api/services` | サービス作成 |
+| `PUT /api/services/:id` | サービス更新 |
+| `DELETE /api/services/:id` | サービス削除 |
+| `GET /api/relations` | 関係一覧 |
+| `POST /api/relations` | 関係作成 |
+| `DELETE /api/relations/:id` | 関係削除 |
+| `GET /api/devices/:id/relations?depth=1` | 双方向の関係トラバース |
+| `GET /api/devices/:id/meters` | メモリ／ディスク使用率 |
+| `GET /api/settings` | 全体設定 |
+| `PUT /api/settings` | ポータルタイトルを保存 |
+| `GET /api/export` | 台帳一式をYAMLでダウンロード |
+| `POST /api/import` | YAMLを全件検証し、トランザクションで全置き換え |
+| `GET /api/health` | ヘルスチェック |
+
+`GET /api/portal` は次の表示用データを返します。
+
+- ネットワーク: `id, name, cidr, accent, note`
+- デバイス: `id, hostname, category, isVm, sshUser, sshPort, meterEnabled,
+  memberships`
+- 所属: `id, deviceId, networkId, ip, label`
+- サービス: DB列に組み立て済みの `url` / `monitorUrl` を追加
+- 関係: `id, fromDeviceId, toDeviceId, tag, fromLabel, toLabel, color`
+- 設定: `domain, title`
+
+`title` はポータル左上に表示する名称です。空文字・改行・100文字超は
+HTTP 400 で拒否し、DB を変更しません。
+
+サービス状態は v1 では状態プロバイダを接続していないため、レスポンスにも
+`status` を付けません。将来のプロバイダ接続に備えて型と API 境界は残していますが、
+v1 の GUI には状態ドット・状態ラベル・凡例を表示しません。
+
+### YAML エクスポート／インポート
+
+`GET /api/export` は `format: ouchi-ledger/1` と `exportedAt` を持つ YAML を
+返します。DB の内部 ID は含めず、所属はデバイスのホスト名とネットワーク名、
+サービスは同じ自然キー、関係は from/to のホスト名で参照します。SSH 鍵は
+`sshKeys` と `deviceKeys` に分け、公開鍵だけを出力します。
+
+`POST /api/import` は YAML 全体の形式、既存の入力検証、自然キーの一意性、
+参照、CIDR 内の IP を先に検証します。1件でも不正なら HTTP 400 と
+`issues` を返し、DB を変更しません。検証後は `BEGIN IMMEDIATE` で台帳を
+全置き換えし、途中で失敗した場合はロールバックします。管理画面では
+エクスポートのダウンロードと、ファイル内容を確認してから実行するインポートを
+提供します。YAML の `settings` には `domain` と `title` を含め、往復後も
+同じ値を復元します。
+
+### URL 組み立て
+
+`service_url` がある場合はリダイレクト先と監視URLの両方で優先します。
+それ以外は所属 IP とポートから組み立て、80/443 でもポートを省略しません。
+
+- `url`: `{scheme}://{ip}:{port}{top_path}`。パス空は `/`
+- `monitorUrl`: 監視パス、空ならトップパス、両方空なら `/`
+- 所属 IP が NULL で `service_url` も空なら、どちらも `null`
+
+## SPA
+
+通常のデモ起動では `GET /api/portal` を読み、編集操作は各 REST API を呼んだ
+あと台帳を再取得します。localStorage はデータ保存にも移行期キャッシュにも
+使いません。API 障害時は古い表示を出さず、接続エラーを表示します。
+ポータルタイトルも `settings.title` を表示し、管理画面から
+`PUT /api/settings` で保存します。
+
+カテゴリーは `network / physical / vm / service` です。ポータルでは所属が
+1件以上あるカテゴリー見出しだけを表示し、管理画面では追加導線として全カテゴリーを
+選べます。ネットワーク自体が0件のときだけ「デバイス未登録」のプレースホルダを
+表示します。
+
+関係ラベルは、注目デバイスが from 側なら
+`fromLabel || tag`、to 側なら `toLabel || tag` を使います。
+色とタグは自由文字列です。
+
+### GitHub Pages 向け YAML デモ
+
+`npm run build:pages` は `--mode pages` で SPA をビルドし、静的ファイル一式を
+`成果物/demo-pages/` へ出力します。このビルドは API ではなく、同梱の
+`ouchi-ledger.sample.yaml` を相対 URL で読み込みます。`index.html`、JavaScript、
+CSS、YAML はすべて相対参照なので、GitHub Pages の `/<リポジトリ名>/` 配下へ
+`成果物/demo-pages/` の中身をそのまま配置できます。
+
+デモのデータは `format: ouchi-ledger/1` の架空サンプルです。インターネット、
+自宅 LAN、サーバーセグメントの3ネットワークへ TEST-NET-1／2／3
+（`192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`）を割り当て、
+ゲートウェイは3ネットワークすべてへ所属します。物理ホストと3台のVMの関係は
+`relations` で表し、インターネット上にはデモ自身を指すサービスを登録しています。
+`https://moguno.github.io/ouchi/` は公開時に差し替えるプレースホルダです。
+通常の `npm run build:demo` は引き続き REST API モードです。Pages デモは
+表示専用で、管理・編集 UI は表示されません。GitHub への push と Pages の
+有効化はリポジトリ利用者が行います。
+
+### メーターと状態表示
+
+`GET /api/devices/:id/meters` と台帳の SSH 関連列は将来の収集ブロック向けに
+残しています。SSH コレクターは v1 では未接続で、API は
+`memoryPercent: null, diskPercent: null` を返します。
+
+v1 の GUI はメーターのパーセンテージ・「未取得」・メーター設定入力を表示せず、
+サービスの状態ドット・状態ラベル・凡例も表示しません。ダミー値とランダム更新は
+ありません。秘密鍵は DB やソースへ置かず、実装時に SOPS などから供給する想定です。
+
+## 埋め込み利用
+
+`data` を渡すと、そのスナップショットを読み取り専用の初期データとして表示
+できます。API 駆動の通常デモでは `data` を省略してください。
 
 ```tsx
 import { OuchiPortal, type PortalDataV2 } from "ouchi-local-portal";
 import "ouchi-local-portal/styles.css";
 
 export function Dashboard({ data }: { data: PortalDataV2 }) {
-  return (
-    <OuchiPortal
-      data={data}
-      storageKey="example.portal.v11"
-      onDataChange={(next) => console.log(next)}
-    />
-  );
+  return <OuchiPortal data={data} />;
 }
 ```
 
-`data` を省略すると `src/data/portal-data.json` のサンプルを利用します。
-localStorageの保存形式も `PortalDataV2` です。
+## テストとビルド
 
-## データモデル
-
-```json
-{
-  "version": 2,
-  "networks": [
-    {
-      "id": "home-lan",
-      "name": "おうちLAN",
-      "cidr": "192.168.0.0/24",
-      "accent": "blue"
-    }
-  ],
-  "devices": [
-    {
-      "id": "fortigate",
-      "name": "fortigate",
-      "category": "network",
-      "isVm": false
-    },
-    {
-      "id": "nanopi",
-      "name": "nanopi-r2s",
-      "category": "physical",
-      "isVm": false,
-      "ssh": {
-        "user": "portal-monitor",
-        "port": 22
-      },
-      "resources": {
-        "memoryPercent": 38,
-        "diskPercent": 57
-      }
-    }
-  ],
-  "deviceNetworks": [
-    {
-      "id": "fortigate-lan",
-      "deviceId": "fortigate",
-      "networkId": "home-lan",
-      "ip": "192.168.0.1",
-      "label": "LAN"
-    },
-    {
-      "id": "nanopi-home",
-      "deviceId": "nanopi",
-      "networkId": "home-lan",
-      "ip": "192.168.0.19"
-    }
-  ],
-  "relations": [
-    {
-      "id": "omv-host-of-acemagic",
-      "fromDeviceId": "acemagic",
-      "toDeviceId": "omv-vm",
-      "fromLabel": "親ホスト",
-      "toLabel": "VMホスト",
-      "color": "#d5a22b"
-    }
-  ],
-  "services": [
-    {
-      "id": "gitea",
-      "deviceNetworkId": "nanopi-home",
-      "name": "gitea",
-      "subtitle": "おうちGit",
-      "scheme": "http",
-      "port": 3000,
-      "topPath": "/",
-      "monitorPath": "/explore/repos",
-      "iconKey": "gitea",
-      "status": "up"
-    }
-  ]
-}
+```bash
+npm run typecheck
+npm test
+npm run build
+python3 contract-v1/verify.py
+npm run screenshots
 ```
 
-### デバイスカテゴリー
+Vitest は共有検証、SPA の API 読み込み／管理 UI、Hono API の in-process CRUD、
+関係トラバース、URL 組み立て、YAML のラウンドトリップと不正時の DB 無変更を
+検証します。Playwright はビルド済み SPA と Hono サーバーを起動して表示・GUI編集・
+API永続化を確認します。
 
-`devices[].category` は `network`、`physical`、`vm` のいずれかです。
-ポータルではネットワーク配下を「ネットワーク機器」「物理マシン」「VM」の
-3階層に分けて表示します。既存の `isVm` は互換性のため保持し、
-`category: "vm"` と一致させます。
+## v1 の未決事項
 
-### ネットワーク所属
+- ネットワーク削除は「紐づく所属が残る場合は削除不可」として実装した。
+- 既存 DB の `settings.title` 追加は、エクスポート→インポートによる移行が前提。
+  自動 `ALTER TABLE` は実装しない。
+- メーター収集用 SSH 秘密鍵の供給方法と収集間隔は未決。API 形状のみ実装。
+- Gatus 状態プロバイダの接続方法は v1 の任意要件。今回は未接続。
 
-`devices[].networkId` は廃止しました。デバイスとネットワークの多対多所属は
-`deviceNetworks` で表し、所属レコードがネットワークとアクセス用IPv4アドレスを
-持ちます。
+## ライセンス
 
-同じ `deviceId` が複数の `deviceNetworks` を持つと、各ネットワーク配下へ
-同じデバイスが表示されます。デバイスIDによる選択ハイライトは全表示へ
-同期し、同一デバイス同士は青い接続線で結びます。サービスは
-`deviceNetworkId` が一致する表示にだけ出ます。
-
-### 汎用関係
-
-固定の親子種別はありません。関係は `relations` の次の5項目で表現します。
-
-- `fromDeviceId`: 関係元デバイス
-- `toDeviceId`: 関係先デバイス
-- `fromLabel`: 関係元側の自由入力ラベル
-- `toLabel`: 関係先側の自由入力ラベル
-- `color`: `#RRGGBB` の関係色
-
-関係ハイライトは双方向です。デバイスを選択すると、関係先の全ネットワーク表示を
-関係色で強調します。`from`側を選択した場合は`toLabel`、`to`側を選択した場合は
-`fromLabel`を相手側に表示し、関係デバイス同士をSVGの関係色付き曲線で結びます。
-無関係のデバイスは通常表示を維持します。
-同一デバイス判定と関係判定は別概念です。
-
-### サービスURL
-
-サービスはデバイス本体ではなく、アクセス先の所属IPへ配置します。
-`serviceUrl` が空の場合、次の値から表示URLとGatus監視URLを生成します。
-
-- サービスURL: `scheme://IP[:port]/topPath`
-- 監視URL: `scheme://IP[:port]/monitorPath`
-
-80番HTTPと443番HTTPSではポートを省略します。`serviceUrl` を指定した場合は
-リダイレクト先URLとして優先します。
-
-### リソースメーター
-
-`resources.memoryPercent` と `resources.diskPercent` をメモリ／ディスクメーターとして
-表示します。CPUは表示しません。SSH計測のユーザーとポートは `ssh` に保持し、
-秘密鍵はフロントエンドデータへ含めません。SSH対象外の機器では
-`ssh` と `resources` を省略します。
-
-## v1からの変更
-
-- データ形式を `version: 1` から `version: 2` へ変更
-- `PortalDataV1` から `PortalDataV2` へ変更
-- `devices[].networkId`、`devices[].ip` を廃止
-- `deviceNetworks`、`relations` を追加
-- `services[].deviceId`、`services[].url` を廃止
-- `services[].deviceNetworkId`、`scheme`、`port`、`topPath`、`monitorPath`、
-  `serviceUrl` を追加
+本プロジェクトは [Apache License 2.0](LICENSE) の下で提供されます。
