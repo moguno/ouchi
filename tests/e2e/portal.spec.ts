@@ -208,13 +208,21 @@ test("connects duplicate device displays with a same-device line", async ({
     "z-index",
     "2",
   );
+  await expect(
+    page.locator(".ouchi-relation-connectors title"),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(
+      ".ouchi-relation-connector--same-device .ouchi-relation-hit-area",
+    ),
+  ).not.toHaveCSS("cursor", "help");
   await page
     .locator(
       ".ouchi-relation-connector--same-device .ouchi-relation-hit-area",
     )
     .hover();
   await expect(page.getByRole("tooltip")).toContainText(
-    "同一デバイス: FortiGate 50E",
+    "同一デバイス",
   );
   await page.screenshot({
     path: "成果物/screenshots/portal-same-device-line.png",
@@ -251,8 +259,13 @@ test("relation highlight is visible on the portal", async ({ page }) => {
   });
   await page.mouse.move(hoverPoint.x, hoverPoint.y);
   await expect(page.getByRole("tooltip")).toContainText(
-    "openmediavault [VM] ↔ [親ホスト] ACEMAGIC",
+    "親ホスト⇒VMホスト",
   );
+  const tooltipBox = await page.getByRole("tooltip").boundingBox();
+  expect(tooltipBox).not.toBeNull();
+  expect(
+    Math.abs(tooltipBox!.y + tooltipBox!.height - hoverPoint.y),
+  ).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: "成果物/screenshots/portal-relations.png",
     fullPage: true,

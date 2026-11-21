@@ -771,7 +771,7 @@ function ListBoard({
 
 export function OuchiPortal({
   data,
-  storageKey = "ouchi.local.portal.v11",
+  storageKey = "ouchi.local.portal.v12",
   showTitle = true,
   portalTitle,
   onPortalTitleChange,
@@ -870,9 +870,6 @@ export function OuchiPortal({
 
       const connectors: RelationConnector[] = [];
       const selectedCards = cardsFor(selectedDeviceId);
-      const selectedDeviceName =
-        portalData.devices.find((device) => device.id === selectedDeviceId)
-          ?.name ?? selectedDeviceId;
       selectedCards.forEach((selectedCard, selectedIndex) => {
         selectedCards.slice(selectedIndex + 1).forEach((sameDeviceCard) => {
           const relatedIndex = selectedCards.indexOf(sameDeviceCard);
@@ -884,7 +881,7 @@ export function OuchiPortal({
             id: `same-device-${selectedIndex}-${relatedIndex}`,
             kind: "same-device",
             color: "#6259d8",
-            tooltip: `同一デバイス: ${selectedDeviceName}`,
+            tooltip: "同一デバイス",
             ...anchors,
           });
         });
@@ -901,14 +898,6 @@ export function OuchiPortal({
           relation.fromDeviceId === selectedDeviceId
             ? relation.toDeviceId
             : relation.fromDeviceId;
-        const fromDeviceName =
-          portalData.devices.find(
-            (device) => device.id === relation.fromDeviceId,
-          )?.name ?? relation.fromDeviceId;
-        const toDeviceName =
-          portalData.devices.find(
-            (device) => device.id === relation.toDeviceId,
-          )?.name ?? relation.toDeviceId;
         const relatedCards = cardsFor(relatedDeviceId);
 
         selectedCards.forEach((selectedCard, selectedIndex) => {
@@ -921,7 +910,7 @@ export function OuchiPortal({
               id: `${relation.id}-${selectedIndex}-${relatedIndex}`,
               kind: "relation",
               color: relation.color,
-              tooltip: `${fromDeviceName} [${relation.fromLabel}] ↔ [${relation.toLabel}] ${toDeviceName}`,
+              tooltip: `${relation.fromLabel}⇒${relation.toLabel}`,
               ...anchors,
             });
           });
@@ -1158,7 +1147,7 @@ export function OuchiPortal({
       id: connector.id,
       text: connector.tooltip,
       x: event.clientX - canvasRect.left + 12,
-      y: event.clientY - canvasRect.top + 12,
+      y: event.clientY - canvasRect.top,
     });
   }
 
@@ -1277,7 +1266,6 @@ export function OuchiPortal({
                 }
                 style={{ "--ouchi-relation-color": connector.color } as CSSProperties}
               >
-                <title>{connector.tooltip}</title>
                 <path
                   className="ouchi-relation-hit-area"
                   d={connector.d}

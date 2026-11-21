@@ -131,10 +131,10 @@ localStorageの保存形式も `PortalDataV2` です。
   "relations": [
     {
       "id": "omv-host-of-acemagic",
-      "fromDeviceId": "omv-vm",
-      "toDeviceId": "acemagic",
-      "fromLabel": "VM",
-      "toLabel": "親ホスト",
+      "fromDeviceId": "acemagic",
+      "toDeviceId": "omv-vm",
+      "fromLabel": "親ホスト",
+      "toLabel": "VMホスト",
       "color": "#d5a22b"
     }
   ],

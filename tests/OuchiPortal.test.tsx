@@ -211,7 +211,7 @@ describe("OuchiPortal", () => {
       screen.getByRole("button", { name: "ACEMAGICを選択" }),
     );
     expect(omv?.querySelector(".ouchi-relation-badge")).toHaveTextContent(
-      "VM",
+      "VMホスト",
     );
     expect(screen.queryByText("親ホスト")).not.toBeInTheDocument();
   });
@@ -507,15 +507,15 @@ describe("OuchiPortal", () => {
     );
     await user.click(screen.getByRole("button", { name: "関係を追加" }));
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "関係先 2" }),
+      screen.getByRole("combobox", { name: "関係先 1" }),
       "nanopi-r2s",
     );
     await user.type(
-      screen.getByRole("textbox", { name: "from側ラベル 2" }),
+      screen.getByRole("textbox", { name: "from側ラベル 1" }),
       "バックアップ元",
     );
     await user.type(
-      screen.getByRole("textbox", { name: "to側ラベル 2" }),
+      screen.getByRole("textbox", { name: "to側ラベル 1" }),
       "バックアップ先",
     );
     await user.click(screen.getByRole("button", { name: "保存" }));

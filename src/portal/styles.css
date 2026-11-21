@@ -1707,7 +1707,6 @@
   stroke: transparent;
   stroke-width: 14;
   pointer-events: stroke;
-  cursor: help;
 }
 
 .ouchi-relation-connector--same-device .ouchi-relation-visible {
@@ -1742,6 +1741,7 @@
   font-weight: 650;
   line-height: 1.35;
   pointer-events: none;
+  transform: translateY(-100%);
 }
 
 @keyframes ouchi-relation-draw {
