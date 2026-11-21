@@ -1,6 +1,6 @@
 services:
   ouchi-portal:
-    build: .
+    image: ghcr.io/moguno/ouchi:latest
     container_name: ouchi-portal
     restart: unless-stopped
     ports:
@@ -9,7 +9,7 @@ services:
       - ouchi-data:/app/data
 
   ouchi-mcp:
-    build: .
+    image: ghcr.io/moguno/ouchi:latest
     container_name: ouchi-mcp
     restart: unless-stopped
     command: ["node", "mcp-dist/index.js"]

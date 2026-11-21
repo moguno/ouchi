@@ -78,15 +78,21 @@ npm start
 
 ## Docker
 
+GHCR でマルチアーキイメージ（linux/amd64 / linux/arm64）を公開しています。
+アーキテクチャは自動で選択されます。このリポジトリの `compose.yaml` を
+取得して起動するだけです。
+
 ```bash
-docker compose up --build -d
+docker compose up -d
 ```
 
-build / runtime とも `node:22-alpine` を使います。`ouchi-data` ボリュームが
-`/app/data` にマウントされます。API とビルド済み SPA は同一コンテナで動作し、
-プロセスは `node` ユーザーで実行されます。MCP は `ouchi-mcp` サービスとして
-API と別コンテナ／別プロセスで起動し、`http://<LAN IP>:3333/mcp` を公開します。
-Avahi はホスト側の既存構成へ任せます。
+ポータルは `http://<ホスト>:3000`、MCP は別サービスとして
+`http://<ホスト>:3333/mcp` を公開します。台帳は `ouchi-data` ボリューム
+（`/app/data`）に保存されます。API とビルド済み SPA は同一コンテナで
+動作し、プロセスは `node` ユーザーで実行されます。
+
+ソースからビルドする場合は `docker build -t ouchi-local-portal .` を使い、
+`compose.yaml` の `image:` を `build: .` に置き換えてください。
 
 ## MCP サーバー
 
