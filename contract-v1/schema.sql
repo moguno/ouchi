@@ -1,5 +1,7 @@
 -- ouchi.local ledger schema v0.4 (draft, 2026-11-21)
 -- From DB_SCHEMA_DRAFT.md v0.4. Changes from v0.3:
+--  * devices.petname stores an optional display nickname. It is trimmed by the
+--    API and an empty value is stored as NULL.
 --  * devices.category gains 'service' for external SaaS (user decision
 --    2026-11-21). A category='service' device is a pseudo-device that
 --    represents an external service (Notion, pCloud, ...): it belongs to
@@ -27,6 +29,7 @@ CREATE TABLE IF NOT EXISTS networks (
 CREATE TABLE IF NOT EXISTS devices (
   id INTEGER PRIMARY KEY,
   hostname TEXT UNIQUE NOT NULL,
+  petname TEXT,
   category TEXT NOT NULL DEFAULT 'physical'
     CHECK (category IN ('network', 'physical', 'vm', 'service')),
   is_vm INTEGER NOT NULL DEFAULT 0 CHECK (is_vm IN (0, 1)),
@@ -66,6 +69,8 @@ CREATE TABLE IF NOT EXISTS services (
   service_url TEXT,
   top_path TEXT,
   monitor_path TEXT,
+  -- Canonical values: generic:<key>, favicon, url:<http(s)-image-url>.
+  -- favicon_url remains only as a legacy import/read compatibility column.
   icon_key TEXT,
   favicon_url TEXT,
   enabled INTEGER NOT NULL DEFAULT 1

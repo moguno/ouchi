@@ -10,7 +10,7 @@ const viewports = [
 
 async function openPortal(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await expect(page.getByText("nanopi-r2s", { exact: true })).toBeVisible();
+  await expect(page.getByText("門番", { exact: true })).toBeVisible();
 }
 
 for (const viewport of viewports) {
@@ -32,6 +32,8 @@ for (const viewport of viewports) {
     await expect(page.getByText("pCloud", { exact: true })).toBeVisible();
     await expect(page.locator(".ouchi-service-status")).toHaveCount(0);
     await expect(page.locator(".ouchi-status-legend")).toHaveCount(0);
+    await expect(page.locator(".ouchi-relation-legend")).toHaveCount(0);
+    await expect(page.locator(".ouchi-portal-footer")).toHaveCount(0);
     await expect(page.locator(".ouchi-status-dot")).toHaveCount(0);
     await expect(page.locator(".ouchi-resource-meters")).toHaveCount(0);
     await expect(page.locator(".ouchi-resource-meter")).toHaveCount(0);
@@ -54,7 +56,7 @@ test("API data survives localStorage removal", async ({ page }) => {
   await openPortal(page);
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  await expect(page.getByText("nanopi-r2s", { exact: true })).toBeVisible();
+  await expect(page.getByText("門番", { exact: true })).toBeVisible();
   await expect(page.getByText("おうちGit", { exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => window.localStorage.length),
@@ -158,15 +160,20 @@ test("device management keeps SSH metadata without meter controls", async ({
   await openPortal(page);
   await page.getByRole("button", { name: "管理" }).click();
   await page.getByRole("tab", { name: /デバイス/ }).click();
-  await page.getByRole("button", { name: "fortigateを編集" }).click();
+  await page.getByRole("button", { name: "関所を編集" }).click();
   const dialog = page.getByRole("dialog", { name: "デバイスを編集" });
+  await expect(
+    dialog.getByRole("textbox", { name: "ペットネーム" }),
+  ).toHaveValue("関所");
   await expect(
     dialog.getByRole("combobox", { name: "所属ネットワーク 2" }),
   ).toBeVisible();
   await expect(
     dialog.getByRole("textbox", { name: "IPアドレス 2" }),
   ).toHaveValue("");
-  await expect(dialog.getByText("SSH接続情報")).toBeVisible();
+  await expect(
+    dialog.getByText("SSH接続情報", { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByText(/メモリ|ディスク|使用率/)).toHaveCount(0);
   await page.screenshot({
     path: "成果物/screenshots/portal-v1-device-form.png",
@@ -181,7 +188,7 @@ test("same-device connector is drawn from seeded memberships", async ({
   await page.setViewportSize({ width: 1440, height: 1200 });
   await openPortal(page);
   const deviceButtons = page.getByRole("button", {
-    name: "fortigateを選択",
+    name: "関所を選択",
   });
   await expect(deviceButtons).toHaveCount(2);
   await deviceButtons.first().click();
@@ -206,27 +213,27 @@ test("same-device connector is drawn from seeded memberships", async ({
   });
 });
 
-test("duplicate aura-gw displays draw adjacent-point connectors", async ({
+test("duplicate 関所 displays draw adjacent-point connectors", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1400 });
   await openPortal(page);
-  const serverSegment = page
+  const homeLan = page
     .locator(".ouchi-network-card")
-    .filter({ has: page.getByText("サーバーセグメント", { exact: true }) });
-  const auraButtons = page.getByRole("button", { name: "aura-gwを選択" });
-  await expect(auraButtons).toHaveCount(3);
-  await serverSegment
-    .getByRole("button", { name: "aura-gwを選択" })
+    .filter({ has: page.getByText("おうちLAN", { exact: true }) });
+  const gateButtons = page.getByRole("button", { name: "関所を選択" });
+  await expect(gateButtons).toHaveCount(2);
+  await homeLan
+    .getByRole("button", { name: "関所を選択" })
     .click();
 
   await expect(
     page.locator(".ouchi-relation-connector--same-device"),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
   await expect(page.locator(".ouchi-relation-card-mask")).toHaveCount(0);
   await expect(
     page.locator(".ouchi-relation-connector--same-device circle"),
-  ).toHaveCount(4);
+  ).toHaveCount(2);
   await expect(
     page.locator(".ouchi-device-card--selected").first(),
   ).toHaveCSS("border-top-width", "3px");
@@ -244,7 +251,7 @@ test("duplicate aura-gw displays draw adjacent-point connectors", async ({
   await expect(page.getByRole("tooltip")).toHaveCSS("z-index", "3");
 
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-aura-gw-connectors-after.png",
+    path: "成果物/screenshots/portal-v1-multi-membership-connectors-after.png",
     fullPage: true,
     animations: "disabled",
   });
@@ -256,7 +263,7 @@ test("relation labels and connectors use seeded tag fallbacks", async ({
   await page.setViewportSize({ width: 1440, height: 1200 });
   await openPortal(page);
   await page
-    .getByRole("button", { name: "openmediavaultを選択" })
+    .getByRole("button", { name: "蔵を選択" })
     .click();
   await expect(page.getByText("ホストOS", { exact: true })).toBeVisible();
   await expect(

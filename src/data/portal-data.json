@@ -176,7 +176,7 @@
       "port": 443,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "server",
+      "iconKey": "generic:server",
       "status": "up"
     },
     {
@@ -188,7 +188,7 @@
       "port": 443,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "server",
+      "iconKey": "generic:server",
       "status": "up"
     },
     {
@@ -200,7 +200,7 @@
       "port": 443,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "server",
+      "iconKey": "generic:server",
       "status": "up"
     },
     {
@@ -212,7 +212,7 @@
       "port": 80,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "server",
+      "iconKey": "generic:server",
       "status": "up"
     },
     {
@@ -224,7 +224,7 @@
       "port": 80,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "server",
+      "iconKey": "generic:server",
       "status": "up"
     },
     {
@@ -236,7 +236,7 @@
       "port": 8006,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "proxmox",
+      "iconKey": "generic:proxmox",
       "status": "up"
     },
     {
@@ -248,7 +248,7 @@
       "port": 3000,
       "topPath": "/",
       "monitorPath": "/explore/repos",
-      "iconKey": "gitea",
+      "iconKey": "generic:gitea",
       "status": "up"
     },
     {
@@ -260,7 +260,7 @@
       "port": 8080,
       "topPath": "/",
       "monitorPath": "/health",
-      "iconKey": "gatus",
+      "iconKey": "generic:gatus",
       "status": "up"
     },
     {
@@ -272,7 +272,7 @@
       "port": 80,
       "topPath": "/",
       "monitorPath": "/",
-      "iconKey": "omv",
+      "iconKey": "generic:omv",
       "status": "up"
     },
     {
@@ -284,7 +284,7 @@
       "port": 8080,
       "topPath": "/",
       "monitorPath": "/health",
-      "iconKey": "gatus",
+      "iconKey": "generic:gatus",
       "status": "up"
     }
   ]

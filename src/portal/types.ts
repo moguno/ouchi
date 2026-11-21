@@ -12,7 +12,7 @@ export type PortalDeviceCategory =
   | "vm"
   | "service";
 
-export type PortalIconKey =
+export type PortalLegacyPresetIconKey =
   | "gitea"
   | "gatus"
   | "proxmox"
@@ -22,6 +22,45 @@ export type PortalIconKey =
   | "monitor"
   | "container"
   | "globe";
+
+export type PortalGenericIconKey =
+  | "applications"
+  | "bookmark"
+  | "calendar"
+  | "camera"
+  | "chart"
+  | "chat"
+  | "cloud"
+  | "code"
+  | "download"
+  | "folder"
+  | "home"
+  | "key"
+  | "lock"
+  | "mail"
+  | "music"
+  | "printer"
+  | "shield"
+  | "terminal"
+  | "upload"
+  | "users"
+  | "video"
+  | PortalLegacyPresetIconKey;
+
+export type PortalIconKey = PortalLegacyPresetIconKey;
+
+export type PortalIconKind = "generic" | "favicon" | "url";
+
+/**
+ * Canonical icon references are all bundled generic keys, the service URL
+ * origin's favicon, or an explicit HTTP(S) image URL. Legacy `preset:key` and
+ * bare preset keys normalize to `generic:key`; legacy `dashboard:slug` values
+ * normalize to the corresponding jsDelivr SVG URL.
+ */
+export type PortalIconReference =
+  | `generic:${PortalGenericIconKey}`
+  | "favicon"
+  | `url:${string}`;
 
 export interface PortalNetwork {
   id: string;
@@ -44,6 +83,7 @@ export interface PortalSshInfo {
 export interface PortalDevice {
   id: string;
   name: string;
+  petname?: string;
   category: PortalDeviceCategory;
   isVm: boolean;
   meterEnabled?: boolean;
@@ -64,7 +104,7 @@ export interface PortalRelation {
   id: string;
   fromDeviceId: string;
   toDeviceId: string;
-  tag?: string;
+  tag: string;
   fromLabel?: string;
   toLabel?: string;
   color: string;
@@ -82,7 +122,7 @@ export interface PortalService {
   topPath: string;
   monitorPath: string;
   serviceUrl?: string;
-  iconKey: PortalIconKey;
+  iconKey: PortalIconReference;
   enabled: boolean;
   url?: string | null;
   monitorUrl?: string | null;
@@ -153,6 +193,7 @@ export interface PortalApiMembership {
 export interface PortalApiDevice {
   id: number;
   hostname: string;
+  petname: string | null;
   category: PortalDeviceCategory;
   isVm: boolean;
   sshUser: string | null;
@@ -166,7 +207,7 @@ export interface PortalApiRelation {
   id: number;
   fromDeviceId: number;
   toDeviceId: number;
-  tag: string | null;
+  tag: string;
   fromLabel: string | null;
   toLabel: string | null;
   color: string;
@@ -184,7 +225,7 @@ export interface PortalApiService {
   topPath: string | null;
   monitorPath: string | null;
   serviceUrl: string | null;
-  iconKey: string | null;
+  iconKey: PortalIconReference | null;
   enabled: boolean;
   url: string | null;
   monitorUrl: string | null;
@@ -213,6 +254,7 @@ export interface PortalNetworkInput {
 
 export interface PortalDeviceInput {
   hostname: string;
+  petname?: string | null;
   category: PortalDeviceCategory;
   isVm: boolean;
   sshUser?: string | null;
@@ -231,7 +273,7 @@ export interface PortalMembershipInput {
 export interface PortalRelationInput {
   fromDeviceId: number;
   toDeviceId: number;
-  tag?: string | null;
+  tag: string;
   fromLabel?: string | null;
   toLabel?: string | null;
   color: string;
@@ -248,7 +290,7 @@ export interface PortalServiceInput {
   topPath?: string | null;
   monitorPath?: string | null;
   serviceUrl?: string | null;
-  iconKey?: string | null;
+  iconKey?: PortalIconReference | null;
   enabled: boolean;
 }
 
@@ -290,6 +332,31 @@ export const PORTAL_ICON_KEYS: PortalIconKey[] = [
   "globe",
 ];
 
+export const PORTAL_GENERIC_ICON_KEYS: PortalGenericIconKey[] = [
+  "applications",
+  "bookmark",
+  "calendar",
+  "camera",
+  "chart",
+  "chat",
+  "cloud",
+  "code",
+  "download",
+  "folder",
+  "home",
+  "key",
+  "lock",
+  "mail",
+  "music",
+  "printer",
+  "shield",
+  "terminal",
+  "upload",
+  "users",
+  "video",
+  ...PORTAL_ICON_KEYS,
+];
+
 export const STATUS_LABELS: Record<PortalStatus, string> = {
   up: "稼働中",
   down: "停止",
@@ -312,6 +379,39 @@ export const ACCENT_LABELS: Record<AccentTone, string> = {
 };
 
 export const ICON_LABELS: Record<PortalIconKey, string> = {
+  gitea: "Gitea",
+  gatus: "Gatus",
+  proxmox: "Proxmox",
+  omv: "OpenMediaVault",
+  server: "サーバー",
+  database: "データベース",
+  monitor: "監視",
+  container: "コンテナ",
+  globe: "インターネット",
+};
+
+export const GENERIC_ICON_LABELS: Record<PortalGenericIconKey, string> = {
+  applications: "アプリケーション",
+  bookmark: "ブックマーク",
+  calendar: "カレンダー",
+  camera: "カメラ",
+  chart: "グラフ",
+  chat: "チャット",
+  cloud: "クラウド",
+  code: "コード",
+  download: "ダウンロード",
+  folder: "フォルダ",
+  home: "ホーム",
+  key: "キー",
+  lock: "ロック",
+  mail: "メール",
+  music: "音楽",
+  printer: "プリンター",
+  shield: "シールド",
+  terminal: "ターミナル",
+  upload: "アップロード",
+  users: "ユーザー",
+  video: "動画",
   gitea: "Gitea",
   gatus: "Gatus",
   proxmox: "Proxmox",

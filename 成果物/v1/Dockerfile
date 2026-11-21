@@ -22,6 +22,7 @@ COPY --from=build /app/demo-dist ./demo-dist
 COPY --from=build /app/server-dist ./server-dist
 COPY --from=build /app/contract-v1 ./contract-v1
 COPY --from=build /app/LICENSE ./LICENSE
+COPY --from=build /app/ICON_LICENSES.md ./ICON_LICENSES.md
 
 RUN mkdir -p /app/data && chown -R node:node /app
 USER node

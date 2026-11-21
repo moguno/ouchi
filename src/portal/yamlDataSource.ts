@@ -1,13 +1,11 @@
 import { parse } from "yaml";
 import {
   ACCENT_TONES,
-  PORTAL_ICON_KEYS,
   type AccentTone,
   type PortalDataV2,
   type PortalDevice,
   type PortalDeviceCategory,
   type PortalDeviceNetwork,
-  type PortalIconKey,
   type PortalNetwork,
   type PortalRelation,
   type PortalService,
@@ -15,6 +13,7 @@ import {
   type PortalServiceScheme,
   type ValidationIssue,
 } from "./types";
+import { normalizeServiceIconReference } from "./iconCatalog";
 import { buildMonitorUrl, buildServiceUrl } from "./urls";
 import { validatePortalData } from "./validation";
 
@@ -75,13 +74,6 @@ function normalizeAccent(value: unknown): AccentTone {
   return ACCENT_TONES.includes(accent as AccentTone)
     ? (accent as AccentTone)
     : "slate";
-}
-
-function normalizeIconKey(value: unknown): PortalIconKey {
-  const iconKey = text(value);
-  return PORTAL_ICON_KEYS.includes(iconKey as PortalIconKey)
-    ? (iconKey as PortalIconKey)
-    : "monitor";
 }
 
 function nullableNumber(value: unknown): number | undefined {
@@ -195,6 +187,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     const portalDevice: PortalDevice = {
       id: `device-${index + 1}`,
       name: hostname,
+      petname: nullableText(device.petname),
       category: text(device.category) as PortalDeviceCategory,
       isVm: device.isVm === true,
       meterEnabled: device.meterEnabled === true,
@@ -279,6 +272,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     const relation = requiredRecord(item, path, issues);
     const from = text(relation.from);
     const to = text(relation.to);
+    const tag = text(relation.tag);
     const fromDevice = deviceByName.get(from);
     const toDevice = deviceByName.get(to);
     if (!fromDevice) {
@@ -293,14 +287,27 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         message: `デバイス「${to}」が存在しません`,
       });
     }
+    if (!tag) {
+      issues.push({
+        path: `${path}.tag`,
+        message: "タグ名は必須です",
+      });
+    }
+    const color = text(relation.color);
+    if (!color) {
+      issues.push({
+        path: `${path}.color`,
+        message: "関係色は必須です",
+      });
+    }
     return {
       id: `relation-${index + 1}`,
       fromDeviceId: fromDevice?.id ?? "",
       toDeviceId: toDevice?.id ?? "",
-      tag: nullableText(relation.tag),
+      tag,
       fromLabel: nullableText(relation.fromLabel),
       toLabel: nullableText(relation.toLabel),
-      color: text(relation.color),
+      color,
     };
   });
 
@@ -343,7 +350,11 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       topPath: text(service.topPath) || "/",
       monitorPath: text(service.monitorPath) || "/",
       serviceUrl: nullableText(service.serviceUrl),
-      iconKey: normalizeIconKey(service.iconKey),
+      iconKey: normalizeServiceIconReference(
+        service.iconKey,
+        service.faviconUrl,
+        "generic:monitor",
+      ),
       enabled: service.enabled === true,
       url: null,
       monitorUrl: null,

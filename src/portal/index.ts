@@ -6,7 +6,10 @@ export type {
   PortalDeviceCategory,
   PortalDeviceResources,
   PortalDeviceNetwork,
+  PortalGenericIconKey,
+  PortalIconKind,
   PortalIconKey,
+  PortalIconReference,
   PortalNetwork,
   PortalRelation,
   PortalDevice,
@@ -19,6 +22,18 @@ export type {
   ValidationIssue,
   ValidationResult,
 } from "./types";
+export {
+  DASHBOARD_ICON_INDEX,
+  DEFAULT_ICON_REFERENCE,
+  FAVICON_ICON_REFERENCE,
+  dashboardIconCount,
+  iconReferenceKind,
+  iconReferenceLabel,
+  normalizeIconReference,
+  normalizeServiceIconReference,
+  searchBuiltInIcons,
+  searchDashboardIcons,
+} from "./iconCatalog";
 export {
   isCidr,
   isHttpUrl,

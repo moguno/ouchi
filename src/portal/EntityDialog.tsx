@@ -5,16 +5,14 @@ import {
   ACCENT_LABELS,
   ACCENT_TONES,
   DEVICE_CATEGORY_LABELS,
-  ICON_LABELS,
   PORTAL_DEVICE_CATEGORIES,
-  PORTAL_ICON_KEYS,
   PORTAL_SERVICE_SCHEMES,
   type AccentTone,
   type PortalDataV2,
   type PortalDevice,
   type PortalDeviceCategory,
   type PortalDeviceNetwork,
-  type PortalIconKey,
+  type PortalIconReference,
   type PortalNetwork,
   type PortalRelation,
   type PortalService,
@@ -22,6 +20,8 @@ import {
   type PortalServiceScheme,
   type ValidationIssue,
 } from "./types";
+import { IconPicker } from "./IconPicker";
+import { normalizeIconReference } from "./iconCatalog";
 import {
   generateId,
   issuesToRecord,
@@ -348,6 +348,7 @@ function DeviceForm({
 }) {
   const draftDeviceId = useRef(editing?.id ?? generateId("device"));
   const [name, setName] = useState(editing?.name ?? "");
+  const [petname, setPetname] = useState(editing?.petname ?? "");
   const [category, setCategory] = useState<PortalDeviceCategory>(
     editing?.category ?? "physical",
   );
@@ -370,12 +371,29 @@ function DeviceForm({
       (relation) => relation.fromDeviceId === editing?.id,
     ),
   );
+  const [recolorTags, setRecolorTags] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formIssues, setFormIssues] = useState<ValidationIssue[]>([]);
 
   const relationTargets = data.devices.filter(
     (device) => device.id !== editing?.id,
   );
+  const existingTags = [
+    ...new Map(
+      data.relations.map((relation) => [
+        relation.tag.trim(),
+        relation.color.trim(),
+      ]),
+    ).entries(),
+  ].filter(([name]) => name);
+
+  function canonicalTagColor(tag: string): string | undefined {
+    return data.relations.find(
+      (relation) => relation.tag.trim() === tag.trim(),
+    )?.color.trim();
+  }
 
   function updateMembership(
     id: string,
@@ -409,6 +427,39 @@ function DeviceForm({
     >,
     value: string,
   ) {
+    if (field === "color") {
+      const relation = relations.find((candidate) => candidate.id === id);
+      const tag = relation?.tag.trim() ?? "";
+      setRelations((current) =>
+        current.map((candidate) =>
+          candidate.id === id ||
+          (tag && candidate.tag.trim() === tag && recolorTags.has(tag))
+            ? { ...candidate, color: value }
+            : candidate,
+        ),
+      );
+      return;
+    }
+    if (field === "tag") {
+      const canonical = canonicalTagColor(value);
+      setRecolorTags((current) => {
+        const next = new Set(current);
+        next.delete(value.trim());
+        return next;
+      });
+      setRelations((current) =>
+        current.map((relation) =>
+          relation.id === id
+            ? {
+                ...relation,
+                tag: value,
+                ...(canonical ? { color: canonical } : {}),
+              }
+            : relation,
+        ),
+      );
+      return;
+    }
     setRelations((current) =>
       current.map((relation) =>
         relation.id === id ? { ...relation, [field]: value } : relation,
@@ -420,18 +471,31 @@ function DeviceForm({
     if (!editing || relationTargets.length === 0) {
       return;
     }
+    const firstTag = existingTags[0];
     setRelations((current) => [
       ...current,
       {
         id: generateId("relation"),
         fromDeviceId: editing.id,
         toDeviceId: relationTargets[0].id,
-        tag: "ホストOS",
+        tag: firstTag?.[0] ?? "",
         fromLabel: "",
         toLabel: "",
-        color: "yellow",
+        color: firstTag?.[1] ?? "#d5a22b",
       },
     ]);
+  }
+
+  function enableTagRecolor(tag: string) {
+    const canonical = canonicalTagColor(tag);
+    setRecolorTags((current) => new Set(current).add(tag.trim()));
+    setRelations((current) =>
+      current.map((relation) =>
+        relation.tag.trim() === tag.trim() && canonical
+          ? { ...relation, color: canonical }
+          : relation,
+      ),
+    );
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -439,6 +503,7 @@ function DeviceForm({
     const device: PortalDevice = {
       id: editing?.id ?? draftDeviceId.current,
       name: name.trim(),
+      petname: petname.trim() || undefined,
       category,
       isVm: category === "vm",
       meterEnabled:
@@ -511,14 +576,39 @@ function DeviceForm({
       tag: relation.tag?.trim(),
       fromLabel: relation.fromLabel?.trim(),
       toLabel: relation.toLabel?.trim(),
+      color: relation.color.trim(),
     }));
+    const validationData: PortalDataV2 = {
+      ...data,
+      relations: data.relations.map((relation) => {
+        const tag = relation.tag.trim();
+        const changed = normalizedRelations.find(
+          (candidate) =>
+            candidate.tag === tag && recolorTags.has(tag),
+        );
+        return changed ? { ...relation, color: changed.color } : relation;
+      }),
+    };
     normalizedRelations.forEach((relation, index) => {
       issues.push(
-        ...validateRelationInput(relation, data).map((issue) => ({
+        ...validateRelationInput(relation, validationData).map((issue) => ({
           ...issue,
           path: `relations[${index}].${issue.path}`,
         })),
       );
+    });
+    const colorsByTag = new Map<string, string>();
+    normalizedRelations.forEach((relation, index) => {
+      const canonical = colorsByTag.get(relation.tag);
+      if (canonical && canonical !== relation.color) {
+        issues.push({
+          path: `relations[${index}].color`,
+          message:
+            `タグ「${relation.tag}」の色は「${canonical}」に統一してください`,
+        });
+      } else if (!canonical) {
+        colorsByTag.set(relation.tag, relation.color);
+      }
     });
 
     if (issues.length > 0) {
@@ -540,10 +630,11 @@ function DeviceForm({
     <form className="ouchi-entity-form" onSubmit={handleSubmit}>
       <FormNotice issues={formIssues} />
       <label className="ouchi-field">
-        <span>デバイス名</span>
+        <span>ホスト名</span>
         <input
           aria-describedby={errors.name ? "device-name-error" : undefined}
           aria-invalid={Boolean(errors.name)}
+          aria-label="ホスト名"
           onChange={(event) => setName(event.target.value)}
           placeholder="例: nanopi-r2s"
           ref={firstFieldRef as React.RefObject<HTMLInputElement>}
@@ -551,6 +642,17 @@ function DeviceForm({
           value={name}
         />
         <FieldError id="device-name-error">{errors.name}</FieldError>
+      </label>
+
+      <label className="ouchi-field">
+        <span id="device-petname-label">ペットネーム</span>
+        <input
+          aria-labelledby="device-petname-label"
+          onChange={(event) => setPetname(event.target.value)}
+          placeholder="例: 門番"
+          value={petname}
+        />
+        <small>未入力ならホスト名を表示します。</small>
       </label>
 
       <section className="ouchi-form-section">
@@ -734,12 +836,26 @@ function DeviceForm({
           </p>
         )}
         <div className="ouchi-editor-stack">
-          {relations.map((relation, index) => (
+          <datalist id="ouchi-relation-tag-suggestions">
+            {existingTags.map(([name]) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          {relations.map((relation, index) => {
+            const tag = relation.tag.trim();
+            const canonical = canonicalTagColor(tag);
+            const isExistingTag = Boolean(canonical);
+            const recoloring = recolorTags.has(tag);
+            const relationCount = data.relations.filter(
+              (candidate) => candidate.tag.trim() === tag,
+            ).length;
+            return (
             <div className="ouchi-relation-row" key={relation.id}>
               <label className="ouchi-field">
                 <span>タグ {index + 1}</span>
                 <input
                   aria-label={`関係タグ ${index + 1}`}
+                  list="ouchi-relation-tag-suggestions"
                   onChange={(event) =>
                     updateRelation(relation.id, "tag", event.target.value)
                   }
@@ -806,6 +922,7 @@ function DeviceForm({
                       updateRelation(relation.id, "color", event.target.value)
                     }
                     placeholder="例: yellow または #d5a22b"
+                    readOnly={isExistingTag && !recoloring}
                     value={relation.color}
                   />
                 </label>
@@ -823,8 +940,35 @@ function DeviceForm({
                   ×
                 </button>
               </div>
+              {isExistingTag && !recoloring && (
+                <div className="ouchi-inline-hint">
+                  <span>
+                    既存タグの色は固定です。色を変える場合は全
+                    {relationCount}件へ反映されます。
+                  </span>
+                  <button
+                    className="ouchi-secondary-button ouchi-secondary-button--compact"
+                    onClick={() => enableTagRecolor(tag)}
+                    type="button"
+                  >
+                    タグの色を変更
+                  </button>
+                </div>
+              )}
+              {isExistingTag && recoloring && (
+                <p className="ouchi-inline-hint" role="status">
+                  タグ「{tag}」の色を変更します。保存すると、このタグを持つ全
+                  {relationCount}件の関係へ一括反映されます。
+                </p>
+              )}
+              {!isExistingTag && (
+                <p className="ouchi-inline-hint">
+                  新規タグです。色を自由に選べます。
+                </p>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -869,8 +1013,8 @@ function ServiceForm({
     editing?.monitorPath ?? "/",
   );
   const [serviceUrl, setServiceUrl] = useState(editing?.serviceUrl ?? "");
-  const [iconKey, setIconKey] = useState<PortalIconKey>(
-    editing?.iconKey ?? "monitor",
+  const [iconKey, setIconKey] = useState<PortalIconReference>(
+    normalizeIconReference(editing?.iconKey, "generic:monitor"),
   );
   const [enabled, setEnabled] = useState(editing?.enabled ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -1112,24 +1256,13 @@ function ServiceForm({
         </div>
       )}
 
-      <div className="ouchi-form-grid">
-        <label className="ouchi-field">
-          <span>アイコン</span>
-          <select
-            onChange={(event) =>
-              setIconKey(event.target.value as PortalIconKey)
-            }
-            required
-            value={iconKey}
-          >
-            {PORTAL_ICON_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {ICON_LABELS[key]}
-              </option>
-            ))}
-          </select>
-        </label>
+      <IconPicker
+        onChange={setIconKey}
+        serviceUrl={servicePreview || undefined}
+        value={iconKey}
+      />
 
+      <div className="ouchi-form-grid">
         <label className="ouchi-checkbox-field">
           <input
             checked={enabled}

@@ -1,6 +1,5 @@
 import {
   ACCENT_TONES,
-  PORTAL_ICON_KEYS,
   type AccentTone,
   type PortalApiData,
   type PortalApiDevice,
@@ -8,7 +7,6 @@ import {
   type PortalDataV2,
   type PortalDeviceInput,
   type PortalDeviceNetwork,
-  type PortalIconKey,
   type PortalMembershipInput,
   type PortalNetworkInput,
   type PortalRelationInput,
@@ -17,6 +15,7 @@ import {
   type PortalSettingsInput,
   type ValidationIssue,
 } from "./types";
+import { normalizeServiceIconReference } from "./iconCatalog";
 
 export class PortalApiError extends Error {
   readonly status: number;
@@ -76,10 +75,8 @@ function normalizeAccent(value: string): AccentTone {
     : "slate";
 }
 
-function normalizeIconKey(value: string | null): PortalIconKey {
-  return value && PORTAL_ICON_KEYS.includes(value as PortalIconKey)
-    ? (value as PortalIconKey)
-    : "monitor";
+function normalizeIconKey(value: string | null) {
+  return normalizeServiceIconReference(value, undefined, "generic:monitor");
 }
 
 function deviceNetworksFrom(
@@ -130,6 +127,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
     devices: data.devices.map((device) => ({
       id: String(device.id),
       name: device.hostname,
+      petname: device.petname ?? undefined,
       category: device.category,
       isVm: device.isVm,
       meterEnabled: device.meterEnabled,
@@ -147,7 +145,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       id: String(relation.id),
       fromDeviceId: String(relation.fromDeviceId),
       toDeviceId: String(relation.toDeviceId),
-      tag: relation.tag ?? undefined,
+      tag: relation.tag,
       fromLabel: relation.fromLabel ?? undefined,
       toLabel: relation.toLabel ?? undefined,
       color: relation.color,
@@ -342,6 +340,32 @@ export function createRelation(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function updateRelation(
+  baseUrl: string,
+  id: string,
+  input: PortalRelationInput,
+) {
+  return request(baseUrl, `/api/relations/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRelationTagColor(
+  baseUrl: string,
+  tag: string,
+  color: string,
+) {
+  return request(
+    baseUrl,
+    `/api/relations/tags/${encodeURIComponent(tag)}/color`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ color }),
+    },
+  );
 }
 
 export function deleteRelation(baseUrl: string, id: string) {

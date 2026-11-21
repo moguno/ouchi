@@ -24,8 +24,8 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 
 - 階層：ネットワーク → デバイス（物理/VM 統合、category network / physical / vm / service、`is_vm` は CHECK で category と一致）→ サービス。**category=service は外部SaaSの疑似デバイス**：所属の IP は持たず（NULL）、SSH・メーター対象外で、配下サービスの `service_url` が完全な URL。インターネットを特別視しないための汎用化（2026-11-21 決定、スキーマ v0.4 が契約）
 - **IP はデバイス本体に持たない**。所属（device_networks）に `id / ip / label` を持たせ、サービスは `device_network_id` で所属を参照する。同じデバイスが複数ネットワークに顔を出す（FortiGate はインターネット側 IP 未登録＋おうちLAN 192.168.0.1）のはこの多対多で表す
-- 関係性は汎用モデル：`relations`（from_device_id / to_device_id / tag / from_label / to_label / color）。固定の種別なし。タグは自由文字列、色が程度。1デバイスに複数関係可、同じ相手に複数タグ可。表示ラベルの解決は、注目デバイスが from 側なら `from_label ?? tag`、to 側なら `to_label ?? tag`。`parent_device_id` は廃止済み
-- サービス：`subdomain`（リダイレクタのパス名）、`scheme`（http/https）、`port`、`protocol`（tcp/udp）、`top_path`（空＝`/`）、`monitor_path`（空＝ top_path で代用）、`service_url`（完全 URL の上書き、通常は空）、`icon_key`、`enabled`
+- 関係性は汎用モデル：`relations`（from_device_id / to_device_id / tag / from_label / to_label / color）。固定の種別なし。タグは自由文字列で、同じタグを持つ関係は全件同じ色でなければならない。色を変える場合はタグ単位で全関係へ反映する。1デバイスに複数関係可、同じ相手に複数タグ可。表示ラベルの解決は、注目デバイスが from 側なら `from_label ?? tag`、to 側なら `to_label ?? tag`。`parent_device_id` は廃止済み
+- サービス：`subdomain`（リダイレクタのパス名）、`scheme`（http/https）、`port`、`protocol`（tcp/udp）、`top_path`（空＝`/`）、`monitor_path`（空＝ top_path で代用）、`service_url`（完全 URL の上書き、通常は空）、`icon_key`（`generic:<key>` / `favicon` / `url:<http(s)-image-url>`）、`enabled`
 - サービスの稼働状態は **DB に持たない**。状態は外部プロバイダから読む差し込み式にする（第一候補は Gatus API）。**2026-11-21 決定で Gatus 連携はオプションに降格**：v1 のポータルは Gatus なしでも成立させ、プロバイダ未接続時は status を付けない
 - メーター：メモリ % と `/` のディスク % のみ。**CPU は対象外**。取得は SSH＋Linux コマンド（`free` / `df -P /`）。`meter_enabled=0` の機器（スイッチ・AP・FortiGate）は対象外。収集専用キーペアの秘密鍵は SOPS 経由で供給し、DB には入れない
 - 削除ルール：デバイス削除は、紐づくサービスが残っていたら**削除不可**（連鎖削除しない。先にサービスの移動か削除が必要）。relations の削除は行単位
@@ -44,7 +44,8 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 | `GET /api/devices` / `POST /api/devices` / `PUT /api/devices/:id` / `DELETE /api/devices/:id` | デバイス CRUD（IP はここで持たない） |
 | `GET /api/memberships` / `POST /api/memberships` / `PUT /api/memberships/:id` / `DELETE /api/memberships/:id` | 所属（device_networks）CRUD。IP の登録・変更はここ。デバイスとネットワークの紐付け変更もここ |
 | `GET /api/services` / `POST /api/services` / `PUT /api/services/:id` / `DELETE /api/services/:id` | サービス CRUD |
-| `GET /api/relations` / `POST /api/relations` / `DELETE /api/relations/:id` | 関係 CRUD（更新は削除＋再作成でもよい） |
+| `GET /api/relations` / `POST /api/relations` / `PUT /api/relations/:id` / `DELETE /api/relations/:id` | 関係 CRUD。既存タグと異なる色での作成・更新は400 |
+| `PUT /api/relations/tags/:tag/color` | 指定タグを持つ全関係の色をトランザクション内で一括更新 |
 | `GET /api/devices/:id/relations?depth=1` | 注目デバイスの関係トラバース。向き・タグ・色つきで列挙（双方向とも返す）。`depth` は将来の多ホップ用に受け付けるが、v1 は `depth=1` が動けばよい。MCP の構成問い合わせは後でこの流儀を再利用する |
 | `GET /api/devices/:id/meters` | メモリ %・ディスク %。取得できない機器は `null` を返す（下記 3.4） |
 | `GET /api/settings` | 全体設定（domain ほか1行もの） |
@@ -54,7 +55,7 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 モックの PortalDataV2 の形に、DB の内容を組み立てて返す。生のテーブルをそのまま返さない。
 
 - networks：`id, name, cidr, accent, note`
-- devices：`id, hostname, category, isVm, sshUser, sshPort, meterEnabled, memberships: [{ id, networkId, ip, label }]`
+- devices：`id, hostname, petname, category, isVm, sshUser, sshPort, meterEnabled, memberships: [{ id, networkId, ip, label }]`
 - services：`id, deviceNetworkId, subdomain, petname, description, port, protocol, scheme, topPath, monitorPath, serviceUrl, iconKey, enabled` に加え、組み立て済みの `url`（リダイレクト先）と `monitorUrl` を含める
 - relations：`id, fromDeviceId, toDeviceId, tag, fromLabel, toLabel, color`
 - status：状態プロバイダ（Gatus 等）が接続されている場合のみ、サービスごとに `status: up / down / maintenance` を付ける。未接続時は status 自体を付けない（下記 3.4）
@@ -104,6 +105,10 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 - デプロイ先は **ouchi-test（192.168.0.30）**。メインアプリは Docker コンテナに閉じ込める。Avahi はホスト側に外だし（変更なし）
 - DB ファイルの置き場所と、SQLite の WAL 設定はバックエンド側で決めて報告に書くこと
 - v0.1（現行の縦切り）→ v0.4 への移行は、DB_SCHEMA_DRAFT.md の移行対応表（v0.3→v0.4、v0.2→v0.3、v0.1→v0.2）に沿う。移行スクリプトを作る場合は、元 DB を壊さない形（新 DB を作って検証してから差し替え）にすること
+- 追加ブリーフ18のデバイス petname は `devices.petname TEXT` に保存する。
+  既存 DB には `migrations/001_add_device_petname.sql` の
+  `ALTER TABLE devices ADD COLUMN petname TEXT` を適用する。API は入力を
+  trim し、空文字を NULL として扱う。
 - **生成スクリプト（`app/generate.py`、nginx / Gatus config 生成）は触らない**。v0.4 では services → device_networks の JOIN が要る改修があり、カイル側でやる。Codex 側は、生成が読む DB の形が v0.4 になったことだけ知っていればよい
 - リダイレクタ（302）の挙動は v0.4 移行後も維持する。移行の検収で 302 を再確認する（カイル側で実施）
 
@@ -123,8 +128,10 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 
 - 形式は **YAML**（人が読めて Git で差分が見える）。先頭に形式の版を持つ（例：`format: ouchi-ledger/1`、書き出し日時）
 - `GET /api/export`：台帳一式を YAML で返す。含むもの：settings、networks、devices（所属 device_networks を含む）、relations、services、ssh_keys / device_keys（公開鍵のみ。秘密情報は DB に無いので輸出は安全）
+- `devices[]` には任意の `petname` を含め、インポート／再エクスポートでも保持する
 - **参照は内部 ID ではなく自然キーで書く**：networks は name、devices は hostname、services は subdomain、所属は「device の hostname ＋ network の name」、relations は from/to の hostname。インポート先で ID が振り直されても壊れないこと
 - `POST /api/import`：YAML を受け取り、既存のバリデーションを全件通したら、トランザクションで**全置き換え**する。1件でも不正なら何も変えず、`{ issues: [...] }` を返す。マージはしない
+- `relations[]` は従来どおり `from / to / tag / fromLabel / toLabel / color` を持ち、トップレベルの `tags` は持たない。同一タグで `color` が食い違う YAML は検証エラーとして拒否する
 - GUI：管理画面にエクスポート（ダウンロード）とインポート（ファイル選択 → 内容確認 → 適用）を置く。適用前に「現在の設定は全て置き換わる」旨を明示すること
 - 検収：ラウンドトリップ（export → 空 DB へ import → 再 export で、書き出し日時などのメタを除き内容が一致）、不正な YAML／検証エラー時に DB が無変更、ID が振り直されても所属と関係が名前で正しく再構成されること
 

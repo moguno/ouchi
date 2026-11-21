@@ -19,7 +19,8 @@
   },
   "files": [
     "dist",
-    "LICENSE"
+    "LICENSE",
+    "ICON_LICENSES.md"
   ],
   "scripts": {
     "dev": "vite",
@@ -30,6 +31,7 @@
     "build:demo": "vite build",
     "build:pages": "vite build --mode pages --outDir 成果物/demo-pages",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=server-dist/index.js --packages=external",
+    "generate:icon-index": "node scripts/generate-dashboard-icon-index.mjs",
     "build": "npm run typecheck && npm run build:lib && npm run build:demo && npm run build:server",
     "start": "node server-dist/index.js",
     "test": "vitest run",

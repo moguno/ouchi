@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import {
   ACCENT_LABELS,
   DEVICE_CATEGORY_LABELS,
-  ICON_LABELS,
   type PortalDataV2,
   type PortalDevice,
   type PortalNetwork,
   type PortalService,
 } from "./types";
+import { iconReferenceLabel } from "./iconCatalog";
 import { sortNetworksForDisplay } from "./networkOrder";
 import {
   CloseIcon,
@@ -541,6 +541,8 @@ function DeviceRow({
     )
     .filter(Boolean)
     .join(" / ");
+  const petname = device.petname?.trim();
+  const displayName = petname || device.name;
 
   return (
     <article className="ouchi-manage-row">
@@ -553,8 +555,13 @@ function DeviceRow({
         {device.isVm ? "VM" : device.name.slice(0, 1).toUpperCase()}
       </span>
       <div className="ouchi-manage-row-main">
-        <strong>{device.name}</strong>
+        <strong>{displayName}</strong>
         <p>
+          {petname && (
+            <>
+              <code>{device.name}</code> ・{" "}
+            </>
+          )}
           {networkNames || "未所属"} ・ サービス {serviceCount}件 ・ 関係{" "}
           {relationCount}件
         </p>
@@ -563,8 +570,8 @@ function DeviceRow({
         {DEVICE_CATEGORY_LABELS[device.category]}
       </span>
       <RowActions
-        deleteLabel={`${device.name}を削除`}
-        editLabel={`${device.name}を編集`}
+        deleteLabel={`${displayName}を削除`}
+        editLabel={`${displayName}を編集`}
         onDelete={onDelete}
         onEdit={onEdit}
       />
@@ -603,7 +610,7 @@ function ServiceRow({
       <div className="ouchi-manage-row-main">
         <strong>{service.petname?.trim() || service.subdomain}</strong>
         <p title={serviceUrl ?? undefined}>
-          {targetLabel} ・ {ICON_LABELS[service.iconKey]}
+          {targetLabel} ・ {iconReferenceLabel(service.iconKey)}
         </p>
       </div>
       <RowActions

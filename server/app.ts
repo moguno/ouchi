@@ -73,7 +73,9 @@ function databaseConflict(error: unknown): {
   };
 }
 
-export function createApp(database: PortalDatabase) {
+export function createApp(
+  database: PortalDatabase,
+) {
   const app = new Hono();
 
   app.get("/api/health", (context) =>
@@ -483,6 +485,15 @@ export function createApp(database: PortalDatabase) {
         message: "関係先デバイスが存在しません",
       });
     }
+    const canonicalColor = database.canonicalTagColor(value.tag);
+    if (canonicalColor && canonicalColor !== value.color.trim()) {
+      issues.push({
+        path: "color",
+        message:
+          `タグ「${value.tag.trim()}」の色は` +
+          `「${canonicalColor}」に固定されています`,
+      });
+    }
     return issues;
   };
 
@@ -502,6 +513,61 @@ export function createApp(database: PortalDatabase) {
       const failure = databaseConflict(error);
       return context.json(failure.body, failure.status);
     }
+  });
+
+  app.put("/api/relations/tags/:tag/color", async (context) => {
+    const tag = context.req.param("tag").trim();
+    if (!tag) {
+      return context.json(
+        { issues: [{ path: "tag", message: "タグ名は必須です" }] },
+        400,
+      );
+    }
+    const input = await jsonBody(context);
+    if (
+      typeof input !== "object" ||
+      input === null ||
+      !("color" in input) ||
+      typeof input.color !== "string" ||
+      input.color.trim() === "" ||
+      [...input.color.trim()].length > 100
+    ) {
+      return context.json(
+        {
+          issues: [
+            {
+              path: "color",
+              message: "関係色は1〜100文字で入力してください",
+            },
+          ],
+        },
+        400,
+      );
+    }
+    const updated = database.recolorTag(tag, input.color);
+    return updated.updated > 0
+      ? context.json(updated)
+      : context.json({ error: "タグを持つ関係が見つかりません" }, 404);
+  });
+
+  app.put("/api/relations/:id", async (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const input = await jsonBody(context);
+    const issues = relationIssues(input);
+    if (issues.length > 0) {
+      const failure = invalid(issues);
+      return context.json(failure.body, failure.status);
+    }
+    const relation = database.updateRelation(
+      id,
+      input as PortalRelationInput,
+    );
+    return relation
+      ? context.json(relation)
+      : context.json({ error: "関係が見つかりません" }, 404);
   });
 
   app.delete("/api/relations/:id", (context) => {

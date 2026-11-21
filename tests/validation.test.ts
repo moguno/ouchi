@@ -7,6 +7,7 @@ import {
   isIpv4,
   isIpWithinCidr,
   validateDeviceInput,
+  validateDevicePayload,
   validateDeviceNetworkInput,
   validateMembershipPayload,
   validateNetworkInput,
@@ -126,7 +127,7 @@ const data: PortalDataV2 = {
       protocol: "tcp",
       topPath: "",
       monitorPath: "/api/v1/version",
-      iconKey: "gitea",
+      iconKey: "generic:gitea",
       enabled: true,
     },
     {
@@ -140,7 +141,7 @@ const data: PortalDataV2 = {
       topPath: "",
       monitorPath: "/",
       serviceUrl: "https://www.notion.so/",
-      iconKey: "globe",
+      iconKey: "generic:globe",
       enabled: true,
     },
   ],
@@ -270,6 +271,25 @@ describe("shared REST validation", () => {
     });
   });
 
+  it("accepts optional device petnames and rejects non-string values", () => {
+    const device = {
+      hostname: "petname-test",
+      category: "physical",
+      isVm: false,
+      meterEnabled: false,
+    };
+    expect(
+      validateDevicePayload({ ...device, petname: "  門番  " }),
+    ).toEqual([]);
+    expect(validateDevicePayload({ ...device, petname: null })).toEqual([]);
+    expect(
+      validateDevicePayload({ ...device, petname: 18 }),
+    ).toContainEqual({
+      path: "petname",
+      message: "ペットネームが不正です",
+    });
+  });
+
   it("validates free-tag relations using the label fallback", () => {
     expect(
       validateRelationInput(
@@ -284,7 +304,63 @@ describe("shared REST validation", () => {
     ).toEqual([]);
   });
 
+  it("requires one colour for every tag across relations", () => {
+    const invalid = structuredClone(data);
+    invalid.relations.push({
+      id: "21",
+      fromDeviceId: "4",
+      toDeviceId: "2",
+      tag: " バックアップ先 ",
+      color: "green",
+    });
+
+    expect(validatePortalData(invalid).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "relations.21.color",
+          message: expect.stringContaining("統一してください"),
+        }),
+      ]),
+    );
+    expect(
+      validateRelationInput(
+        {
+          fromDeviceId: "3",
+          toDeviceId: "2",
+          tag: "バックアップ先",
+          color: "green",
+        },
+        data,
+      ),
+    ).toContainEqual({
+      path: "color",
+      message: "タグ「バックアップ先」の色は「blue」に固定されています",
+    });
+  });
+
   it("validates the v0.4 service form", () => {
+    for (const iconKey of [
+      "generic:monitor",
+      "favicon",
+      "url:https://icons.example/service.svg",
+    ] as const) {
+      expect(
+        validateServiceInput(
+          {
+          subdomain: "health",
+          deviceNetworkId: "12",
+          scheme: "http",
+          port: 8080,
+          protocol: "tcp",
+          topPath: "/",
+          monitorPath: "/health",
+          iconKey,
+          enabled: true,
+          },
+          data,
+        ),
+      ).toEqual([]);
+    }
     expect(
       validateServiceInput(
         {
@@ -295,12 +371,12 @@ describe("shared REST validation", () => {
           protocol: "tcp",
           topPath: "/",
           monitorPath: "/health",
-          iconKey: "monitor",
+          iconKey: "url:not-a-url" as never,
           enabled: true,
         },
         data,
       ),
-    ).toEqual([]);
+    ).toContainEqual({ path: "iconKey", message: "アイコンを選択してください" });
   });
 
   it("accepts CIDR-less networks", () => {

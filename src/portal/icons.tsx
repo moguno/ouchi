@@ -1,4 +1,10 @@
-import type { PortalIconKey } from "./types";
+import { useEffect, useState } from "react";
+import { parseIconReference } from "./iconCatalog";
+import { GenericServiceMark } from "./genericIcons";
+import type {
+  PortalGenericIconKey,
+  PortalIconReference,
+} from "./types";
 
 interface IconProps {
   size?: number;
@@ -256,82 +262,89 @@ function OmvMark() {
   );
 }
 
-function GenericServiceMark({ kind }: { kind: PortalIconKey }) {
-  if (kind === "database") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 48 48">
-        <ellipse cx="24" cy="11" rx="12" ry="5" fill="#2b7a78" />
-        <path d="M12 11v20c0 3 5 5 12 5s12-2 12-5V11" fill="#3caea3" />
-        <ellipse cx="24" cy="20" rx="12" ry="5" fill="#165f5b" opacity=".25" />
-      </svg>
-    );
+function faviconSource(serviceUrl: string | undefined): string | undefined {
+  if (!serviceUrl?.trim()) {
+    return undefined;
   }
-  if (kind === "monitor") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 48 48">
-        <rect x="7" y="8" width="34" height="26" rx="4" fill="#315d78" />
-        <path d="M16 22h5l3-7 4 13 3-6h4" stroke="#8ce3ba" strokeWidth="2.5" />
-        <path d="M19 40h10M24 34v6" stroke="#315d78" strokeLinecap="round" strokeWidth="3" />
-      </svg>
-    );
+  try {
+    const url = new URL(serviceUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
+    return `${url.origin}/favicon.ico`;
+  } catch {
+    return undefined;
   }
-  if (kind === "container") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 48 48">
-        <path d="m24 7 15 8v18l-15 8-15-8V15l15-8Z" fill="#345b73" />
-        <path d="m15 20 9 5 9-5M24 25v11" stroke="#a7d9e9" strokeLinejoin="round" strokeWidth="2" />
-      </svg>
-    );
-  }
-  if (kind === "globe") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 48 48">
-        <circle cx="24" cy="24" r="16" fill="#5d66a8" />
-        <path d="M8 24h32M24 8c5 5 7 10 7 16s-2 11-7 16c-5-5-7-10-7-16s2-11 7-16Z" stroke="#fff" strokeWidth="2" />
-      </svg>
-    );
-  }
-  return (
-    <svg aria-hidden="true" viewBox="0 0 48 48">
-      <rect x="7" y="8" width="34" height="12" rx="3" fill="#54616c" />
-      <rect x="7" y="23" width="34" height="12" rx="3" fill="#768691" />
-      <path d="M13 14h10M13 29h10M23 35h12" stroke="#d9edf3" strokeLinecap="round" strokeWidth="2" />
-      <circle cx="34" cy="14" r="2" fill="#9fe4bb" />
-    </svg>
-  );
 }
 
 export function ServiceIcon({
   iconKey,
   size = 58,
+  allowRemoteAssets = true,
+  serviceUrl,
 }: {
-  iconKey: PortalIconKey;
+  iconKey: PortalIconReference;
   size?: number;
+  allowRemoteAssets?: boolean;
+  serviceUrl?: string;
 }) {
+  const parsed = parseIconReference(iconKey);
+  const source =
+    parsed.kind === "url"
+      ? parsed.id
+      : parsed.kind === "favicon"
+        ? faviconSource(serviceUrl)
+        : undefined;
+  const remoteAllowed = allowRemoteAssets && Boolean(source);
   let mark: React.ReactNode;
-  switch (iconKey) {
-    case "gitea":
-      mark = <GiteaMark />;
-      break;
-    case "gatus":
-      mark = <GatusMark />;
-      break;
-    case "proxmox":
-      mark = <ProxmoxMark />;
-      break;
-    case "omv":
-      mark = <OmvMark />;
-      break;
-    default:
-      mark = <GenericServiceMark kind={iconKey} />;
+  if (parsed.kind === "generic") {
+    mark = (
+      <GenericServiceMark kind={parsed.id as PortalGenericIconKey} />
+    );
+  } else if (remoteAllowed && source) {
+    mark = <RemoteIconImage size={size} src={source} />;
+  } else {
+    mark = <GenericServiceMark kind="applications" />;
   }
 
   return (
     <span
-      className={`ouchi-service-mark ouchi-service-mark--${iconKey}`}
+      className={`ouchi-service-mark ouchi-service-mark--${parsed.kind}${
+        parsed.id ? `-${parsed.id}` : ""
+      }`}
       style={{ width: size, height: size }}
     >
       {mark}
     </span>
+  );
+}
+
+function RemoteIconImage({
+  size,
+  src,
+}: {
+  size: number;
+  src: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (failed) {
+    return <GenericServiceMark kind="applications" />;
+  }
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="ouchi-remote-icon"
+      height={size}
+      onError={() => setFailed(true)}
+      src={src}
+      width={size}
+    />
   );
 }

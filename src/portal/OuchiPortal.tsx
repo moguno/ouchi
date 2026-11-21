@@ -23,6 +23,8 @@ import {
   updateDevice,
   updateMembership,
   updateNetwork,
+  updateRelation,
+  updateRelationTagColor,
   updateService,
   updateSettings,
 } from "./apiClient";
@@ -123,8 +125,15 @@ const KIND_LABELS: Record<EntityKind, string> = {
   service: "サービス",
 };
 
+const DEMO_SERVICE_LINK_MESSAGE =
+  "ここをクリックすると設定したURLにジャンプします";
+
 function serviceName(service: PortalService): string {
   return service.petname?.trim() || service.subdomain;
+}
+
+function deviceName(device: PortalDevice): string {
+  return device.petname?.trim() || device.name;
 }
 
 function serviceDescription(service: PortalService): string {
@@ -205,18 +214,88 @@ function RelationBadges({ visual }: { visual: DeviceVisual }) {
   return null;
 }
 
+function DemoServiceLinkDialog({ onClose }: { onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCloseRef.current();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    closeRef.current?.focus();
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  return (
+    <div
+      className="ouchi-dialog-backdrop ouchi-dialog-backdrop--confirm"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) {
+          onClose();
+        }
+      }}
+      role="presentation"
+    >
+      <section
+        aria-describedby="ouchi-demo-service-message"
+        aria-labelledby="ouchi-demo-service-title"
+        aria-modal="true"
+        className="ouchi-confirm-dialog ouchi-demo-service-dialog"
+        role="alertdialog"
+      >
+        <p className="ouchi-eyebrow">表示専用デモ</p>
+        <h3 id="ouchi-demo-service-title">サービスのリンク</h3>
+        <p id="ouchi-demo-service-message">
+          {DEMO_SERVICE_LINK_MESSAGE}
+        </p>
+        <div className="ouchi-form-actions">
+          <button
+            className="ouchi-primary-button"
+            onClick={onClose}
+            ref={closeRef}
+            type="button"
+          >
+            閉じる
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ServiceTile({
   service,
   membership,
+  demoMode,
+  iconBaseUrl,
+  allowRemoteIcons,
+  onDemoClick,
 }: {
   service: PortalService;
   membership: PortalDeviceNetwork;
+  demoMode: boolean;
+  iconBaseUrl: string;
+  allowRemoteIcons: boolean;
+  onDemoClick: () => void;
 }) {
   const href = service.url ?? "";
   const content = (
     <>
       <span className="ouchi-service-icon-wrap">
-        <ServiceIcon iconKey={service.iconKey} size={50} />
+        <ServiceIcon
+          allowRemoteAssets={allowRemoteIcons}
+          iconKey={service.iconKey}
+          serviceUrl={href}
+          size={50}
+        />
       </span>
       <span className="ouchi-service-copy">
         <strong>{serviceName(service)}</strong>
@@ -224,6 +303,17 @@ function ServiceTile({
       </span>
     </>
   );
+  if (demoMode) {
+    return (
+      <button
+        className="ouchi-service-tile ouchi-service-tile--demo"
+        onClick={onDemoClick}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
   return href ? (
     <a
       className="ouchi-service-tile"
@@ -248,6 +338,10 @@ function DeviceCard({
   sameDevice,
   selectedDeviceId,
   onSelect,
+  demoMode,
+  iconBaseUrl,
+  allowRemoteIcons,
+  onDemoServiceClick,
 }: {
   membership: PortalDeviceNetwork;
   device: PortalDevice;
@@ -256,8 +350,14 @@ function DeviceCard({
   sameDevice: boolean;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  demoMode: boolean;
+  iconBaseUrl: string;
+  allowRemoteIcons: boolean;
+  onDemoServiceClick: () => void;
 }) {
   const selected = device.id === selectedDeviceId;
+  const petname = device.petname?.trim();
+  const displayName = deviceName(device);
   const style =
     visual.mode === "related" && visual.color
       ? ({ "--ouchi-relation-color": visual.color } as CSSProperties)
@@ -287,7 +387,7 @@ function DeviceCard({
     >
       <header className="ouchi-node-header">
         <button
-          aria-label={`${device.name}を${selected ? "選択解除" : "選択"}`}
+          aria-label={`${displayName}を${selected ? "選択解除" : "選択"}`}
           aria-pressed={selected}
           className="ouchi-node-select-button"
           onClick={() => onSelect(device.id)}
@@ -295,7 +395,7 @@ function DeviceCard({
         >
           <span className="ouchi-node-radio" aria-hidden="true" />
           <span className="ouchi-device-title">
-            <span id={`device-${membership.id}`}>{device.name}</span>
+            <span id={`device-${membership.id}`}>{displayName}</span>
             {device.isVm && <span className="ouchi-vm-badge">VM</span>}
             {sameDevice && selected && (
               <span className="ouchi-same-device-badge">同一デバイス</span>
@@ -303,7 +403,8 @@ function DeviceCard({
           </span>
           <span className="ouchi-node-address">
             {membership.ip || "IP未登録"}
-            {membership.label ? ` / ${membership.label}` : ""}
+            {petname ? ` / ${device.name}` : ""}
+            {` / ${DEVICE_CATEGORY_LABELS[device.category]}`}
           </span>
         </button>
         <div className="ouchi-node-header-side">
@@ -320,6 +421,10 @@ function DeviceCard({
               key={service.id}
               membership={membership}
               service={service}
+              demoMode={demoMode}
+              iconBaseUrl={iconBaseUrl}
+              allowRemoteIcons={allowRemoteIcons}
+              onDemoClick={onDemoServiceClick}
             />
           ))}
         </div>
@@ -334,11 +439,19 @@ function NetworkCard({
   data,
   selectedDeviceId,
   onSelect,
+  demoMode,
+  iconBaseUrl,
+  allowRemoteIcons,
+  onDemoServiceClick,
 }: {
   network: PortalNetwork;
   data: PortalDataV2;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  demoMode: boolean;
+  iconBaseUrl: string;
+  allowRemoteIcons: boolean;
+  onDemoServiceClick: () => void;
 }) {
   const memberships = data.deviceNetworks.filter(
     (membership) => membership.networkId === network.id,
@@ -417,8 +530,12 @@ function NetworkCard({
                       return (
                         <DeviceCard
                           key={membership.id}
+                          demoMode={demoMode}
                           device={device}
+                          allowRemoteIcons={allowRemoteIcons}
+                          iconBaseUrl={iconBaseUrl}
                           membership={membership}
+                          onDemoServiceClick={onDemoServiceClick}
                           onSelect={onSelect}
                           sameDevice={
                             (membershipCounts.get(device.id) ?? 0) > 1
@@ -448,18 +565,30 @@ function IconBoard({
   data,
   selectedDeviceId,
   onSelect,
+  demoMode,
+  iconBaseUrl,
+  allowRemoteIcons,
+  onDemoServiceClick,
 }: {
   data: PortalDataV2;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  demoMode: boolean;
+  iconBaseUrl: string;
+  allowRemoteIcons: boolean;
+  onDemoServiceClick: () => void;
 }) {
   return (
     <div className="ouchi-network-stack">
       {sortNetworksForDisplay(data.networks).map((network) => (
         <NetworkCard
           data={data}
+          demoMode={demoMode}
+          allowRemoteIcons={allowRemoteIcons}
+          iconBaseUrl={iconBaseUrl}
           key={network.id}
           network={network}
+          onDemoServiceClick={onDemoServiceClick}
           onSelect={onSelect}
           selectedDeviceId={selectedDeviceId}
         />
@@ -471,9 +600,13 @@ function IconBoard({
 function ListService({
   service,
   membership,
+  demoMode,
+  onDemoClick,
 }: {
   service: PortalService;
   membership: PortalDeviceNetwork;
+  demoMode: boolean;
+  onDemoClick: () => void;
 }) {
   const href = service.url ?? "";
   const content = (
@@ -483,6 +616,17 @@ function ListService({
       {href && <ExternalLinkIcon size={14} />}
     </>
   );
+  if (demoMode) {
+    return (
+      <button
+        className="ouchi-list-service ouchi-service-tile--demo"
+        onClick={onDemoClick}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
   return href ? (
     <a
       className="ouchi-list-service"
@@ -503,10 +647,14 @@ function ListBoard({
   data,
   selectedDeviceId,
   onSelect,
+  demoMode,
+  onDemoServiceClick,
 }: {
   data: PortalDataV2;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  demoMode: boolean;
+  onDemoServiceClick: () => void;
 }) {
   const membershipCounts = new Map<string, number>();
   for (const membership of data.deviceNetworks) {
@@ -592,6 +740,8 @@ function ListBoard({
                             );
                             const selected =
                               device.id === selectedDeviceId;
+                            const petname = device.petname?.trim();
+                            const displayName = deviceName(device);
                             return (
                               <div
                                 className={[
@@ -625,13 +775,13 @@ function ListBoard({
                                 <div className="ouchi-list-node-summary">
                                   <div className="ouchi-list-node-meta">
                                     <button
-                                      aria-label={`${device.name}を${selected ? "選択解除" : "選択"}`}
+                                      aria-label={`${displayName}を${selected ? "選択解除" : "選択"}`}
                                       aria-pressed={selected}
                                       className="ouchi-list-select-button"
                                       onClick={() => onSelect(device.id)}
                                       type="button"
                                     >
-                                      <strong>{device.name}</strong>
+                                      <strong>{displayName}</strong>
                                     </button>
                                     {device.isVm && (
                                       <span className="ouchi-vm-badge">
@@ -645,10 +795,11 @@ function ListBoard({
                                           同一デバイス
                                         </span>
                                       )}
-                                    <code>{membership.ip}</code>
-                                    {membership.label && (
-                                      <small>{membership.label}</small>
-                                    )}
+                                    <code>{membership.ip || "IP未登録"}</code>
+                                    {petname && <small>{device.name}</small>}
+                                    <small>
+                                      {DEVICE_CATEGORY_LABELS[device.category]}
+                                    </small>
                                     {visual.mode === "related" &&
                                       visual.tags.map((tag, index) => (
                                         <span
@@ -673,8 +824,10 @@ function ListBoard({
                                     ) : (
                                       services.map((service) => (
                                         <ListService
+                                          demoMode={demoMode}
                                           key={service.id}
                                           membership={membership}
+                                          onDemoClick={onDemoServiceClick}
                                           service={service}
                                         />
                                       ))
@@ -744,6 +897,7 @@ export function OuchiPortal({
   >([]);
   const [connectorTooltip, setConnectorTooltip] =
     useState<ConnectorTooltip>();
+  const [demoServiceNoticeOpen, setDemoServiceNoticeOpen] = useState(false);
 
   useEffect(() => {
     if (!message) {
@@ -1092,6 +1246,7 @@ export function OuchiPortal({
         }
         const deviceInput: PortalDeviceInput = {
           hostname: mutation.device.name.trim(),
+          petname: mutation.device.petname?.trim() || null,
           category: mutation.device.category,
           isVm: mutation.device.isVm,
           sshUser: mutation.device.ssh?.user || null,
@@ -1134,21 +1289,58 @@ export function OuchiPortal({
           }
         }
 
+        const relationColors = new Map(
+          portalData.relations.map((relation) => [
+            relation.tag.trim(),
+            relation.color.trim(),
+          ]),
+        );
+        const recoloredTags = new Set<string>();
+        for (const relation of mutation.relations) {
+          const tag = relation.tag.trim();
+          const color = relation.color.trim();
+          const currentColor = relationColors.get(tag);
+          if (
+            tag &&
+            color &&
+            currentColor &&
+            currentColor !== color &&
+            !recoloredTags.has(tag)
+          ) {
+            await updateRelationTagColor(apiBaseUrl, tag, color);
+            recoloredTags.add(tag);
+          }
+        }
+
         const currentRelations = portalData.relations.filter(
           (relation) => relation.fromDeviceId === savedDeviceId,
         );
+        const nextRelationIds = new Set(
+          mutation.relations.map((relation) => relation.id),
+        );
         for (const relation of currentRelations) {
-          await deleteRelation(apiBaseUrl, relation.id);
+          if (!nextRelationIds.has(relation.id)) {
+            await deleteRelation(apiBaseUrl, relation.id);
+          }
         }
         for (const relation of mutation.relations) {
-          await createRelation(apiBaseUrl, {
+          const input = {
             fromDeviceId: Number(savedDeviceId),
             toDeviceId: Number(relation.toDeviceId),
-            tag: relation.tag || null,
+            tag: relation.tag.trim(),
             fromLabel: relation.fromLabel || null,
             toLabel: relation.toLabel || null,
-            color: relation.color,
-          });
+            color: relation.color.trim(),
+          };
+          if (
+            currentRelations.some(
+              (currentRelation) => currentRelation.id === relation.id,
+            )
+          ) {
+            await updateRelation(apiBaseUrl, relation.id, input);
+          } else {
+            await createRelation(apiBaseUrl, input);
+          }
         }
       }
       setMessage(`${KIND_LABELS[kind]}を保存しました。`);
@@ -1374,30 +1566,23 @@ export function OuchiPortal({
         ) : viewMode === "icons" ? (
           <IconBoard
             data={portalData}
+            demoMode={isReadOnly}
+            allowRemoteIcons={!isReadOnly}
+            iconBaseUrl={apiBaseUrl}
+            onDemoServiceClick={() => setDemoServiceNoticeOpen(true)}
             onSelect={toggleSelection}
             selectedDeviceId={selectedDeviceId}
           />
         ) : (
           <ListBoard
             data={portalData}
+            demoMode={isReadOnly}
+            onDemoServiceClick={() => setDemoServiceNoticeOpen(true)}
             onSelect={toggleSelection}
             selectedDeviceId={selectedDeviceId}
           />
         )}
       </div>
-
-      <footer className="ouchi-portal-footer">
-        <div className="ouchi-relation-legend" aria-label="選択表示の凡例">
-          <span>
-            <i className="ouchi-legend-swatch ouchi-legend-swatch--same" />
-            同一デバイス
-          </span>
-          <span>
-            <i className="ouchi-legend-swatch ouchi-legend-swatch--relation" />
-            関係先はタグ色
-          </span>
-        </div>
-      </footer>
 
       {!isReadOnly && (
         <ManageDrawer
@@ -1441,6 +1626,12 @@ export function OuchiPortal({
           onCancel={() => setConfirm(null)}
           onConfirm={handleDelete}
           title={`${KIND_LABELS[confirm.kind]}を削除しますか？`}
+        />
+      )}
+
+      {isReadOnly && demoServiceNoticeOpen && (
+        <DemoServiceLinkDialog
+          onClose={() => setDemoServiceNoticeOpen(false)}
         />
       )}
 

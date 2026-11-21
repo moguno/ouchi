@@ -17,6 +17,1113 @@ var PORTAL_DEVICE_CATEGORIES = [
   "vm",
   "service"
 ];
+var PORTAL_ICON_KEYS = [
+  "gitea",
+  "gatus",
+  "proxmox",
+  "omv",
+  "server",
+  "database",
+  "monitor",
+  "container",
+  "globe"
+];
+var PORTAL_GENERIC_ICON_KEYS = [
+  "applications",
+  "bookmark",
+  "calendar",
+  "camera",
+  "chart",
+  "chat",
+  "cloud",
+  "code",
+  "download",
+  "folder",
+  "home",
+  "key",
+  "lock",
+  "mail",
+  "music",
+  "printer",
+  "shield",
+  "terminal",
+  "upload",
+  "users",
+  "video",
+  ...PORTAL_ICON_KEYS
+];
+
+// src/data/dashboard-icons-index.json
+var dashboard_icons_index_default = {
+  format: "ouchi-dashboard-icons-index/1",
+  source: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/",
+  metadataApi: "https://data.jsdelivr.com/v1/package/gh/homarr-labs/dashboard-icons",
+  generatedAt: "2026-11-21T10:43:13.998Z",
+  packageVersion: "offline-bootstrap-2026-11-21",
+  snapshotMode: "offline-bootstrap",
+  complete: false,
+  icons: [
+    {
+      slug: "2fauth",
+      name: "2FAuth"
+    },
+    {
+      slug: "3cx",
+      name: "3cx"
+    },
+    {
+      slug: "a-self-hosted-service",
+      name: "A Self Hosted Service"
+    },
+    {
+      slug: "a11y",
+      name: "A11y"
+    },
+    {
+      slug: "actual-budget",
+      name: "Actual Budget"
+    },
+    {
+      slug: "adblock",
+      name: "Adblock"
+    },
+    {
+      slug: "adguard-home",
+      name: "AdGuard Home"
+    },
+    {
+      slug: "adminer",
+      name: "Adminer"
+    },
+    {
+      slug: "affine",
+      name: "Affine"
+    },
+    {
+      slug: "airsonic",
+      name: "Airsonic"
+    },
+    {
+      slug: "alist",
+      name: "Alist"
+    },
+    {
+      slug: "alltube",
+      name: "Alltube"
+    },
+    {
+      slug: "alpine-linux",
+      name: "Alpine Linux"
+    },
+    {
+      slug: "amazon",
+      name: "Amazon"
+    },
+    {
+      slug: "amazon-s3",
+      name: "Amazon S3"
+    },
+    {
+      slug: "android",
+      name: "Android"
+    },
+    {
+      slug: "ansible",
+      name: "Ansible"
+    },
+    {
+      slug: "apache",
+      name: "Apache"
+    },
+    {
+      slug: "apollo",
+      name: "Apollo"
+    },
+    {
+      slug: "apple",
+      name: "Apple"
+    },
+    {
+      slug: "apprise",
+      name: "Apprise"
+    },
+    {
+      slug: "archivebox",
+      name: "Archivebox"
+    },
+    {
+      slug: "arduino",
+      name: "Arduino"
+    },
+    {
+      slug: "argocd",
+      name: "Argocd"
+    },
+    {
+      slug: "ariang",
+      name: "Ariang"
+    },
+    {
+      slug: "audiobookshelf",
+      name: "Audiobookshelf"
+    },
+    {
+      slug: "authelia",
+      name: "Authelia"
+    },
+    {
+      slug: "authentik",
+      name: "Authentik"
+    },
+    {
+      slug: "awx",
+      name: "Awx"
+    },
+    {
+      slug: "backrest",
+      name: "Backrest"
+    },
+    {
+      slug: "bash",
+      name: "Bash"
+    },
+    {
+      slug: "bazarr",
+      name: "Bazarr"
+    },
+    {
+      slug: "bitwarden",
+      name: "Bitwarden"
+    },
+    {
+      slug: "blueiris",
+      name: "Blueiris"
+    },
+    {
+      slug: "booksonic",
+      name: "Booksonic"
+    },
+    {
+      slug: "bookstack",
+      name: "Bookstack"
+    },
+    {
+      slug: "bt",
+      name: "Bt"
+    },
+    {
+      slug: "caddy",
+      name: "Caddy"
+    },
+    {
+      slug: "calibre",
+      name: "Calibre"
+    },
+    {
+      slug: "calibre-web",
+      name: "Calibre Web"
+    },
+    {
+      slug: "casaos",
+      name: "Casaos"
+    },
+    {
+      slug: "changedetection",
+      name: "Changedetection"
+    },
+    {
+      slug: "chrome",
+      name: "Chrome"
+    },
+    {
+      slug: "cloudflare",
+      name: "Cloudflare"
+    },
+    {
+      slug: "cloudflare-pages",
+      name: "Cloudflare Pages"
+    },
+    {
+      slug: "cloudflare-workers",
+      name: "Cloudflare Workers"
+    },
+    {
+      slug: "code-server",
+      name: "code-server"
+    },
+    {
+      slug: "collabora-online",
+      name: "Collabora Online"
+    },
+    {
+      slug: "couchdb",
+      name: "Couchdb"
+    },
+    {
+      slug: "crowdsec",
+      name: "Crowdsec"
+    },
+    {
+      slug: "cups",
+      name: "Cups"
+    },
+    {
+      slug: "dashy",
+      name: "Dashy"
+    },
+    {
+      slug: "debian",
+      name: "Debian"
+    },
+    {
+      slug: "deluge",
+      name: "Deluge"
+    },
+    {
+      slug: "directus",
+      name: "Directus"
+    },
+    {
+      slug: "discord",
+      name: "Discord"
+    },
+    {
+      slug: "dnsmasq",
+      name: "Dnsmasq"
+    },
+    {
+      slug: "docker",
+      name: "Docker"
+    },
+    {
+      slug: "dokuwiki",
+      name: "Dokuwiki"
+    },
+    {
+      slug: "drawio",
+      name: "Drawio"
+    },
+    {
+      slug: "drone",
+      name: "Drone"
+    },
+    {
+      slug: "duplicati",
+      name: "Duplicati"
+    },
+    {
+      slug: "elasticsearch",
+      name: "Elasticsearch"
+    },
+    {
+      slug: "element",
+      name: "Element"
+    },
+    {
+      slug: "emby",
+      name: "Emby"
+    },
+    {
+      slug: "emulatorjs",
+      name: "Emulatorjs"
+    },
+    {
+      slug: "esphome",
+      name: "Esphome"
+    },
+    {
+      slug: "esxi",
+      name: "Esxi"
+    },
+    {
+      slug: "f-droid",
+      name: "F Droid"
+    },
+    {
+      slug: "fastapi",
+      name: "Fastapi"
+    },
+    {
+      slug: "filebrowser",
+      name: "Filebrowser"
+    },
+    {
+      slug: "firefly-iii",
+      name: "Firefly Iii"
+    },
+    {
+      slug: "firefox",
+      name: "Firefox"
+    },
+    {
+      slug: "flame",
+      name: "Flame"
+    },
+    {
+      slug: "flaresolverr",
+      name: "Flaresolverr"
+    },
+    {
+      slug: "freshrss",
+      name: "Freshrss"
+    },
+    {
+      slug: "frigate",
+      name: "Frigate"
+    },
+    {
+      slug: "frp",
+      name: "Frp"
+    },
+    {
+      slug: "gitea",
+      name: "Gitea"
+    },
+    {
+      slug: "gitea-actions",
+      name: "Gitea Actions"
+    },
+    {
+      slug: "github",
+      name: "Github"
+    },
+    {
+      slug: "gitlab",
+      name: "Gitlab"
+    },
+    {
+      slug: "glances",
+      name: "Glances"
+    },
+    {
+      slug: "gotify",
+      name: "Gotify"
+    },
+    {
+      slug: "grafana",
+      name: "Grafana"
+    },
+    {
+      slug: "greenlight",
+      name: "Greenlight"
+    },
+    {
+      slug: "grocy",
+      name: "Grocy"
+    },
+    {
+      slug: "guacamole",
+      name: "Guacamole"
+    },
+    {
+      slug: "haproxy",
+      name: "Haproxy"
+    },
+    {
+      slug: "harbor",
+      name: "Harbor"
+    },
+    {
+      slug: "hass",
+      name: "Hass"
+    },
+    {
+      slug: "headscale",
+      name: "Headscale"
+    },
+    {
+      slug: "healthchecks",
+      name: "Healthchecks"
+    },
+    {
+      slug: "heimdall",
+      name: "Heimdall"
+    },
+    {
+      slug: "home-assistant",
+      name: "Home Assistant"
+    },
+    {
+      slug: "homebridge",
+      name: "Homebridge"
+    },
+    {
+      slug: "homer",
+      name: "Homer"
+    },
+    {
+      slug: "hugo",
+      name: "Hugo"
+    },
+    {
+      slug: "immich",
+      name: "Immich"
+    },
+    {
+      slug: "influxdb",
+      name: "Influxdb"
+    },
+    {
+      slug: "it-tools",
+      name: "It Tools"
+    },
+    {
+      slug: "jackett",
+      name: "Jackett"
+    },
+    {
+      slug: "jdownloader",
+      name: "Jdownloader"
+    },
+    {
+      slug: "jellyfin",
+      name: "Jellyfin"
+    },
+    {
+      slug: "jellyseerr",
+      name: "Jellyseerr"
+    },
+    {
+      slug: "jenkins",
+      name: "Jenkins"
+    },
+    {
+      slug: "kasm",
+      name: "Kasm"
+    },
+    {
+      slug: "kavita",
+      name: "Kavita"
+    },
+    {
+      slug: "keycloak",
+      name: "Keycloak"
+    },
+    {
+      slug: "kibana",
+      name: "Kibana"
+    },
+    {
+      slug: "kodbox",
+      name: "Kodbox"
+    },
+    {
+      slug: "komga",
+      name: "Komga"
+    },
+    {
+      slug: "kuma",
+      name: "Kuma"
+    },
+    {
+      slug: "lazylibrarian",
+      name: "Lazylibrarian"
+    },
+    {
+      slug: "libreoffice",
+      name: "Libreoffice"
+    },
+    {
+      slug: "librespeed",
+      name: "Librespeed"
+    },
+    {
+      slug: "lidarr",
+      name: "Lidarr"
+    },
+    {
+      slug: "linkding",
+      name: "Linkding"
+    },
+    {
+      slug: "linuxserver",
+      name: "Linuxserver"
+    },
+    {
+      slug: "mariadb",
+      name: "Mariadb"
+    },
+    {
+      slug: "mastodon",
+      name: "Mastodon"
+    },
+    {
+      slug: "mattermost",
+      name: "Mattermost"
+    },
+    {
+      slug: "mealie",
+      name: "Mealie"
+    },
+    {
+      slug: "memcached",
+      name: "Memcached"
+    },
+    {
+      slug: "mikrotik",
+      name: "Mikrotik"
+    },
+    {
+      slug: "minecraft",
+      name: "Minecraft"
+    },
+    {
+      slug: "minio",
+      name: "Minio"
+    },
+    {
+      slug: "mongodb",
+      name: "Mongodb"
+    },
+    {
+      slug: "mosquitto",
+      name: "Mosquitto"
+    },
+    {
+      slug: "motioneye",
+      name: "Motioneye"
+    },
+    {
+      slug: "mumble",
+      name: "Mumble"
+    },
+    {
+      slug: "mysql",
+      name: "Mysql"
+    },
+    {
+      slug: "n8n",
+      name: "N8n"
+    },
+    {
+      slug: "nagios",
+      name: "Nagios"
+    },
+    {
+      slug: "navidrome",
+      name: "Navidrome"
+    },
+    {
+      slug: "netbox",
+      name: "Netbox"
+    },
+    {
+      slug: "netdata",
+      name: "Netdata"
+    },
+    {
+      slug: "nextcloud",
+      name: "Nextcloud"
+    },
+    {
+      slug: "nextdns",
+      name: "Nextdns"
+    },
+    {
+      slug: "nginx",
+      name: "Nginx"
+    },
+    {
+      slug: "nginx-proxy-manager",
+      name: "Nginx Proxy Manager"
+    },
+    {
+      slug: "node-red",
+      name: "Node-RED"
+    },
+    {
+      slug: "notion",
+      name: "Notion"
+    },
+    {
+      slug: "ntfy",
+      name: "Ntfy"
+    },
+    {
+      slug: "nvidia",
+      name: "Nvidia"
+    },
+    {
+      slug: "octoprint",
+      name: "Octoprint"
+    },
+    {
+      slug: "ombi",
+      name: "Ombi"
+    },
+    {
+      slug: "omv",
+      name: "Omv"
+    },
+    {
+      slug: "onlyoffice",
+      name: "Onlyoffice"
+    },
+    {
+      slug: "open-webui",
+      name: "Open WebUI"
+    },
+    {
+      slug: "openhab",
+      name: "Openhab"
+    },
+    {
+      slug: "openvpn",
+      name: "Openvpn"
+    },
+    {
+      slug: "opnsense",
+      name: "Opnsense"
+    },
+    {
+      slug: "overseerr",
+      name: "Overseerr"
+    },
+    {
+      slug: "paperless-ngx",
+      name: "Paperless-ngx"
+    },
+    {
+      slug: "pfsense",
+      name: "Pfsense"
+    },
+    {
+      slug: "photoprism",
+      name: "Photoprism"
+    },
+    {
+      slug: "phpmyadmin",
+      name: "Phpmyadmin"
+    },
+    {
+      slug: "pihole",
+      name: "Pi-hole"
+    },
+    {
+      slug: "plex",
+      name: "Plex"
+    },
+    {
+      slug: "portainer",
+      name: "Portainer"
+    },
+    {
+      slug: "postgresql",
+      name: "Postgresql"
+    },
+    {
+      slug: "prometheus",
+      name: "Prometheus"
+    },
+    {
+      slug: "prowlarr",
+      name: "Prowlarr"
+    },
+    {
+      slug: "proxmox",
+      name: "Proxmox"
+    },
+    {
+      slug: "proxtainer",
+      name: "Proxtainer"
+    },
+    {
+      slug: "python",
+      name: "Python"
+    },
+    {
+      slug: "qnap",
+      name: "Qnap"
+    },
+    {
+      slug: "radarr",
+      name: "Radarr"
+    },
+    {
+      slug: "raspberry-pi",
+      name: "Raspberry Pi"
+    },
+    {
+      slug: "rclone",
+      name: "Rclone"
+    },
+    {
+      slug: "redis",
+      name: "Redis"
+    },
+    {
+      slug: "restic",
+      name: "Restic"
+    },
+    {
+      slug: "rocketchat",
+      name: "Rocketchat"
+    },
+    {
+      slug: "romm",
+      name: "Romm"
+    },
+    {
+      slug: "rsshub",
+      name: "Rsshub"
+    },
+    {
+      slug: "rustdesk",
+      name: "Rustdesk"
+    },
+    {
+      slug: "sabnzbd",
+      name: "Sabnzbd"
+    },
+    {
+      slug: "samba",
+      name: "Samba"
+    },
+    {
+      slug: "script-server",
+      name: "Script Server"
+    },
+    {
+      slug: "scrutiny",
+      name: "Scrutiny"
+    },
+    {
+      slug: "searxng",
+      name: "SearXNG"
+    },
+    {
+      slug: "semaphore",
+      name: "Semaphore"
+    },
+    {
+      slug: "shlink",
+      name: "Shlink"
+    },
+    {
+      slug: "slack",
+      name: "Slack"
+    },
+    {
+      slug: "sonarr",
+      name: "Sonarr"
+    },
+    {
+      slug: "speedtest-tracker",
+      name: "Speedtest Tracker"
+    },
+    {
+      slug: "spotify",
+      name: "Spotify"
+    },
+    {
+      slug: "stirling-pdf",
+      name: "Stirling Pdf"
+    },
+    {
+      slug: "storj",
+      name: "Storj"
+    },
+    {
+      slug: "streamlit",
+      name: "Streamlit"
+    },
+    {
+      slug: "syncthing",
+      name: "Syncthing"
+    },
+    {
+      slug: "synology",
+      name: "Synology"
+    },
+    {
+      slug: "systemd",
+      name: "Systemd"
+    },
+    {
+      slug: "tailscale",
+      name: "Tailscale"
+    },
+    {
+      slug: "tautulli",
+      name: "Tautulli"
+    },
+    {
+      slug: "teamcity",
+      name: "Teamcity"
+    },
+    {
+      slug: "technitium",
+      name: "Technitium"
+    },
+    {
+      slug: "telegram",
+      name: "Telegram"
+    },
+    {
+      slug: "the-lounge",
+      name: "The Lounge"
+    },
+    {
+      slug: "tinyauth",
+      name: "Tinyauth"
+    },
+    {
+      slug: "traefik",
+      name: "Traefik"
+    },
+    {
+      slug: "transmission",
+      name: "Transmission"
+    },
+    {
+      slug: "trello",
+      name: "Trello"
+    },
+    {
+      slug: "truenas",
+      name: "Truenas"
+    },
+    {
+      slug: "ubiquiti",
+      name: "Ubiquiti"
+    },
+    {
+      slug: "ubuntu",
+      name: "Ubuntu"
+    },
+    {
+      slug: "umami",
+      name: "Umami"
+    },
+    {
+      slug: "unifi",
+      name: "Unifi"
+    },
+    {
+      slug: "unraid",
+      name: "Unraid"
+    },
+    {
+      slug: "uptime-kuma",
+      name: "Uptime Kuma"
+    },
+    {
+      slug: "vaultwarden",
+      name: "Vaultwarden"
+    },
+    {
+      slug: "vikunja",
+      name: "Vikunja"
+    },
+    {
+      slug: "vscode",
+      name: "Vscode"
+    },
+    {
+      slug: "watchtower",
+      name: "Watchtower"
+    },
+    {
+      slug: "webmin",
+      name: "Webmin"
+    },
+    {
+      slug: "wg-easy",
+      name: "wg-easy"
+    },
+    {
+      slug: "wger",
+      name: "Wger"
+    },
+    {
+      slug: "wiki-js",
+      name: "Wiki.js"
+    },
+    {
+      slug: "windows",
+      name: "Windows"
+    },
+    {
+      slug: "wireshark",
+      name: "Wireshark"
+    },
+    {
+      slug: "wordpress",
+      name: "Wordpress"
+    },
+    {
+      slug: "xen-orchestra",
+      name: "Xen Orchestra"
+    },
+    {
+      slug: "xteve",
+      name: "Xteve"
+    },
+    {
+      slug: "yaml",
+      name: "Yaml"
+    },
+    {
+      slug: "youtube",
+      name: "Youtube"
+    },
+    {
+      slug: "zabbix",
+      name: "Zabbix"
+    },
+    {
+      slug: "zammad",
+      name: "Zammad"
+    },
+    {
+      slug: "zerotier",
+      name: "Zerotier"
+    },
+    {
+      slug: "zigbee2mqtt",
+      name: "Zigbee2mqtt"
+    },
+    {
+      slug: "zulip",
+      name: "Zulip"
+    },
+    {
+      slug: "zwave-js-ui",
+      name: "Z-Wave JS UI"
+    }
+  ]
+};
+
+// src/portal/iconCatalog.ts
+var DASHBOARD_ICON_INDEX = dashboard_icons_index_default;
+var DEFAULT_ICON_REFERENCE = "generic:applications";
+var FAVICON_ICON_REFERENCE = "favicon";
+var DASHBOARD_ICON_CDN_BASE = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg";
+var dashboardByName = new Map(
+  DASHBOARD_ICON_INDEX.icons.map((icon) => [icon.slug, icon])
+);
+var featuredDashboardSlugs = [
+  "authentik",
+  "adguard-home",
+  "cloudflare",
+  "docker",
+  "gitea",
+  "github",
+  "gitlab",
+  "grafana",
+  "home-assistant",
+  "immich",
+  "jellyfin",
+  "nextcloud",
+  "nginx-proxy-manager",
+  "node-red",
+  "paperless-ngx",
+  "pihole",
+  "plex",
+  "portainer",
+  "proxmox",
+  "sonarr",
+  "tailscale",
+  "traefik",
+  "uptime-kuma",
+  "vaultwarden"
+];
+var featuredDashboardRank = new Map(
+  featuredDashboardSlugs.map((slug, index) => [slug, index])
+);
+function isHttpImageUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+function isGenericIconKey(value) {
+  return PORTAL_GENERIC_ICON_KEYS.includes(
+    value
+  );
+}
+function isDashboardSlug(value) {
+  return /^[a-z0-9][a-z0-9._-]{0,99}$/i.test(value);
+}
+function genericIconReference(key) {
+  return `generic:${key}`;
+}
+function urlIconReference(url) {
+  return `url:${url.trim()}`;
+}
+function dashboardIconPreviewUrl(slug) {
+  return `${DASHBOARD_ICON_CDN_BASE}/${encodeURIComponent(slug)}.svg`;
+}
+function dashboardIconReference(slug) {
+  return urlIconReference(
+    dashboardIconPreviewUrl(slug.toLowerCase())
+  );
+}
+function tryNormalizeIconReference(value) {
+  if (typeof value !== "string") {
+    return void 0;
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return void 0;
+  }
+  const lower = normalized.toLowerCase();
+  if (isGenericIconKey(lower)) {
+    return genericIconReference(lower);
+  }
+  if (lower === "favicon") {
+    return FAVICON_ICON_REFERENCE;
+  }
+  if (isHttpImageUrl(normalized)) {
+    return urlIconReference(normalized);
+  }
+  const separator = normalized.indexOf(":");
+  if (separator <= 0) {
+    return void 0;
+  }
+  const kind = normalized.slice(0, separator).toLowerCase();
+  const id = normalized.slice(separator + 1).trim();
+  const genericId = id.toLowerCase();
+  if ((kind === "preset" || kind === "generic") && isGenericIconKey(genericId)) {
+    return genericIconReference(genericId);
+  }
+  if (kind === "dashboard" && isDashboardSlug(id)) {
+    return dashboardIconReference(id);
+  }
+  if (kind === "url" && isHttpImageUrl(id)) {
+    return urlIconReference(id);
+  }
+  return void 0;
+}
+function parseIconReference(value) {
+  const reference = tryNormalizeIconReference(value) ?? DEFAULT_ICON_REFERENCE;
+  if (reference === FAVICON_ICON_REFERENCE) {
+    return { kind: "favicon", id: "", reference };
+  }
+  const separator = reference.indexOf(":");
+  const kind = reference.slice(0, separator);
+  return {
+    kind,
+    id: reference.slice(separator + 1),
+    reference
+  };
+}
+function normalizeServiceIconReference(iconKey, legacyFaviconUrl, fallback = DEFAULT_ICON_REFERENCE) {
+  const normalized = tryNormalizeIconReference(iconKey);
+  if (normalized) {
+    return normalized;
+  }
+  const legacyUrl = tryNormalizeIconReference(legacyFaviconUrl);
+  if (legacyUrl && iconReferenceKind(legacyUrl) === "url") {
+    return legacyUrl;
+  }
+  return fallback;
+}
+function iconReferenceKind(value) {
+  return parseIconReference(value).kind;
+}
 
 // src/portal/validation.ts
 var MAX_PORTAL_TITLE_LENGTH = 100;
@@ -165,6 +1272,9 @@ function validateDevicePayload(input) {
   if (!isNonEmptyString(input.hostname)) {
     issues.push({ path: "hostname", message: "\u30DB\u30B9\u30C8\u540D\u306F\u5FC5\u9808\u3067\u3059" });
   }
+  if (input.petname !== void 0 && !isNullableString(input.petname)) {
+    issues.push({ path: "petname", message: "\u30DA\u30C3\u30C8\u30CD\u30FC\u30E0\u304C\u4E0D\u6B63\u3067\u3059" });
+  }
   if (!isDeviceCategory(input.category)) {
     issues.push({ path: "category", message: "\u30C7\u30D0\u30A4\u30B9\u30AB\u30C6\u30B4\u30EA\u30FC\u304C\u4E0D\u6B63\u3067\u3059" });
   }
@@ -232,13 +1342,21 @@ function validateRelationPayload(input) {
       message: "\u540C\u3058\u30C7\u30D0\u30A4\u30B9\u81EA\u8EAB\u3078\u95A2\u4FC2\u306F\u5B9A\u7FA9\u3067\u304D\u307E\u305B\u3093"
     });
   }
-  for (const field of ["tag", "fromLabel", "toLabel"]) {
-    if (input[field] !== void 0 && !isNullableString(input[field])) {
-      issues.push({ path: field, message: `${field}\u304C\u4E0D\u6B63\u3067\u3059` });
-    }
+  if (!isNonEmptyString(input.tag)) {
+    issues.push({ path: "tag", message: "\u30BF\u30B0\u540D\u306F\u5FC5\u9808\u3067\u3059" });
   }
   if (!isNonEmptyString(input.color)) {
     issues.push({ path: "color", message: "\u95A2\u4FC2\u8272\u306F\u5FC5\u9808\u3067\u3059" });
+  } else if ([...input.color.trim()].length > 100) {
+    issues.push({
+      path: "color",
+      message: "\u95A2\u4FC2\u8272\u306F100\u6587\u5B57\u4EE5\u5185\u3067\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044"
+    });
+  }
+  for (const field of ["fromLabel", "toLabel"]) {
+    if (input[field] !== void 0 && !isNullableString(input[field])) {
+      issues.push({ path: field, message: `${field}\u304C\u4E0D\u6B63\u3067\u3059` });
+    }
   }
   return issues;
 }
@@ -324,6 +1442,10 @@ function nullableText(value) {
   }
   const normalized = value.trim();
   return normalized === "" ? "" : normalized;
+}
+function nullablePetname(value) {
+  const normalized = nullableText(value);
+  return normalized || null;
 }
 function arrayValue(value) {
   return Array.isArray(value) ? value : [];
@@ -528,6 +1650,7 @@ function validateDocument(root) {
     });
     devices.push({
       hostname: textValue(item.hostname),
+      petname: nullablePetname(item.petname),
       category: item.category,
       isVm: item.isVm,
       sshUser: nullableText(item.sshUser),
@@ -538,6 +1661,7 @@ function validateDocument(root) {
     });
   });
   const relations = [];
+  const relationTagColors = /* @__PURE__ */ new Map();
   arrayValue(root.relations).forEach((item, index) => {
     if (!isRecord2(item)) {
       issues.push({
@@ -546,18 +1670,29 @@ function validateDocument(root) {
       });
       return;
     }
+    const tagName = textValue(item.tag);
+    const relationColor = textValue(item.color);
     const synthetic = {
       fromDeviceId: index + 1,
       toDeviceId: index + 2,
-      tag: nullableText(item.tag),
+      tag: tagName,
       fromLabel: nullableText(item.fromLabel),
       toLabel: nullableText(item.toLabel),
-      color: textValue(item.color)
+      color: relationColor
     };
     issues.push(...validateRelationPayload(synthetic).map((issue) => ({
       ...issue,
       path: `relations[${index}].${issue.path}`
     })));
+    const canonicalColor = relationTagColors.get(tagName);
+    if (canonicalColor && relationColor !== canonicalColor) {
+      issues.push({
+        path: `relations[${index}].color`,
+        message: `\u30BF\u30B0\u300C${tagName}\u300D\u306E\u8272\u306F\u300C${canonicalColor}\u300D\u306B\u7D71\u4E00\u3057\u3066\u304F\u3060\u3055\u3044`
+      });
+    } else if (tagName && relationColor && !canonicalColor) {
+      relationTagColors.set(tagName, relationColor);
+    }
     for (const field of ["from", "to"]) {
       if (!textValue(item[field])) {
         issues.push({
@@ -569,10 +1704,10 @@ function validateDocument(root) {
     relations.push({
       from: textValue(item.from),
       to: textValue(item.to),
-      tag: nullableText(item.tag),
+      tag: tagName,
       fromLabel: nullableText(item.fromLabel),
       toLabel: nullableText(item.toLabel),
-      color: textValue(item.color)
+      color: relationColor
     });
   });
   const services = [];
@@ -584,10 +1719,15 @@ function validateDocument(root) {
       });
       return;
     }
+    const iconKey = normalizeServiceIconReference(
+      item.iconKey,
+      item.faviconUrl,
+      "generic:monitor"
+    );
     const synthetic = {
       deviceNetworkId: index + 1,
       subdomain: textValue(item.subdomain),
-      petname: nullableText(item.petname),
+      petname: nullablePetname(item.petname),
       description: nullableText(item.description),
       port: item.port,
       protocol: item.protocol,
@@ -595,7 +1735,7 @@ function validateDocument(root) {
       topPath: nullableText(item.topPath),
       monitorPath: nullableText(item.monitorPath),
       serviceUrl: nullableText(item.serviceUrl),
-      iconKey: nullableText(item.iconKey),
+      iconKey,
       enabled: item.enabled
     };
     issues.push(...validateServicePayload(synthetic).map((issue) => ({
@@ -620,7 +1760,7 @@ function validateDocument(root) {
       subdomain: textValue(item.subdomain).toLowerCase(),
       device: textValue(item.device),
       network: textValue(item.network),
-      petname: nullableText(item.petname),
+      petname: nullablePetname(item.petname),
       description: nullableText(item.description),
       port: item.port,
       protocol: item.protocol,
@@ -628,8 +1768,7 @@ function validateDocument(root) {
       topPath: nullableText(item.topPath),
       monitorPath: nullableText(item.monitorPath),
       serviceUrl: nullableText(item.serviceUrl),
-      iconKey: nullableText(item.iconKey),
-      faviconUrl: nullableText(item.faviconUrl),
+      iconKey,
       enabled: item.enabled
     });
   });
@@ -857,7 +1996,7 @@ function createLedgerDocument(database2, exportedAt = /* @__PURE__ */ new Date()
     "SELECT name, cidr, accent, note FROM networks ORDER BY id"
   ).all();
   const devices = database2.prepare(
-    `SELECT id, hostname, category, is_vm, ssh_user, ssh_port,
+    `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
               meter_enabled, note
        FROM devices ORDER BY id`
   ).all();
@@ -923,6 +2062,7 @@ function createLedgerDocument(database2, exportedAt = /* @__PURE__ */ new Date()
     })),
     devices: devices.map((device) => ({
       hostname: device.hostname,
+      petname: device.petname,
       category: device.category,
       isVm: Boolean(device.is_vm),
       sshUser: device.ssh_user,
@@ -951,8 +2091,11 @@ function createLedgerDocument(database2, exportedAt = /* @__PURE__ */ new Date()
       topPath: service.top_path,
       monitorPath: service.monitor_path,
       serviceUrl: service.service_url,
-      iconKey: service.icon_key,
-      faviconUrl: service.favicon_url,
+      iconKey: normalizeServiceIconReference(
+        service.icon_key,
+        service.favicon_url,
+        "generic:monitor"
+      ),
       enabled: Boolean(service.enabled)
     })),
     sshKeys: sshKeys.map((key) => ({
@@ -1030,12 +2173,14 @@ function importLedgerYaml(database2, yaml) {
     const deviceIds = /* @__PURE__ */ new Map();
     const insertDevice = database2.prepare(
       `INSERT INTO devices
-        (hostname, category, is_vm, ssh_user, ssh_port, meter_enabled, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+        (hostname, petname, category, is_vm, ssh_user, ssh_port,
+         meter_enabled, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const device of document.devices) {
       const result = insertDevice.run(
         device.hostname,
+        device.petname,
         device.category,
         device.isVm ? 1 : 0,
         device.sshUser,
@@ -1101,7 +2246,7 @@ function importLedgerYaml(database2, yaml) {
         service.monitorPath,
         service.serviceUrl,
         service.iconKey,
-        service.faviconUrl,
+        null,
         service.enabled ? 1 : 0
       );
     }
@@ -1534,6 +2679,13 @@ function createApp(database2) {
         message: "\u95A2\u4FC2\u5148\u30C7\u30D0\u30A4\u30B9\u304C\u5B58\u5728\u3057\u307E\u305B\u3093"
       });
     }
+    const canonicalColor = database2.canonicalTagColor(value.tag);
+    if (canonicalColor && canonicalColor !== value.color.trim()) {
+      issues.push({
+        path: "color",
+        message: `\u30BF\u30B0\u300C${value.tag.trim()}\u300D\u306E\u8272\u306F\u300C${canonicalColor}\u300D\u306B\u56FA\u5B9A\u3055\u308C\u3066\u3044\u307E\u3059`
+      });
+    }
     return issues;
   };
   app2.post("/api/relations", async (context) => {
@@ -1552,6 +2704,48 @@ function createApp(database2) {
       const failure = databaseConflict(error);
       return context.json(failure.body, failure.status);
     }
+  });
+  app2.put("/api/relations/tags/:tag/color", async (context) => {
+    const tag = context.req.param("tag").trim();
+    if (!tag) {
+      return context.json(
+        { issues: [{ path: "tag", message: "\u30BF\u30B0\u540D\u306F\u5FC5\u9808\u3067\u3059" }] },
+        400
+      );
+    }
+    const input = await jsonBody(context);
+    if (typeof input !== "object" || input === null || !("color" in input) || typeof input.color !== "string" || input.color.trim() === "" || [...input.color.trim()].length > 100) {
+      return context.json(
+        {
+          issues: [
+            {
+              path: "color",
+              message: "\u95A2\u4FC2\u8272\u306F1\u301C100\u6587\u5B57\u3067\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044"
+            }
+          ]
+        },
+        400
+      );
+    }
+    const updated = database2.recolorTag(tag, input.color);
+    return updated.updated > 0 ? context.json(updated) : context.json({ error: "\u30BF\u30B0\u3092\u6301\u3064\u95A2\u4FC2\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093" }, 404);
+  });
+  app2.put("/api/relations/:id", async (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "ID\u304C\u4E0D\u6B63\u3067\u3059" }, 400);
+    }
+    const input = await jsonBody(context);
+    const issues = relationIssues(input);
+    if (issues.length > 0) {
+      const failure = invalid(issues);
+      return context.json(failure.body, failure.status);
+    }
+    const relation = database2.updateRelation(
+      id,
+      input
+    );
+    return relation ? context.json(relation) : context.json({ error: "\u95A2\u4FC2\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093" }, 404);
   });
   app2.delete("/api/relations/:id", (context) => {
     const id = parseId(context.req.param("id"));
@@ -1668,6 +2862,7 @@ function toApiDevice(row, memberships) {
   return {
     id: asNumber2(row.id),
     hostname: row.hostname,
+    petname: row.petname,
     category: row.category,
     isVm: Boolean(row.is_vm),
     sshUser: row.ssh_user,
@@ -1697,7 +2892,11 @@ function toApiService(row) {
     topPath: row.top_path,
     monitorPath: row.monitor_path,
     serviceUrl: row.service_url,
-    iconKey: row.icon_key,
+    iconKey: normalizeServiceIconReference(
+      row.icon_key,
+      row.favicon_url,
+      "generic:monitor"
+    ),
     enabled: Boolean(row.enabled),
     url: buildServiceUrl(base, { ip: row.ip ?? "" }),
     monitorUrl: buildMonitorUrl(base, { ip: row.ip ?? "" })
@@ -1716,9 +2915,11 @@ function toApiRelation(row) {
 }
 var PortalDatabase = class {
   database;
+  filename;
   constructor(options = {}) {
     const root = process.cwd();
     const filename = options.filename ?? resolve(root, "data", "ouchi.sqlite");
+    this.filename = filename;
     if (filename !== ":memory:") {
       mkdirSync(dirname(filename), { recursive: true });
     }
@@ -1732,6 +2933,16 @@ var PortalDatabase = class {
     const schemaPath = options.schemaPath ?? resolve(root, "contract-v1", "schema.sql");
     const seedPath = options.seedPath ?? resolve(root, "contract-v1", "seed.sql");
     this.database.exec(readFileSync(schemaPath, "utf8"));
+    const devicePetnameMigrationPath = options.devicePetnameMigrationPath ?? resolve(
+      root,
+      "contract-v1",
+      "migrations",
+      "001_add_device_petname.sql"
+    );
+    const deviceColumns = this.database.prepare("PRAGMA table_info(devices)").all();
+    if (!deviceColumns.some((column) => column.name === "petname")) {
+      this.database.exec(readFileSync(devicePetnameMigrationPath, "utf8"));
+    }
     const row = this.database.prepare("SELECT COUNT(*) AS count FROM networks").get();
     if (row.count === 0) {
       this.database.exec(readFileSync(seedPath, "utf8"));
@@ -1790,7 +3001,7 @@ var PortalDatabase = class {
   }
   listDevices() {
     const rows = this.database.prepare(
-      `SELECT id, hostname, category, is_vm, ssh_user, ssh_port,
+      `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
                 meter_enabled, note
          FROM devices ORDER BY id`
     ).all();
@@ -1814,10 +3025,12 @@ var PortalDatabase = class {
   createDevice(input) {
     const result = this.database.prepare(
       `INSERT INTO devices
-          (hostname, category, is_vm, ssh_user, ssh_port, meter_enabled, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+          (hostname, petname, category, is_vm, ssh_user, ssh_port,
+           meter_enabled, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       input.hostname.trim(),
+      nullableText2(input.petname),
       input.category,
       input.isVm ? 1 : 0,
       nullableText2(input.sshUser),
@@ -1833,11 +3046,12 @@ var PortalDatabase = class {
     }
     this.database.prepare(
       `UPDATE devices
-         SET hostname = ?, category = ?, is_vm = ?, ssh_user = ?,
+         SET hostname = ?, petname = ?, category = ?, is_vm = ?, ssh_user = ?,
              ssh_port = ?, meter_enabled = ?, note = ?
          WHERE id = ?`
     ).run(
       input.hostname.trim(),
+      nullableText2(input.petname),
       input.category,
       input.isVm ? 1 : 0,
       nullableText2(input.sshUser),
@@ -1925,7 +3139,8 @@ var PortalDatabase = class {
     return this.database.prepare(
       `SELECT s.id, s.device_network_id, s.subdomain, s.petname,
                   s.description, s.port, s.protocol, s.scheme, s.top_path,
-                  s.monitor_path, s.service_url, s.icon_key, s.enabled,
+                  s.monitor_path, s.service_url, s.icon_key, s.favicon_url,
+                  s.enabled,
                   dn.ip
            FROM services s
            JOIN device_networks dn ON dn.id = s.device_network_id
@@ -1939,8 +3154,9 @@ var PortalDatabase = class {
     const result = this.database.prepare(
       `INSERT INTO services
           (device_network_id, subdomain, petname, description, port, protocol,
-           scheme, top_path, monitor_path, service_url, icon_key, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           scheme, top_path, monitor_path, service_url, icon_key,
+           favicon_url, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       input.deviceNetworkId,
       input.subdomain.trim().toLowerCase(),
@@ -1952,7 +3168,12 @@ var PortalDatabase = class {
       nullableText2(input.topPath),
       nullableText2(input.monitorPath),
       nullableText2(input.serviceUrl),
-      nullableText2(input.iconKey),
+      normalizeServiceIconReference(
+        input.iconKey,
+        void 0,
+        "generic:monitor"
+      ),
+      null,
       input.enabled ? 1 : 0
     );
     return this.getService(asNumber2(result.lastInsertRowid));
@@ -1966,7 +3187,7 @@ var PortalDatabase = class {
          SET device_network_id = ?, subdomain = ?, petname = ?,
              description = ?, port = ?, protocol = ?, scheme = ?,
              top_path = ?, monitor_path = ?, service_url = ?, icon_key = ?,
-             enabled = ?
+             favicon_url = ?, enabled = ?
          WHERE id = ?`
     ).run(
       input.deviceNetworkId,
@@ -1979,7 +3200,12 @@ var PortalDatabase = class {
       nullableText2(input.topPath),
       nullableText2(input.monitorPath),
       nullableText2(input.serviceUrl),
-      nullableText2(input.iconKey),
+      normalizeServiceIconReference(
+        input.iconKey,
+        void 0,
+        "generic:monitor"
+      ),
+      null,
       input.enabled ? 1 : 0,
       id
     );
@@ -1992,10 +3218,25 @@ var PortalDatabase = class {
   }
   listRelations() {
     return this.database.prepare(
-      `SELECT id, from_device_id, to_device_id, tag, from_label, to_label,
-                  color
+      `SELECT id, from_device_id, to_device_id, tag, from_label,
+                  to_label, color
            FROM relations ORDER BY id`
     ).all().map(toApiRelation);
+  }
+  getRelation(id) {
+    const row = this.database.prepare(
+      `SELECT id, from_device_id, to_device_id, tag, from_label,
+                to_label, color
+         FROM relations WHERE id = ?`
+    ).get(id);
+    return row ? toApiRelation(row) : void 0;
+  }
+  canonicalTagColor(tag) {
+    const row = this.database.prepare(
+      `SELECT color FROM relations
+         WHERE trim(tag) = ? ORDER BY id LIMIT 1`
+    ).get(tag.trim());
+    return row?.color;
   }
   createRelation(input) {
     const result = this.database.prepare(
@@ -2005,17 +3246,52 @@ var PortalDatabase = class {
     ).run(
       input.fromDeviceId,
       input.toDeviceId,
-      nullableText2(input.tag),
+      input.tag.trim(),
       nullableText2(input.fromLabel),
       nullableText2(input.toLabel),
       input.color.trim()
     );
-    const row = this.database.prepare(
-      `SELECT id, from_device_id, to_device_id, tag, from_label, to_label,
-                color
-         FROM relations WHERE id = ?`
-    ).get(asNumber2(result.lastInsertRowid));
-    return toApiRelation(row);
+    return this.getRelation(asNumber2(result.lastInsertRowid));
+  }
+  updateRelation(id, input) {
+    if (!this.getRelation(id)) {
+      return void 0;
+    }
+    this.database.prepare(
+      `UPDATE relations
+         SET from_device_id = ?, to_device_id = ?, tag = ?,
+             from_label = ?, to_label = ?, color = ?
+         WHERE id = ?`
+    ).run(
+      input.fromDeviceId,
+      input.toDeviceId,
+      input.tag.trim(),
+      nullableText2(input.fromLabel),
+      nullableText2(input.toLabel),
+      input.color.trim(),
+      id
+    );
+    return this.getRelation(id);
+  }
+  recolorTag(tag, color) {
+    const normalizedTag = tag.trim();
+    const normalizedColor = color.trim();
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.database.prepare(
+        `UPDATE relations SET color = ?
+           WHERE trim(tag) = ?`
+      ).run(normalizedColor, normalizedTag);
+      this.database.exec("COMMIT");
+      return {
+        tag: normalizedTag,
+        color: normalizedColor,
+        updated: asNumber2(result.changes)
+      };
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
   deleteRelation(id) {
     return asNumber2(
@@ -2028,11 +3304,11 @@ var PortalDatabase = class {
       return void 0;
     }
     const rows = this.database.prepare(
-      `SELECT r.id, r.from_device_id, r.to_device_id, r.tag,
-                r.from_label, r.to_label, r.color
-         FROM relations r
-         WHERE r.from_device_id = ? OR r.to_device_id = ?
-         ORDER BY r.id`
+      `SELECT id, from_device_id, to_device_id, tag, from_label,
+                to_label, color
+         FROM relations
+         WHERE from_device_id = ? OR to_device_id = ?
+         ORDER BY id`
     ).all(deviceId, deviceId);
     const devices = this.listDevices();
     return {

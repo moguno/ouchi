@@ -421,6 +421,10 @@
   opacity: 0.72;
 }
 
+.ouchi-service-tile--demo {
+  cursor: pointer;
+}
+
 .ouchi-vm-stack {
   display: flex;
   flex-direction: column;
@@ -567,16 +571,6 @@
 .ouchi-empty-network p {
   margin: 4px 0 0;
   font-size: 10px;
-}
-
-.ouchi-portal-footer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 16px;
-  color: #707881;
-  font-size: 11px;
 }
 
 .ouchi-visually-hidden {
@@ -1491,6 +1485,21 @@
   font-size: 11px;
 }
 
+.ouchi-demo-service-dialog {
+  width: min(420px, 100%);
+}
+
+.ouchi-demo-service-dialog .ouchi-eyebrow {
+  margin: 0 0 5px;
+  color: #7f8992;
+  font-size: 9px;
+}
+
+.ouchi-demo-service-dialog #ouchi-demo-service-message {
+  color: #4f5a64;
+  font-size: 12px;
+}
+
 @keyframes ouchi-fade-in {
   from {
     opacity: 0;
@@ -1547,12 +1556,6 @@
 
   .ouchi-service-grid {
     grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-  }
-
-  .ouchi-portal-footer {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
   }
 
   .ouchi-list-node-summary,
@@ -2189,40 +2192,6 @@
   font-size: 9px;
 }
 
-.ouchi-portal-footer {
-  align-items: center;
-  margin-top: 3px;
-}
-
-.ouchi-relation-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 13px;
-  color: #737b85;
-  font-size: 9px;
-}
-
-.ouchi-relation-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.ouchi-legend-swatch {
-  width: 22px;
-  height: 13px;
-  border: 2px solid;
-  border-radius: 4px;
-}
-
-.ouchi-legend-swatch--same {
-  border-color: #6259d8;
-}
-
-.ouchi-legend-swatch--relation {
-  border-color: #e0a72b;
-}
-
 .ouchi-list-node--selected {
   background: #f3f1ff;
   box-shadow: inset 3px 0 #6259d8;
@@ -2401,6 +2370,247 @@
   white-space: nowrap;
 }
 
+.ouchi-remote-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+}
+
+.ouchi-icon-picker {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fafb;
+  border: 1px solid #e0e7eb;
+  border-radius: 12px;
+}
+
+.ouchi-icon-picker-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ouchi-icon-picker-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ouchi-icon-picker-heading > div > span {
+  color: #3e4c57;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ouchi-icon-picker-heading small {
+  color: #87919a;
+  font-size: 9px;
+}
+
+.ouchi-icon-picker-selected {
+  max-width: 48%;
+  overflow: hidden;
+  padding: 4px 8px;
+  color: #3f6175;
+  background: #eaf2f6;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ouchi-icon-picker-current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #dfe7ec;
+  border-radius: 10px;
+}
+
+.ouchi-icon-picker-current > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ouchi-icon-picker-current strong {
+  color: #32424e;
+  font-size: 11px;
+}
+
+.ouchi-icon-picker-current code {
+  overflow: hidden;
+  color: #75818a;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ouchi-icon-reference-controls {
+  display: grid;
+  grid-template-columns: minmax(170px, auto) minmax(220px, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.ouchi-icon-reference-controls > .ouchi-secondary-button {
+  min-height: 39px;
+  margin-bottom: 19px;
+}
+
+.ouchi-icon-search {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ouchi-icon-search > span {
+  color: #4b5660;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.ouchi-icon-search input {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 10px;
+  color: #28333d;
+  background: #fff;
+  border: 1px solid #d7dfe5;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.ouchi-icon-result-count {
+  margin: -3px 0 0;
+  color: #7f8992;
+  font-size: 9px;
+}
+
+.ouchi-icon-picker-results {
+  display: flex;
+  max-height: 330px;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ouchi-icon-option-group {
+  padding: 9px;
+  background: #fff;
+  border: 1px solid #e2e8ec;
+  border-radius: 10px;
+}
+
+.ouchi-icon-option-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.ouchi-icon-option-group h4 {
+  margin: 0;
+  color: #3c4b56;
+  font-size: 10px;
+}
+
+.ouchi-icon-option-group > header > span {
+  display: inline-grid;
+  min-width: 20px;
+  height: 18px;
+  place-items: center;
+  padding: 0 5px;
+  color: #5c6c77;
+  background: #eef2f4;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.ouchi-icon-group-note {
+  margin: -2px 0 7px;
+  color: #89929a;
+  font-size: 8px;
+}
+
+.ouchi-icon-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
+  gap: 6px;
+}
+
+.ouchi-icon-option {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 6px;
+  color: #33434f;
+  text-align: left;
+  background: #fbfcfd;
+  border: 1px solid #e2e8ec;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ouchi-icon-option:hover {
+  background: #f0f6f8;
+  border-color: #b9cdd7;
+}
+
+.ouchi-icon-option[aria-selected="true"] {
+  background: #eaf3f6;
+  border-color: #6c9aae;
+  box-shadow: 0 0 0 2px rgba(75, 126, 148, 0.12);
+}
+
+.ouchi-icon-option .ouchi-service-mark {
+  flex: 0 0 34px;
+}
+
+.ouchi-icon-option > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ouchi-icon-option strong {
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ouchi-icon-option small {
+  overflow: hidden;
+  color: #859099;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ouchi-icon-option-empty {
+  margin: 3px 0;
+  color: #929ba2;
+  font-size: 9px;
+}
+
 @media (max-width: 1120px) {
   .ouchi-node-grid {
     grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
@@ -2434,11 +2644,6 @@
     gap: 4px;
   }
 
-  .ouchi-portal-footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
   .ouchi-relation-row {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -2469,5 +2674,25 @@
 
   .ouchi-form-section > header {
     flex-direction: column;
+  }
+
+  .ouchi-icon-picker-heading {
+    flex-direction: column;
+  }
+
+  .ouchi-icon-picker-selected {
+    max-width: 100%;
+  }
+
+  .ouchi-icon-reference-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .ouchi-icon-reference-controls > .ouchi-secondary-button {
+    margin-bottom: 0;
+  }
+
+  .ouchi-icon-option-grid {
+    grid-template-columns: 1fr;
   }
 }

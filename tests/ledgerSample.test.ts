@@ -12,18 +12,42 @@ describe("Pages sample ledger", () => {
     const ledger = parseLedgerYaml(yaml);
 
     expect(ledger.format).toBe("ouchi-ledger/1");
-    expect(ledger.networks).toHaveLength(3);
+    expect(ledger.settings.title).toBe("あなたのおうち環境");
+    expect(ledger.networks).toHaveLength(4);
+    expect(ledger.networks.map((network) => network.name)).toEqual([
+      "インターネット",
+      "家族用LAN",
+      "ホームラボ",
+      "個人ネットワーク",
+    ]);
     expect(ledger.networks.map((network) => network.cidr)).toEqual([
       "192.0.2.0/24",
       "198.51.100.0/24",
       "203.0.113.0/24",
+      "198.18.0.0/24",
     ]);
-    expect(ledger.devices).toHaveLength(15);
+    expect(ledger.devices).toHaveLength(19);
     expect(
       ledger.devices.flatMap((device) => device.memberships),
-    ).toHaveLength(17);
+    ).toHaveLength(21);
     expect(ledger.services).toHaveLength(16);
-    expect(ledger.relations).toHaveLength(3);
+    expect(ledger.relations).toHaveLength(5);
+    expect(ledger.relations.every((relation) => relation.color === "#d48a2f"))
+      .toBe(true);
+    const devicePetnames = ledger.devices.map((device) => device.petname);
+    const servicePetnames = ledger.services.map((service) => service.petname);
+    expect(devicePetnames.every((petname) => Boolean(petname))).toBe(true);
+    expect(
+      devicePetnames.every(
+        (petname) => petname !== null && [...petname].length <= 20,
+      ),
+    ).toBe(true);
+    expect(
+      devicePetnames.filter((petname) => servicePetnames.includes(petname)),
+    ).toEqual(["Google Drive", "GitHub"]);
+    expect(
+      ledger.devices.find((device) => device.hostname === "l3-switch")?.petname,
+    ).toBe("L3 Switch");
     expect(
       ledger.devices.filter((device) => device.category === "service"),
     ).toHaveLength(2);
@@ -31,23 +55,44 @@ describe("Pages sample ledger", () => {
       ledger.devices.flatMap((device) => device.memberships).every(
         (membership) =>
           membership.ip === null ||
-          /^(?:192\.0\.2|198\.51\.100|203\.0\.113)\./.test(membership.ip),
+          /^(?:192\.0\.2|198\.51\.100|203\.0\.113|198\.18)\./.test(
+            membership.ip,
+          ),
       ),
     ).toBe(true);
     const assignedIps = ledger.devices
       .flatMap((device) => device.memberships)
       .flatMap((membership) => (membership.ip ? [membership.ip] : []));
     expect(new Set(assignedIps).size).toBe(assignedIps.length);
+    const networkNames = new Set(
+      ledger.networks.map((network) => network.name),
+    );
+    expect(
+      ledger.devices
+        .flatMap((device) => device.memberships)
+        .every((membership) => networkNames.has(membership.network)),
+    ).toBe(true);
+    expect(
+      ledger.services.every((service) =>
+        ledger.devices.some(
+          (device) =>
+            device.hostname === service.device &&
+            device.memberships.some(
+              (membership) => membership.network === service.network,
+            ),
+        ),
+      ),
+    ).toBe(true);
 
     const expectedAdditions = [
-      ["birch-print", "自宅 LAN", "198.51.100.20"],
-      ["maple-nas", "自宅 LAN", "198.51.100.21"],
-      ["willow-weather", "自宅 LAN", "198.51.100.22"],
-      ["clover-cam", "自宅 LAN", "198.51.100.23"],
-      ["granite-backup", "サーバーセグメント", "203.0.113.40"],
-      ["slate-mail", "サーバーセグメント", "203.0.113.41"],
-      ["juniper-dns", "サーバーセグメント", "203.0.113.42"],
-      ["amber-vault", "サーバーセグメント", "203.0.113.43"],
+      ["birch-print", "家族用LAN", "198.51.100.20"],
+      ["maple-nas", "家族用LAN", "198.51.100.21"],
+      ["willow-weather", "家族用LAN", "198.51.100.22"],
+      ["clover-cam", "家族用LAN", "198.51.100.23"],
+      ["granite-backup", "ホームラボ", "203.0.113.40"],
+      ["slate-mail", "ホームラボ", "203.0.113.41"],
+      ["juniper-dns", "ホームラボ", "203.0.113.42"],
+      ["amber-vault", "ホームラボ", "203.0.113.43"],
     ] as const;
     for (const [hostname, network, ip] of expectedAdditions) {
       const device = ledger.devices.find(
@@ -57,6 +102,7 @@ describe("Pages sample ledger", () => {
         expect.objectContaining({
           category: "physical",
           isVm: false,
+          petname: expect.any(String),
           memberships: [
             expect.objectContaining({
               network,
@@ -75,12 +121,12 @@ describe("Pages sample ledger", () => {
         .filter((device) => device.category === "physical")
         .map((device) => device.hostname),
     );
-    expect(physicalHostnames.size).toBe(9);
+    expect(physicalHostnames.size).toBe(10);
     expect(
       ledger.devices
         .filter((device) =>
           device.memberships.some(
-            (membership) => membership.network === "自宅 LAN",
+            (membership) => membership.network === "家族用LAN",
           ),
         )
         .filter((device) => physicalHostnames.has(device.hostname)),
@@ -89,7 +135,7 @@ describe("Pages sample ledger", () => {
       ledger.devices
         .filter((device) =>
           device.memberships.some(
-            (membership) => membership.network === "サーバーセグメント",
+            (membership) => membership.network === "ホームラボ",
           ),
         )
         .filter((device) => physicalHostnames.has(device.hostname)),
@@ -97,8 +143,9 @@ describe("Pages sample ledger", () => {
     expect(
       [
         "インターネット",
-        "自宅 LAN",
-        "サーバーセグメント",
+        "家族用LAN",
+        "ホームラボ",
+        "個人ネットワーク",
       ].map(
         (network) =>
           ledger.devices.filter((device) =>
@@ -107,21 +154,32 @@ describe("Pages sample ledger", () => {
             ),
           ).length,
       ),
-    ).toEqual([3, 5, 9]);
+    ).toEqual([2, 5, 9, 5]);
 
-    const gateway = ledger.devices.find(
-      (device) => device.hostname === "aura-gw",
+    const l3Switch = ledger.devices.find(
+      (device) => device.hostname === "l3-switch",
     );
     expect(
-      gateway?.memberships.map((membership) => ({
+      ledger.devices.find((device) => device.hostname === "aura-gw"),
+    ).toBeUndefined();
+    expect(
+      l3Switch?.category,
+    ).toBe("network");
+    expect(
+      l3Switch?.memberships.map((membership) => ({
         network: membership.network,
         ip: membership.ip,
       })),
     ).toEqual([
-      { network: "インターネット", ip: "192.0.2.1" },
-      { network: "自宅 LAN", ip: "198.51.100.1" },
-      { network: "サーバーセグメント", ip: "203.0.113.1" },
+      { network: "家族用LAN", ip: "198.51.100.1" },
+      { network: "ホームラボ", ip: "203.0.113.1" },
+      { network: "個人ネットワーク", ip: "198.18.0.1" },
     ]);
+    expect(
+      l3Switch?.memberships.some(
+        (membership) => membership.network === "インターネット",
+      ),
+    ).toBe(false);
 
     const host = ledger.devices.find(
       (device) => device.hostname === "cedar-host",
@@ -129,7 +187,7 @@ describe("Pages sample ledger", () => {
     expect(host?.category).toBe("physical");
     expect(host?.memberships).toEqual([
       expect.objectContaining({
-        network: "サーバーセグメント",
+        network: "ホームラボ",
         ip: "203.0.113.10",
         label: "VMホスト",
       }),
@@ -141,14 +199,92 @@ describe("Pages sample ledger", () => {
       "harbor-core",
       "atlas-lab",
       "forge-ci",
+      "acorn-notes",
+      "fern-gallery",
     ]);
     expect(
-      vms.every(
+      vms.slice(0, 3).every(
         (device) =>
           device.memberships.length === 1 &&
-          device.memberships[0].network === "サーバーセグメント",
+          device.memberships[0].network === "ホームラボ",
       ),
     ).toBe(true);
+    expect(
+      vms.slice(3).every(
+        (device) =>
+          device.isVm &&
+          device.memberships.length === 1 &&
+          device.memberships[0].network === "個人ネットワーク",
+      ),
+    ).toBe(true);
+    expect(
+      ["l2-switch", "akari"].map((hostname) => {
+        const device = ledger.devices.find(
+          (candidate) => candidate.hostname === hostname,
+        );
+        return {
+          hostname,
+          category: device?.category,
+          isVm: device?.isVm,
+          network: device?.memberships[0]?.network,
+          ip: device?.memberships[0]?.ip,
+        };
+      }),
+    ).toEqual([
+      {
+        hostname: "l2-switch",
+        category: "network",
+        isVm: false,
+        network: "個人ネットワーク",
+        ip: "198.18.0.2",
+      },
+      {
+        hostname: "akari",
+        category: "physical",
+        isVm: false,
+        network: "個人ネットワーク",
+        ip: "198.18.0.10",
+      },
+    ]);
+    expect(
+      ["acorn-notes", "fern-gallery"].map((hostname) => {
+        const device = ledger.devices.find(
+          (candidate) => candidate.hostname === hostname,
+        );
+        return {
+          hostname,
+          category: device?.category,
+          isVm: device?.isVm,
+          network: device?.memberships[0]?.network,
+          ip: device?.memberships[0]?.ip,
+        };
+      }),
+    ).toEqual([
+      {
+        hostname: "acorn-notes",
+        category: "vm",
+        isVm: true,
+        network: "個人ネットワーク",
+        ip: "198.18.0.31",
+      },
+      {
+        hostname: "fern-gallery",
+        category: "vm",
+        isVm: true,
+        network: "個人ネットワーク",
+        ip: "198.18.0.32",
+      },
+    ]);
+    expect(
+      ledger.relations
+        .filter((relation) =>
+          ["acorn-notes", "fern-gallery"].includes(relation.to),
+        )
+        .map((relation) => relation.from),
+    ).toEqual(["akari", "akari"]);
+    expect(
+      ledger.devices.find((device) => device.hostname === "spruce-host"),
+    ).toBeUndefined();
     expect(
       ledger.relations.map((relation) => ({
         from: relation.from,
@@ -156,28 +292,48 @@ describe("Pages sample ledger", () => {
         tag: relation.tag,
         fromLabel: relation.fromLabel,
         toLabel: relation.toLabel,
+        color: relation.color,
       })),
     ).toEqual([
       {
         from: "cedar-host",
         to: "harbor-core",
         tag: "VM",
-        fromLabel: "VMホスト",
-        toLabel: "親ホスト",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+        color: "#d48a2f",
       },
       {
         from: "cedar-host",
         to: "atlas-lab",
         tag: "VM",
-        fromLabel: "VMホスト",
-        toLabel: "親ホスト",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+        color: "#d48a2f",
       },
       {
         from: "cedar-host",
         to: "forge-ci",
         tag: "VM",
-        fromLabel: "VMホスト",
-        toLabel: "親ホスト",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+        color: "#d48a2f",
+      },
+      {
+        from: "akari",
+        to: "acorn-notes",
+        tag: "VM",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+        color: "#d48a2f",
+      },
+      {
+        from: "akari",
+        to: "fern-gallery",
+        tag: "VM",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+        color: "#d48a2f",
       },
     ]);
 
@@ -210,7 +366,8 @@ describe("Pages sample ledger", () => {
       ].filter((network) =>
         networksByHostname.get(relation.to)?.has(network),
       );
-      expect(sharedNetworks).toEqual(["サーバーセグメント"]);
+      expect(sharedNetworks).toHaveLength(1);
+      expect(sharedNetworks[0]).toBe(to?.memberships[0]?.network);
     }
 
     expect(
@@ -221,7 +378,26 @@ describe("Pages sample ledger", () => {
       expect.objectContaining({
         device: "ouchi-pages",
         network: "インターネット",
+        petname: "GitHub",
+        description: "GitHub Pages で公開するこのポータル自身",
         serviceUrl: "https://moguno.github.io/ouchi/",
+        iconKey:
+          "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/github.svg",
+      }),
+    );
+    expect(
+      ledger.services.find(
+        (service) => service.subdomain === "lumen-notes",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        device: "lumen-notes",
+        network: "インターネット",
+        petname: "Google Drive",
+        description: "Google のクラウドストレージサービス",
+        serviceUrl: "https://drive.google.com/",
+        iconKey:
+          "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/google-drive.svg",
       }),
     );
   });

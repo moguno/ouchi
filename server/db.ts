@@ -14,12 +14,14 @@ import type {
   PortalServiceInput,
   PortalDeviceInput,
 } from "../src/portal/types";
+import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 import { buildMonitorUrl, buildServiceUrl } from "../src/portal/urls";
 
 type DbOptions = {
   filename?: string;
   schemaPath?: string;
   seedPath?: string;
+  devicePetnameMigrationPath?: string;
 };
 
 type NetworkRow = {
@@ -33,6 +35,7 @@ type NetworkRow = {
 type DeviceRow = {
   id: number;
   hostname: string;
+  petname: string | null;
   category: PortalApiDevice["category"];
   is_vm: number;
   ssh_user: string | null;
@@ -62,6 +65,7 @@ type ServiceRow = {
   monitor_path: string | null;
   service_url: string | null;
   icon_key: string | null;
+  favicon_url: string | null;
   enabled: number;
   ip: string | null;
 };
@@ -70,7 +74,7 @@ type RelationRow = {
   id: number;
   from_device_id: number;
   to_device_id: number;
-  tag: string | null;
+  tag: string;
   from_label: string | null;
   to_label: string | null;
   color: string;
@@ -111,6 +115,7 @@ function toApiDevice(
   return {
     id: asNumber(row.id),
     hostname: row.hostname,
+    petname: row.petname,
     category: row.category,
     isVm: Boolean(row.is_vm),
     sshUser: row.ssh_user,
@@ -141,7 +146,11 @@ function toApiService(row: ServiceRow): PortalApiService {
     topPath: row.top_path,
     monitorPath: row.monitor_path,
     serviceUrl: row.service_url,
-    iconKey: row.icon_key,
+    iconKey: normalizeServiceIconReference(
+      row.icon_key,
+      row.favicon_url,
+      "generic:monitor",
+    ),
     enabled: Boolean(row.enabled),
     url: buildServiceUrl(base, { ip: row.ip ?? "" }),
     monitorUrl: buildMonitorUrl(base, { ip: row.ip ?? "" }),
@@ -162,10 +171,12 @@ function toApiRelation(row: RelationRow): PortalApiRelation {
 
 export class PortalDatabase {
   readonly database: DatabaseSync;
+  readonly filename: string;
 
   constructor(options: DbOptions = {}) {
     const root = process.cwd();
     const filename = options.filename ?? resolve(root, "data", "ouchi.sqlite");
+    this.filename = filename;
     if (filename !== ":memory:") {
       mkdirSync(dirname(filename), { recursive: true });
     }
@@ -183,6 +194,20 @@ export class PortalDatabase {
     const seedPath =
       options.seedPath ?? resolve(root, "contract-v1", "seed.sql");
     this.database.exec(readFileSync(schemaPath, "utf8"));
+    const devicePetnameMigrationPath =
+      options.devicePetnameMigrationPath ??
+      resolve(
+        root,
+        "contract-v1",
+        "migrations",
+        "001_add_device_petname.sql",
+      );
+    const deviceColumns = this.database
+      .prepare("PRAGMA table_info(devices)")
+      .all() as Array<{ name: string }>;
+    if (!deviceColumns.some((column) => column.name === "petname")) {
+      this.database.exec(readFileSync(devicePetnameMigrationPath, "utf8"));
+    }
 
     const row = this.database
       .prepare("SELECT COUNT(*) AS count FROM networks")
@@ -265,7 +290,7 @@ export class PortalDatabase {
   listDevices(): PortalApiDevice[] {
     const rows = this.database
       .prepare(
-        `SELECT id, hostname, category, is_vm, ssh_user, ssh_port,
+        `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
                 meter_enabled, note
          FROM devices ORDER BY id`,
       )
@@ -295,11 +320,13 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO devices
-          (hostname, category, is_vm, ssh_user, ssh_port, meter_enabled, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (hostname, petname, category, is_vm, ssh_user, ssh_port,
+           meter_enabled, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.hostname.trim(),
+        nullableText(input.petname),
         input.category,
         input.isVm ? 1 : 0,
         nullableText(input.sshUser),
@@ -320,12 +347,13 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE devices
-         SET hostname = ?, category = ?, is_vm = ?, ssh_user = ?,
+         SET hostname = ?, petname = ?, category = ?, is_vm = ?, ssh_user = ?,
              ssh_port = ?, meter_enabled = ?, note = ?
          WHERE id = ?`,
       )
       .run(
         input.hostname.trim(),
+        nullableText(input.petname),
         input.category,
         input.isVm ? 1 : 0,
         nullableText(input.sshUser),
@@ -449,7 +477,8 @@ export class PortalDatabase {
         .prepare(
           `SELECT s.id, s.device_network_id, s.subdomain, s.petname,
                   s.description, s.port, s.protocol, s.scheme, s.top_path,
-                  s.monitor_path, s.service_url, s.icon_key, s.enabled,
+                  s.monitor_path, s.service_url, s.icon_key, s.favicon_url,
+                  s.enabled,
                   dn.ip
            FROM services s
            JOIN device_networks dn ON dn.id = s.device_network_id
@@ -468,8 +497,9 @@ export class PortalDatabase {
       .prepare(
         `INSERT INTO services
           (device_network_id, subdomain, petname, description, port, protocol,
-           scheme, top_path, monitor_path, service_url, icon_key, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           scheme, top_path, monitor_path, service_url, icon_key,
+           favicon_url, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.deviceNetworkId,
@@ -482,7 +512,12 @@ export class PortalDatabase {
         nullableText(input.topPath),
         nullableText(input.monitorPath),
         nullableText(input.serviceUrl),
-        nullableText(input.iconKey),
+        normalizeServiceIconReference(
+          input.iconKey,
+          undefined,
+          "generic:monitor",
+        ),
+        null,
         input.enabled ? 1 : 0,
       );
     return this.getService(asNumber(result.lastInsertRowid))!;
@@ -501,7 +536,7 @@ export class PortalDatabase {
          SET device_network_id = ?, subdomain = ?, petname = ?,
              description = ?, port = ?, protocol = ?, scheme = ?,
              top_path = ?, monitor_path = ?, service_url = ?, icon_key = ?,
-             enabled = ?
+             favicon_url = ?, enabled = ?
          WHERE id = ?`,
       )
       .run(
@@ -515,7 +550,12 @@ export class PortalDatabase {
         nullableText(input.topPath),
         nullableText(input.monitorPath),
         nullableText(input.serviceUrl),
-        nullableText(input.iconKey),
+        normalizeServiceIconReference(
+          input.iconKey,
+          undefined,
+          "generic:monitor",
+        ),
+        null,
         input.enabled ? 1 : 0,
         id,
       );
@@ -532,12 +572,33 @@ export class PortalDatabase {
     return (
       this.database
         .prepare(
-          `SELECT id, from_device_id, to_device_id, tag, from_label, to_label,
-                  color
+          `SELECT id, from_device_id, to_device_id, tag, from_label,
+                  to_label, color
            FROM relations ORDER BY id`,
         )
         .all() as RelationRow[]
     ).map(toApiRelation);
+  }
+
+  getRelation(id: number): PortalApiRelation | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT id, from_device_id, to_device_id, tag, from_label,
+                to_label, color
+         FROM relations WHERE id = ?`,
+      )
+      .get(id) as RelationRow | undefined;
+    return row ? toApiRelation(row) : undefined;
+  }
+
+  canonicalTagColor(tag: string): string | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT color FROM relations
+         WHERE trim(tag) = ? ORDER BY id LIMIT 1`,
+      )
+      .get(tag.trim()) as { color: string } | undefined;
+    return row?.color;
   }
 
   createRelation(input: PortalRelationInput): PortalApiRelation {
@@ -550,19 +611,64 @@ export class PortalDatabase {
       .run(
         input.fromDeviceId,
         input.toDeviceId,
-        nullableText(input.tag),
+        input.tag.trim(),
         nullableText(input.fromLabel),
         nullableText(input.toLabel),
         input.color.trim(),
       );
-    const row = this.database
+    return this.getRelation(asNumber(result.lastInsertRowid))!;
+  }
+
+  updateRelation(
+    id: number,
+    input: PortalRelationInput,
+  ): PortalApiRelation | undefined {
+    if (!this.getRelation(id)) {
+      return undefined;
+    }
+    this.database
       .prepare(
-        `SELECT id, from_device_id, to_device_id, tag, from_label, to_label,
-                color
-         FROM relations WHERE id = ?`,
+        `UPDATE relations
+         SET from_device_id = ?, to_device_id = ?, tag = ?,
+             from_label = ?, to_label = ?, color = ?
+         WHERE id = ?`,
       )
-      .get(asNumber(result.lastInsertRowid)) as RelationRow;
-    return toApiRelation(row);
+      .run(
+        input.fromDeviceId,
+        input.toDeviceId,
+        input.tag.trim(),
+        nullableText(input.fromLabel),
+        nullableText(input.toLabel),
+        input.color.trim(),
+        id,
+      );
+    return this.getRelation(id);
+  }
+
+  recolorTag(
+    tag: string,
+    color: string,
+  ): { tag: string; color: string; updated: number } {
+    const normalizedTag = tag.trim();
+    const normalizedColor = color.trim();
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.database
+        .prepare(
+          `UPDATE relations SET color = ?
+           WHERE trim(tag) = ?`,
+        )
+        .run(normalizedColor, normalizedTag);
+      this.database.exec("COMMIT");
+      return {
+        tag: normalizedTag,
+        color: normalizedColor,
+        updated: asNumber(result.changes),
+      };
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   deleteRelation(id: number): boolean {
@@ -578,11 +684,11 @@ export class PortalDatabase {
     }
     const rows = this.database
       .prepare(
-        `SELECT r.id, r.from_device_id, r.to_device_id, r.tag,
-                r.from_label, r.to_label, r.color
-         FROM relations r
-         WHERE r.from_device_id = ? OR r.to_device_id = ?
-         ORDER BY r.id`,
+        `SELECT id, from_device_id, to_device_id, tag, from_label,
+                to_label, color
+         FROM relations
+         WHERE from_device_id = ? OR to_device_id = ?
+         ORDER BY id`,
       )
       .all(deviceId, deviceId) as RelationRow[];
     const devices = this.listDevices();

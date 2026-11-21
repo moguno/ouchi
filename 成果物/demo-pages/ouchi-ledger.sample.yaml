@@ -2,50 +2,57 @@ format: ouchi-ledger/1
 exportedAt: "2026-11-21T09:00:00.000Z"
 settings:
   domain: ouchi.example
-  title: Aoba Home Lab
+  title: あなたのおうち環境
 networks:
   - name: インターネット
     cidr: 192.0.2.0/24
     accent: violet
     note: RFC 5737 TEST-NET-1。WAN と外部サービス用
-  - name: 自宅 LAN
+  - name: 家族用LAN
     cidr: 198.51.100.0/24
     accent: blue
     note: RFC 5737 TEST-NET-2。自宅端末用
-  - name: サーバーセグメント
+  - name: ホームラボ
     cidr: 203.0.113.0/24
     accent: green
     note: RFC 5737 TEST-NET-3。仮想化基盤とサーバー用
+  - name: 個人ネットワーク
+    cidr: 198.18.0.0/24
+    accent: orange
+    note: RFC 2544 ベンチマーク用。個人向け端末と検証用ホストの架空ネットワーク
 devices:
-  - hostname: aura-gw
+  - hostname: l3-switch
+    petname: L3 Switch
     category: network
     isVm: false
     sshUser: null
     sshPort: null
     meterEnabled: false
-    note: 3ネットワークを接続する架空の境界ルーター
+    note: 3つの内部ネットワークを接続する架空のL3スイッチ
     memberships:
-      - network: インターネット
-        ip: 192.0.2.1
-        label: WAN
-      - network: 自宅 LAN
+      - network: 家族用LAN
         ip: 198.51.100.1
         label: LAN
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.1
         label: Server
+      - network: 個人ネットワーク
+        ip: 198.18.0.1
+        label: Personal
   - hostname: cedar-host
+    petname: Alicia
     category: physical
     isVm: false
     sshUser: deploy
     sshPort: 22
     meterEnabled: true
-    note: サーバーセグメントで3台のVMを抱える架空の物理ホスト
+    note: ホームラボで3台のVMを抱える架空の物理ホスト
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.10
         label: VMホスト
   - hostname: birch-print
+    petname: Akari
     category: physical
     isVm: false
     sshUser: print
@@ -53,10 +60,11 @@ devices:
     meterEnabled: true
     note: 架空の家庭向けプリントサーバー
     memberships:
-      - network: 自宅 LAN
+      - network: 家族用LAN
         ip: 198.51.100.20
         label: Print
   - hostname: maple-nas
+    petname: Aika
     category: physical
     isVm: false
     sshUser: archive
@@ -64,10 +72,11 @@ devices:
     meterEnabled: true
     note: 架空の家庭用ファイル保管庫
     memberships:
-      - network: 自宅 LAN
+      - network: 家族用LAN
         ip: 198.51.100.21
         label: NAS
   - hostname: willow-weather
+    petname: Alice
     category: physical
     isVm: false
     sshUser: sensor
@@ -75,10 +84,11 @@ devices:
     meterEnabled: true
     note: 架空の気象センサー集約機
     memberships:
-      - network: 自宅 LAN
+      - network: 家族用LAN
         ip: 198.51.100.22
         label: Sensors
   - hostname: clover-cam
+    petname: Aria
     category: physical
     isVm: false
     sshUser: camera
@@ -86,10 +96,11 @@ devices:
     meterEnabled: true
     note: 架空の家庭内カメラ録画機
     memberships:
-      - network: 自宅 LAN
+      - network: 家族用LAN
         ip: 198.51.100.23
         label: Cameras
   - hostname: granite-backup
+    petname: Akira
     category: physical
     isVm: false
     sshUser: backup
@@ -97,10 +108,11 @@ devices:
     meterEnabled: true
     note: 架空のオフライン世代バックアップ機
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.40
         label: Backup
   - hostname: slate-mail
+    petname: Athena
     category: physical
     isVm: false
     sshUser: postmaster
@@ -108,10 +120,11 @@ devices:
     meterEnabled: true
     note: 架空の宅内メールサーバー
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.41
         label: Mail
   - hostname: juniper-dns
+    petname: Hime
     category: physical
     isVm: false
     sshUser: resolver
@@ -119,10 +132,11 @@ devices:
     meterEnabled: true
     note: 架空のプライマリDNSサーバー
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.42
         label: DNS
   - hostname: amber-vault
+    petname: Maa
     category: physical
     isVm: false
     sshUser: vault
@@ -130,10 +144,11 @@ devices:
     meterEnabled: true
     note: 架空の長期アーカイブ保管庫
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.43
         label: Archive
   - hostname: harbor-core
+    petname: VM201
     category: vm
     isVm: true
     sshUser: lab
@@ -141,10 +156,11 @@ devices:
     meterEnabled: true
     note: 架空のアプリ基盤
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.31
         label: apps
   - hostname: atlas-lab
+    petname: VM202
     category: vm
     isVm: true
     sshUser: lab
@@ -152,10 +168,11 @@ devices:
     meterEnabled: true
     note: 架空の検証環境
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.32
         label: lab
   - hostname: forge-ci
+    petname: VM203
     category: vm
     isVm: true
     sshUser: runner
@@ -163,21 +180,71 @@ devices:
     meterEnabled: true
     note: 架空の継続的インテグレーション環境
     memberships:
-      - network: サーバーセグメント
+      - network: ホームラボ
         ip: 203.0.113.33
         label: ci
+  - hostname: l2-switch
+    petname: L2 Switch
+    category: network
+    isVm: false
+    sshUser: null
+    sshPort: null
+    meterEnabled: false
+    note: 個人ネットワークを収容する架空のL2スイッチ
+    memberships:
+      - network: 個人ネットワーク
+        ip: 198.18.0.2
+        label: Access
+  - hostname: akari
+    petname: Atra
+    category: physical
+    isVm: false
+    sshUser: owner
+    sshPort: 22
+    meterEnabled: true
+    note: 個人ネットワークで2台のVMを抱える架空の物理ホスト
+    memberships:
+      - network: 個人ネットワーク
+        ip: 198.18.0.10
+        label: VMホスト
+  - hostname: acorn-notes
+    petname: VM301
+    category: vm
+    isVm: true
+    sshUser: owner
+    sshPort: 22
+    meterEnabled: true
+    note: 架空の個人用ノート環境
+    memberships:
+      - network: 個人ネットワーク
+        ip: 198.18.0.31
+        label: notes
+  - hostname: fern-gallery
+    petname: VM302
+    category: vm
+    isVm: true
+    sshUser: viewer
+    sshPort: 22
+    meterEnabled: true
+    note: 架空の個人向け写真ギャラリー
+    memberships:
+      - network: 個人ネットワーク
+        ip: 198.18.0.32
+        label: gallery
   - hostname: lumen-notes
+    petname: Google Drive
     category: service
     isVm: false
     sshUser: null
     sshPort: null
     meterEnabled: false
-    note: 架空の外部ノートSaaS
+    note: Google のクラウドストレージを表す架空のサービス端末
     memberships:
       - network: インターネット
         ip: null
         label: SaaS
   - hostname: ouchi-pages
+    petname: GitHub
     category: service
     isVm: false
     sshUser: null
@@ -192,25 +259,37 @@ relations:
   - from: cedar-host
     to: harbor-core
     tag: VM
-    fromLabel: VMホスト
-    toLabel: 親ホスト
+    fromLabel: 親ホスト
+    toLabel: VM
     color: "#d48a2f"
   - from: cedar-host
     to: atlas-lab
     tag: VM
-    fromLabel: VMホスト
-    toLabel: 親ホスト
-    color: "#4d9b78"
+    fromLabel: 親ホスト
+    toLabel: VM
+    color: "#d48a2f"
   - from: cedar-host
     to: forge-ci
     tag: VM
-    fromLabel: VMホスト
-    toLabel: 親ホスト
-    color: "#8a67c7"
+    fromLabel: 親ホスト
+    toLabel: VM
+    color: "#d48a2f"
+  - from: akari
+    to: acorn-notes
+    tag: VM
+    fromLabel: 親ホスト
+    toLabel: VM
+    color: "#d48a2f"
+  - from: akari
+    to: fern-gallery
+    tag: VM
+    fromLabel: 親ホスト
+    toLabel: VM
+    color: "#d48a2f"
 services:
   - subdomain: home
-    device: aura-gw
-    network: 自宅 LAN
+    device: l3-switch
+    network: 家族用LAN
     petname: ホームダッシュボード
     description: 架空の家庭内ダッシュボード
     port: 80
@@ -219,12 +298,11 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: server
-    faviconUrl: null
+    iconKey: generic:server
     enabled: true
   - subdomain: workshop
     device: harbor-core
-    network: サーバーセグメント
+    network: ホームラボ
     petname: 工房Git
     description: 架空のソースコード置き場
     port: 3000
@@ -233,12 +311,11 @@ services:
     topPath: /
     monitorPath: /api/v1/version
     serviceUrl: null
-    iconKey: gitea
-    faviconUrl: null
+    iconKey: generic:gitea
     enabled: true
   - subdomain: media-vault
     device: cedar-host
-    network: サーバーセグメント
+    network: ホームラボ
     petname: メディア倉庫
     description: 架空の写真・映像ライブラリ
     port: 8096
@@ -247,12 +324,11 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: database
-    faviconUrl: null
+    iconKey: generic:database
     enabled: true
   - subdomain: atlas
     device: atlas-lab
-    network: サーバーセグメント
+    network: ホームラボ
     petname: 実験卓
     description: 架空の仮想化コンソール
     port: 8006
@@ -261,12 +337,11 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: proxmox
-    faviconUrl: null
+    iconKey: generic:proxmox
     enabled: true
   - subdomain: forge
     device: forge-ci
-    network: サーバーセグメント
+    network: ホームラボ
     petname: 工房CI
     description: 架空のビルドランナー
     port: 8080
@@ -275,12 +350,11 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: container
-    faviconUrl: null
+    iconKey: generic:container
     enabled: true
   - subdomain: edge-admin
-    device: aura-gw
-    network: サーバーセグメント
+    device: l3-switch
+    network: ホームラボ
     petname: 境界管理
     description: 架空のルーター管理画面
     port: 443
@@ -289,40 +363,37 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: globe
-    faviconUrl: null
+    iconKey: generic:globe
     enabled: true
   - subdomain: lumen-notes
     device: lumen-notes
     network: インターネット
-    petname: Lumen Notes
-    description: 架空の外部ノートSaaS
+    petname: Google Drive
+    description: Google のクラウドストレージサービス
     port: 443
     protocol: tcp
     scheme: https
     topPath: /
     monitorPath: /
-    serviceUrl: https://notes.example.com/
-    iconKey: globe
-    faviconUrl: null
+    serviceUrl: https://drive.google.com/
+    iconKey: url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/google-drive.svg
     enabled: true
   - subdomain: ouchi-pages
     device: ouchi-pages
     network: インターネット
-    petname: ouchi.local デモ
-    description: GitHub Pages で公開するこのポータル
+    petname: GitHub
+    description: GitHub Pages で公開するこのポータル自身
     port: 443
     protocol: tcp
     scheme: https
     topPath: /
     monitorPath: /
     serviceUrl: https://moguno.github.io/ouchi/
-    iconKey: globe
-    faviconUrl: null
+    iconKey: url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/github.svg
     enabled: true
   - subdomain: birch-print
     device: birch-print
-    network: 自宅 LAN
+    network: 家族用LAN
     petname: 樺の家プリント
     description: 架空の文書印刷キュー
     port: 631
@@ -331,12 +402,11 @@ services:
     topPath: /
     monitorPath: /printers
     serviceUrl: null
-    iconKey: server
-    faviconUrl: null
+    iconKey: generic:server
     enabled: true
   - subdomain: maple-files
     device: maple-nas
-    network: 自宅 LAN
+    network: 家族用LAN
     petname: メープル保管庫
     description: 架空の家庭用ファイル共有
     port: 9000
@@ -345,12 +415,11 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: database
-    faviconUrl: null
+    iconKey: generic:database
     enabled: true
   - subdomain: willow-weather
     device: willow-weather
-    network: 自宅 LAN
+    network: 家族用LAN
     petname: ウィロー気象台
     description: 架空の室温・気象ダッシュボード
     port: 8081
@@ -359,12 +428,11 @@ services:
     topPath: /
     monitorPath: /status
     serviceUrl: null
-    iconKey: monitor
-    faviconUrl: null
+    iconKey: generic:monitor
     enabled: true
   - subdomain: clover-cam
     device: clover-cam
-    network: 自宅 LAN
+    network: 家族用LAN
     petname: クローバー見守り
     description: 架空の家庭内カメラコンソール
     port: 8888
@@ -373,12 +441,11 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: monitor
-    faviconUrl: null
+    iconKey: generic:monitor
     enabled: true
   - subdomain: granite-restore
     device: granite-backup
-    network: サーバーセグメント
+    network: ホームラボ
     petname: 花崗岩リストア
     description: 架空の世代バックアップ管理画面
     port: 8082
@@ -387,12 +454,11 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: database
-    faviconUrl: null
+    iconKey: generic:database
     enabled: true
   - subdomain: slate-post
     device: slate-mail
-    network: サーバーセグメント
+    network: ホームラボ
     petname: スレート郵便局
     description: 架空の宅内Webメール
     port: 8443
@@ -401,12 +467,11 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: globe
-    faviconUrl: null
+    iconKey: generic:globe
     enabled: true
   - subdomain: juniper-dns
     device: juniper-dns
-    network: サーバーセグメント
+    network: ホームラボ
     petname: ジュニパー名前札
     description: 架空のDNSゾーン管理画面
     port: 5380
@@ -415,12 +480,11 @@ services:
     topPath: /
     monitorPath: /api/health
     serviceUrl: null
-    iconKey: server
-    faviconUrl: null
+    iconKey: generic:server
     enabled: true
   - subdomain: amber-index
     device: amber-vault
-    network: サーバーセグメント
+    network: ホームラボ
     petname: 琥珀アーカイブ
     description: 架空の長期アーカイブ検索画面
     port: 8083
@@ -429,8 +493,7 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: database
-    faviconUrl: null
+    iconKey: generic:database
     enabled: true
 sshKeys: []
 deviceKeys: []

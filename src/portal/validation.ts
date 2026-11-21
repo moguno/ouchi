@@ -1,7 +1,6 @@
 import {
   ACCENT_TONES,
   PORTAL_DEVICE_CATEGORIES,
-  PORTAL_ICON_KEYS,
   PORTAL_SERVICE_SCHEMES,
   PORTAL_STATUSES,
   type AccentTone,
@@ -9,7 +8,6 @@ import {
   type PortalDevice,
   type PortalDeviceCategory,
   type PortalDeviceNetwork,
-  type PortalIconKey,
   type PortalNetwork,
   type PortalRelation,
   type PortalService,
@@ -21,6 +19,7 @@ import {
   type ValidationIssue,
   type ValidationResult,
 } from "./types";
+import { isIconReference } from "./iconCatalog";
 
 export const DEFAULT_PORTAL_TITLE = "あなたのホームラボ";
 export const MAX_PORTAL_TITLE_LENGTH = 100;
@@ -176,11 +175,8 @@ export function isAccent(value: unknown): value is AccentTone {
   return typeof value === "string" && ACCENT_TONES.includes(value as AccentTone);
 }
 
-export function isIconKey(value: unknown): value is PortalIconKey {
-  return (
-    typeof value === "string" &&
-    PORTAL_ICON_KEYS.includes(value as PortalIconKey)
-  );
+export function isIconKey(value: unknown): value is string {
+  return isIconReference(value);
 }
 
 export function isStatus(value: unknown): value is PortalStatus {
@@ -270,6 +266,13 @@ function validateDevice(
   }
   if (!isNonEmptyString(input.name)) {
     issues.push({ path: `${path}.name`, message: "デバイス名は必須です" });
+  }
+  if (
+    input.petname !== undefined &&
+    input.petname !== null &&
+    typeof input.petname !== "string"
+  ) {
+    issues.push({ path: `${path}.petname`, message: "ペットネームが不正です" });
   }
   if (typeof input.isVm !== "boolean") {
     issues.push({ path: `${path}.isVm`, message: "VMフラグが不正です" });
@@ -378,8 +381,8 @@ function validateRelation(
       message: "関係先デバイスIDは必須です",
     });
   }
-  if (!isOptionalString(input.tag)) {
-    issues.push({ path: `${path}.tag`, message: "タグが不正です" });
+  if (!isNonEmptyString(input.tag)) {
+    issues.push({ path: `${path}.tag`, message: "タグ名は必須です" });
   }
   if (!isOptionalString(input.fromLabel)) {
     issues.push({ path: `${path}.fromLabel`, message: "from側ラベルが不正です" });
@@ -388,10 +391,7 @@ function validateRelation(
     issues.push({ path: `${path}.toLabel`, message: "to側ラベルが不正です" });
   }
   if (!isNonEmptyString(input.color)) {
-    issues.push({
-      path: `${path}.color`,
-      message: "関係色は必須です",
-    });
+    issues.push({ path: `${path}.color`, message: "関係色は必須です" });
   }
   return issues;
 }
@@ -606,7 +606,6 @@ export function validatePortalData(
   const membershipById = new Map(
     data.deviceNetworks.map((membership) => [membership.id, membership]),
   );
-
   for (const membership of data.deviceNetworks) {
     const device = deviceById.get(membership.deviceId);
     if (!device) {
@@ -665,7 +664,22 @@ export function validatePortalData(
     }
   }
 
+  const relationColors = new Map<string, { color: string; id: string }>();
   for (const relation of data.relations) {
+    const tag = relation.tag.trim();
+    const color = relation.color.trim();
+    const canonical = relationColors.get(tag);
+    if (canonical && canonical.color !== color) {
+      issues.push({
+        path: `relations.${relation.id}.color`,
+        message:
+          `タグ「${tag}」の色は「${canonical.color}」に統一してください` +
+          `（最初の定義: ${canonical.id}）`,
+      });
+    } else if (!canonical) {
+      relationColors.set(tag, { color, id: relation.id });
+    }
+
     if (!deviceById.has(relation.fromDeviceId)) {
       issues.push({
         path: `relations.${relation.id}.fromDeviceId`,
@@ -744,7 +758,13 @@ export function validateNetworkInput(
 export function validateDeviceInput(
   input: Pick<
     PortalDevice,
-    "name" | "category" | "isVm" | "ssh" | "resources" | "meterEnabled"
+    | "name"
+    | "petname"
+    | "category"
+    | "isVm"
+    | "ssh"
+    | "resources"
+    | "meterEnabled"
   >,
   editingId: string | undefined,
   data: PortalDataV2,
@@ -856,22 +876,27 @@ export function validateRelationInput(
       message: "同じデバイス自身へ関係は定義できません",
     });
   }
-  if (!(input.tag?.trim() || input.fromLabel?.trim())) {
+  if (!input.tag.trim()) {
     issues.push({
       path: "tag",
-      message: "タグまたはfrom側ラベルを入力してください",
-    });
-  }
-  if (!(input.tag?.trim() || input.toLabel?.trim())) {
-    issues.push({
-      path: "tag",
-      message: "タグまたはto側ラベルを入力してください",
+      message: "タグ名を入力してください",
     });
   }
   if (!input.color.trim()) {
     issues.push({
       path: "color",
       message: "関係色を入力してください",
+    });
+  }
+  const canonical = data.relations.find(
+    (relation) => relation.tag.trim() === input.tag.trim(),
+  );
+  if (canonical && canonical.color.trim() !== input.color.trim()) {
+    issues.push({
+      path: "color",
+      message:
+        `タグ「${input.tag.trim()}」の色は` +
+        `「${canonical.color.trim()}」に固定されています`,
     });
   }
   return issues;
@@ -1001,6 +1026,9 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
   if (!isNonEmptyString(input.hostname)) {
     issues.push({ path: "hostname", message: "ホスト名は必須です" });
   }
+  if (input.petname !== undefined && !isNullableString(input.petname)) {
+    issues.push({ path: "petname", message: "ペットネームが不正です" });
+  }
   if (!isDeviceCategory(input.category)) {
     issues.push({ path: "category", message: "デバイスカテゴリーが不正です" });
   }
@@ -1088,13 +1116,21 @@ export function validateRelationPayload(input: unknown): ValidationIssue[] {
       message: "同じデバイス自身へ関係は定義できません",
     });
   }
-  for (const field of ["tag", "fromLabel", "toLabel"] as const) {
-    if (input[field] !== undefined && !isNullableString(input[field])) {
-      issues.push({ path: field, message: `${field}が不正です` });
-    }
+  if (!isNonEmptyString(input.tag)) {
+    issues.push({ path: "tag", message: "タグ名は必須です" });
   }
   if (!isNonEmptyString(input.color)) {
     issues.push({ path: "color", message: "関係色は必須です" });
+  } else if ([...(input.color as string).trim()].length > 100) {
+    issues.push({
+      path: "color",
+      message: "関係色は100文字以内で入力してください",
+    });
+  }
+  for (const field of ["fromLabel", "toLabel"] as const) {
+    if (input[field] !== undefined && !isNullableString(input[field])) {
+      issues.push({ path: field, message: `${field}が不正です` });
+    }
   }
   return issues;
 }

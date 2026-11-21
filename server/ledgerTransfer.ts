@@ -18,6 +18,7 @@ import {
   validateServicePayload,
   validateSettingsPayload,
 } from "../src/portal/validation";
+import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 
 export const LEDGER_FORMAT = "ouchi-ledger/1";
 
@@ -29,6 +30,7 @@ export interface LedgerMembership {
 
 export interface LedgerDevice {
   hostname: string;
+  petname: string | null;
   category: PortalDeviceInput["category"];
   isVm: boolean;
   sshUser: string | null;
@@ -48,7 +50,7 @@ export interface LedgerNetwork {
 export interface LedgerRelation {
   from: string;
   to: string;
-  tag: string | null;
+  tag: string;
   fromLabel: string | null;
   toLabel: string | null;
   color: string;
@@ -67,7 +69,6 @@ export interface LedgerService {
   monitorPath: string | null;
   serviceUrl: string | null;
   iconKey: string | null;
-  faviconUrl: string | null;
   enabled: boolean;
 }
 
@@ -134,6 +135,7 @@ type NetworkRow = {
 type DeviceRow = {
   id: number;
   hostname: string;
+  petname: string | null;
   category: PortalDeviceInput["category"];
   is_vm: number;
   ssh_user: string | null;
@@ -152,7 +154,7 @@ type MembershipRow = {
 type RelationRow = {
   from_hostname: string;
   to_hostname: string;
-  tag: string | null;
+  tag: string;
   from_label: string | null;
   to_label: string | null;
   color: string;
@@ -208,6 +210,11 @@ function nullableText(value: unknown): string | null {
   }
   const normalized = value.trim();
   return normalized === "" ? "" : normalized;
+}
+
+function nullablePetname(value: unknown): string | null {
+  const normalized = nullableText(value);
+  return normalized || null;
 }
 
 function arrayValue(value: unknown): unknown[] {
@@ -442,6 +449,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
     });
     devices.push({
       hostname: textValue(item.hostname),
+      petname: nullablePetname(item.petname),
       category: item.category as PortalDeviceInput["category"],
       isVm: item.isVm as boolean,
       sshUser: nullableText(item.sshUser),
@@ -454,6 +462,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
   });
 
   const relations: LedgerRelation[] = [];
+  const relationTagColors = new Map<string, string>();
   arrayValue(root.relations).forEach((item, index) => {
     if (!isRecord(item)) {
       issues.push({
@@ -462,18 +471,30 @@ function validateDocument(root: RecordValue): LedgerDocument {
       });
       return;
     }
+    const tagName = textValue(item.tag);
+    const relationColor = textValue(item.color);
     const synthetic: PortalRelationInput = {
       fromDeviceId: index + 1,
       toDeviceId: index + 2,
-      tag: nullableText(item.tag),
+      tag: tagName,
       fromLabel: nullableText(item.fromLabel),
       toLabel: nullableText(item.toLabel),
-      color: textValue(item.color),
+      color: relationColor,
     };
     issues.push(...validateRelationPayload(synthetic).map((issue) => ({
       ...issue,
       path: `relations[${index}].${issue.path}`,
     })));
+    const canonicalColor = relationTagColors.get(tagName);
+    if (canonicalColor && relationColor !== canonicalColor) {
+      issues.push({
+        path: `relations[${index}].color`,
+        message:
+          `タグ「${tagName}」の色は「${canonicalColor}」に統一してください`,
+      });
+    } else if (tagName && relationColor && !canonicalColor) {
+      relationTagColors.set(tagName, relationColor);
+    }
     for (const field of ["from", "to"] as const) {
       if (!textValue(item[field])) {
         issues.push({
@@ -485,10 +506,10 @@ function validateDocument(root: RecordValue): LedgerDocument {
     relations.push({
       from: textValue(item.from),
       to: textValue(item.to),
-      tag: nullableText(item.tag),
+      tag: tagName,
       fromLabel: nullableText(item.fromLabel),
       toLabel: nullableText(item.toLabel),
-      color: textValue(item.color),
+      color: relationColor,
     });
   });
 
@@ -501,10 +522,15 @@ function validateDocument(root: RecordValue): LedgerDocument {
       });
       return;
     }
+    const iconKey = normalizeServiceIconReference(
+      item.iconKey,
+      item.faviconUrl,
+      "generic:monitor",
+    );
     const synthetic: PortalServiceInput = {
       deviceNetworkId: index + 1,
       subdomain: textValue(item.subdomain),
-      petname: nullableText(item.petname),
+      petname: nullablePetname(item.petname),
       description: nullableText(item.description),
       port: item.port as number,
       protocol: item.protocol as PortalServiceInput["protocol"],
@@ -512,7 +538,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
       topPath: nullableText(item.topPath),
       monitorPath: nullableText(item.monitorPath),
       serviceUrl: nullableText(item.serviceUrl),
-      iconKey: nullableText(item.iconKey),
+      iconKey,
       enabled: item.enabled as boolean,
     };
     issues.push(...validateServicePayload(synthetic).map((issue) => ({
@@ -541,7 +567,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
       subdomain: textValue(item.subdomain).toLowerCase(),
       device: textValue(item.device),
       network: textValue(item.network),
-      petname: nullableText(item.petname),
+      petname: nullablePetname(item.petname),
       description: nullableText(item.description),
       port: item.port as number,
       protocol: item.protocol as PortalServiceInput["protocol"],
@@ -549,8 +575,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
       topPath: nullableText(item.topPath),
       monitorPath: nullableText(item.monitorPath),
       serviceUrl: nullableText(item.serviceUrl),
-      iconKey: nullableText(item.iconKey),
-      faviconUrl: nullableText(item.faviconUrl),
+      iconKey,
       enabled: item.enabled as boolean,
     });
   });
@@ -810,7 +835,7 @@ export function createLedgerDocument(
     .all() as NetworkRow[];
   const devices = database
     .prepare(
-      `SELECT id, hostname, category, is_vm, ssh_user, ssh_port,
+      `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
               meter_enabled, note
        FROM devices ORDER BY id`,
     )
@@ -889,6 +914,7 @@ export function createLedgerDocument(
     })),
     devices: devices.map((device) => ({
       hostname: device.hostname,
+      petname: device.petname,
       category: device.category,
       isVm: Boolean(device.is_vm),
       sshUser: device.ssh_user,
@@ -917,8 +943,11 @@ export function createLedgerDocument(
       topPath: service.top_path,
       monitorPath: service.monitor_path,
       serviceUrl: service.service_url,
-      iconKey: service.icon_key,
-      faviconUrl: service.favicon_url,
+      iconKey: normalizeServiceIconReference(
+        service.icon_key,
+        service.favicon_url,
+        "generic:monitor",
+      ),
       enabled: Boolean(service.enabled),
     })),
     sshKeys: sshKeys.map((key) => ({
@@ -1012,12 +1041,14 @@ export function importLedgerYaml(
     const deviceIds = new Map<string, number>();
     const insertDevice = database.prepare(
       `INSERT INTO devices
-        (hostname, category, is_vm, ssh_user, ssh_port, meter_enabled, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (hostname, petname, category, is_vm, ssh_user, ssh_port,
+         meter_enabled, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const device of document.devices) {
       const result = insertDevice.run(
         device.hostname,
+        device.petname,
         device.category,
         device.isVm ? 1 : 0,
         device.sshUser,
@@ -1086,7 +1117,7 @@ export function importLedgerYaml(
         service.monitorPath,
         service.serviceUrl,
         service.iconKey,
-        service.faviconUrl,
+        null,
         service.enabled ? 1 : 0,
       );
     }

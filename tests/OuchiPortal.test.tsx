@@ -17,12 +17,15 @@ import type {
   PortalService,
 } from "../src/portal/types";
 import { EntityDialog } from "../src/portal/EntityDialog";
+import { ServiceIcon } from "../src/portal/icons";
 import { ledgerYamlToPortalData } from "../src/portal/yamlDataSource";
 
 const sampleYaml = readFileSync(
   resolve(process.cwd(), "public/ouchi-ledger.sample.yaml"),
   "utf8",
 );
+const demoServiceLinkMessage =
+  "ここをクリックすると設定したURLにジャンプします";
 
 const service = (
   overrides: Partial<PortalService> = {},
@@ -37,7 +40,7 @@ const service = (
   protocol: "tcp",
   topPath: "/",
   monitorPath: "/api/v1/version",
-  iconKey: "gitea",
+  iconKey: "generic:gitea",
   enabled: true,
   url: "http://192.168.0.19:3000/",
   monitorUrl: "http://192.168.0.19:3000/api/v1/version",
@@ -139,7 +142,7 @@ const portalData: PortalDataV2 = {
       scheme: "https",
       port: 443,
       serviceUrl: "https://www.notion.so/",
-      iconKey: "globe",
+      iconKey: "generic:globe",
       url: "https://www.notion.so/",
       monitorUrl: "https://www.notion.so/",
     }),
@@ -162,6 +165,7 @@ const apiData: PortalApiData = {
   devices: portalData.devices.map((device, index) => ({
     id: index + 1,
     hostname: device.name,
+    petname: device.petname ?? null,
     category: device.category,
     isVm: device.isVm,
     sshUser: device.ssh?.user ?? null,
@@ -235,10 +239,17 @@ describe("OuchiPortal", () => {
       .mockImplementation(() => jsonResponse(apiData));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<OuchiPortal />);
+    const { container } = render(<OuchiPortal />);
 
     expect(screen.getByText(/台帳を読み込んでいます/)).toBeInTheDocument();
     expect(await screen.findByText("nanopi-r2s")).toBeInTheDocument();
+    expect(
+      container.querySelector(".ouchi-relation-legend"),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".ouchi-portal-footer"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("関係先はタグ色")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/portal",
       expect.objectContaining({ headers: expect.any(Object) }),
@@ -255,7 +266,7 @@ describe("OuchiPortal", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(
+    const { container } = render(
       <OuchiPortal
         showTitle={false}
         yamlUrl="ouchi-ledger.sample.yaml"
@@ -265,7 +276,18 @@ describe("OuchiPortal", () => {
     expect(
       await screen.findByText("ホームダッシュボード", { exact: true }),
     ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "あなたのおうち環境" }),
+    ).toBeVisible();
     expect(screen.getByText("表示専用デモ")).toBeVisible();
+    expect(
+      container.querySelector(".ouchi-relation-legend"),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".ouchi-portal-footer"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("同一デバイス")).not.toBeInTheDocument();
+    expect(screen.queryByText("関係先はタグ色")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "管理" }),
     ).not.toBeInTheDocument();
@@ -278,6 +300,89 @@ describe("OuchiPortal", () => {
         headers: { Accept: "application/yaml" },
       }),
     );
+  });
+
+  it("keeps API mode service tiles as external links", () => {
+    render(<OuchiPortal data={portalData} />);
+
+    expect(
+      screen.getByRole("link", { name: /おうちGit/ }),
+    ).toHaveAttribute("href", "http://192.168.0.19:3000/");
+    expect(
+      screen.queryByRole("alertdialog"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the exact in-app alert without navigating for demo service tiles", async () => {
+    const user = userEvent.setup();
+    let currentYaml = sampleYaml;
+    const fetchMock = vi.fn(
+      () =>
+        Promise.resolve(
+          new Response(currentYaml, {
+            headers: { "Content-Type": "application/yaml" },
+          }),
+        ),
+    );
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null);
+    vi.stubGlobal("fetch", fetchMock);
+    const initialLocation = window.location.href;
+
+    const firstRender = render(
+      <OuchiPortal
+        showTitle={false}
+        yamlUrl="ouchi-ledger.sample.yaml"
+      />,
+    );
+    const configuredTile = await screen.findByRole("button", {
+      name: /ホームダッシュボード/,
+    });
+    expect(configuredTile).not.toHaveAttribute("href");
+
+    await user.click(configuredTile);
+    let alertDialog = await screen.findByRole("alertdialog");
+    expect(
+      within(alertDialog).getByText(demoServiceLinkMessage, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(window.location.href).toBe(initialLocation);
+
+    await user.click(
+      within(alertDialog).getByRole("button", { name: "閉じる" }),
+    );
+    expect(
+      screen.queryByRole("alertdialog"),
+    ).not.toBeInTheDocument();
+    firstRender.unmount();
+
+    currentYaml = sampleYaml.replace(
+      "    serviceUrl: https://drive.google.com/",
+      "    serviceUrl: null",
+    );
+    render(
+      <OuchiPortal
+        showTitle={false}
+        yamlUrl="ouchi-ledger.sample.yaml"
+      />,
+    );
+    const missingUrlTile = await screen.findByRole("button", {
+      name: "Google Drive Google のクラウドストレージサービス",
+    });
+    expect(missingUrlTile).not.toHaveAttribute("href");
+
+    await user.click(missingUrlTile);
+    alertDialog = await screen.findByRole("alertdialog");
+    expect(
+      within(alertDialog).getByText(demoServiceLinkMessage, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(window.location.href).toBe(initialLocation);
   });
 
   it("renders API data and category headings only when non-empty", () => {
@@ -301,6 +406,34 @@ describe("OuchiPortal", () => {
     expect(
       within(homeLan).queryByRole("heading", { name: "サービス" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the hostname without duplicating it in the card subline", () => {
+    const { container } = render(<OuchiPortal data={portalData} />);
+    const card = container.querySelector('[data-device-id="2"]') as HTMLElement;
+
+    expect(within(card).getAllByText("nanopi-r2s", { exact: true })).toHaveLength(
+      1,
+    );
+    expect(card.querySelector(".ouchi-node-address")?.textContent).toBe(
+      "192.168.0.19 / 物理マシン",
+    );
+  });
+
+  it("uses a device petname as the card title and keeps hostname in the subline", () => {
+    const namedData: PortalDataV2 = {
+      ...portalData,
+      devices: portalData.devices.map((device) =>
+        device.id === "2" ? { ...device, petname: "門番" } : device,
+      ),
+    };
+    const { container } = render(<OuchiPortal data={namedData} />);
+    const card = container.querySelector('[data-device-id="2"]') as HTMLElement;
+
+    expect(within(card).getByText("門番", { exact: true })).toBeVisible();
+    expect(card.querySelector(".ouchi-node-address")?.textContent).toBe(
+      "192.168.0.19 / nanopi-r2s / 物理マシン",
+    );
   });
 
   it("does not render service status UI even when a provider returns state", () => {
@@ -380,6 +513,55 @@ describe("OuchiPortal", () => {
     expect(
       container.querySelector('[data-device-id="1"]'),
     ).toHaveClass("ouchi-device-card--neutral");
+  });
+
+  it("locks an existing relation tag colour and explains global recolouring", async () => {
+    const user = userEvent.setup();
+    render(
+      <EntityDialog
+        data={portalData}
+        editingId="3"
+        kind="device"
+        onClose={() => undefined}
+        onSave={() => undefined}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "デバイスを編集" });
+    const tagInput = within(dialog).getByRole("combobox", {
+      name: "関係タグ 1",
+    });
+    const colorInput = within(dialog).getByRole("textbox", {
+      name: "関係色 1",
+    });
+
+    expect(tagInput).toHaveAttribute(
+      "list",
+      "ouchi-relation-tag-suggestions",
+    );
+    expect(colorInput).toHaveValue("blue");
+    expect(colorInput).toHaveAttribute("readonly");
+    expect(
+      within(dialog).getByText(/全1件へ反映されます/),
+    ).toBeVisible();
+
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "タグの色を変更",
+      }),
+    );
+    expect(colorInput).not.toHaveAttribute("readonly");
+    expect(
+      within(dialog).getByText(
+        /保存すると、このタグを持つ全1件の関係へ一括反映されます/,
+      ),
+    ).toBeVisible();
+
+    await user.clear(tagInput);
+    await user.type(tagInput, "新規タグ");
+    expect(colorInput).not.toHaveAttribute("readonly");
+    expect(
+      within(dialog).getByText("新規タグです。色を自由に選べます。"),
+    ).toBeVisible();
   });
 
   it("draws adjacent pairs between duplicate device displays", async () => {
@@ -488,7 +670,7 @@ describe("OuchiPortal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("draws the aura-gw demo chain between adjacent top and bottom points", async () => {
+  it("draws the l3-switch demo chain between adjacent top and bottom points", async () => {
     const user = userEvent.setup();
     const demoData = ledgerYamlToPortalData(sampleYaml);
     const rect = (
@@ -518,9 +700,9 @@ describe("OuchiPortal", () => {
             .getAttribute("aria-labelledby")
             ?.replace("device-", "");
           const top =
-            membershipId === "membership-2"
+            membershipId === "membership-1"
               ? 100
-              : membershipId === "membership-3"
+              : membershipId === "membership-2"
                 ? 400
                 : 700;
           return rect(20, top, 240, 160);
@@ -540,7 +722,7 @@ describe("OuchiPortal", () => {
       <OuchiPortal data={demoData} showTitle={false} />,
     );
     await user.click(
-      screen.getAllByRole("button", { name: "aura-gwを選択" })[0],
+      screen.getAllByRole("button", { name: "L3 Switchを選択" })[0],
     );
 
     await waitFor(() => {
@@ -621,7 +803,7 @@ describe("OuchiPortal", () => {
       <OuchiPortal data={demoData} showTitle={false} />,
     );
     await user.click(
-      screen.getByRole("button", { name: "cedar-hostを選択" }),
+      screen.getByRole("button", { name: "Aliciaを選択" }),
     );
 
     const relationPaths = await waitFor(() => {
@@ -663,6 +845,26 @@ describe("OuchiPortal", () => {
     expect(within(drawer).getByText("SQLite台帳（API）へ保存")).toBeVisible();
     expect(within(drawer).queryByText(/localStorage/)).not.toBeInTheDocument();
     expect(storageSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows petname as the management device title and keeps the hostname beside it", async () => {
+    const user = userEvent.setup();
+    const namedData: PortalDataV2 = {
+      ...portalData,
+      devices: portalData.devices.map((device) =>
+        device.id === "2" ? { ...device, petname: "門番" } : device,
+      ),
+    };
+    render(<OuchiPortal data={namedData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const drawer = screen.getByRole("dialog", { name: "ポータルを管理" });
+    await user.click(within(drawer).getByRole("tab", { name: /デバイス/ }));
+
+    const row = within(drawer)
+      .getByText("門番", { exact: true })
+      .closest(".ouchi-manage-row") as HTMLElement;
+    expect(within(row).getByText("nanopi-r2s", { exact: true })).toBeVisible();
   });
 
   it("displays settings.title and saves changes through the API", async () => {
@@ -850,6 +1052,153 @@ describe("OuchiPortal", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("applies a dashboard icon as its jsDelivr URL on save", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <EntityDialog
+        data={portalData}
+        kind="service"
+        onClose={() => undefined}
+        onSave={onSave}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "サービスを追加" });
+
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "サブドメイン" }),
+      "metrics",
+    );
+    await user.type(
+      within(dialog).getByRole("searchbox", { name: "アイコンを検索" }),
+      "grafana",
+    );
+
+    expect(
+      within(dialog).getByRole("heading", {
+        name: "汎用アイコン",
+      }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole("heading", { name: "dashboard-icons" }),
+    ).toBeVisible();
+    expect(
+      within(dialog).queryByRole("option", { name: "メールを選択" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      await within(dialog).findByRole("option", {
+        name: "Grafanaを選択",
+      }),
+    );
+
+    expect(
+      within(dialog).getByText("選択中: Grafana"),
+    ).toBeVisible();
+    await user.click(
+      within(dialog).getByRole("button", { name: "追加する" }),
+    );
+    expect(onSave).toHaveBeenCalledWith(
+      "service",
+      expect.objectContaining({
+        subdomain: "metrics",
+        iconKey:
+          "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg",
+      }),
+    );
+  });
+
+  it("can select favicon or enter an explicit image URL", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <EntityDialog
+        data={portalData}
+        kind="service"
+        onClose={() => undefined}
+        onSave={onSave}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "サービスを追加" });
+
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "サービスの favicon を使う",
+      }),
+    );
+    expect(within(dialog).getByText("選択中: favicon")).toBeVisible();
+
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "アイコン画像URL" }),
+      "https://icons.example/service.svg",
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "サブドメイン" }),
+      "custom-icon",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "追加する" }),
+    );
+    expect(onSave).toHaveBeenCalledWith(
+      "service",
+      expect.objectContaining({
+        iconKey: "url:https://icons.example/service.svg",
+      }),
+    );
+  });
+
+  it("renders favicon and URL references, falling back on load errors", () => {
+    const { container, rerender } = render(
+      <ServiceIcon
+        iconKey="favicon"
+        serviceUrl="http://192.168.0.19:3000/some/path"
+      />,
+    );
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "http://192.168.0.19:3000/favicon.ico",
+    );
+
+    fireEvent.error(container.querySelector("img")!);
+    expect(
+      container.querySelector(".ouchi-service-mark--favicon svg"),
+    ).toBeInTheDocument();
+
+    rerender(
+      <ServiceIcon iconKey="url:https://icons.example/service.svg" />,
+    );
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example/service.svg",
+    );
+    fireEvent.error(container.querySelector("img")!);
+    expect(
+      container.querySelector(".ouchi-service-mark > svg"),
+    ).toBeInTheDocument();
+  });
+
+  it("uses only bundled assets for remote references in read-only mode", () => {
+    const remoteIconData: PortalDataV2 = {
+      ...portalData,
+      services: [
+        service({
+          iconKey:
+            "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg",
+        }),
+      ],
+    };
+    const { container } = render(
+      <OuchiPortal data={remoteIconData} readOnly showTitle={false} />,
+    );
+
+    expect(container.querySelector(".ouchi-remote-icon")).toBeNull();
+    expect(
+      container.querySelector(".ouchi-service-tile .ouchi-service-mark > svg"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "管理" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps SSH metadata editable without exposing meter controls", async () => {
     const user = userEvent.setup();
     render(<OuchiPortal data={portalData} />);
@@ -862,6 +1211,9 @@ describe("OuchiPortal", () => {
     const dialog = screen.getByRole("dialog", { name: "デバイスを編集" });
 
     expect(within(dialog).getByText("SSH接続情報")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("textbox", { name: "ペットネーム" }),
+    ).toHaveValue("");
     expect(
       within(dialog).getByRole("textbox", { name: "SSHユーザー" }),
     ).toHaveValue("monitor");
