@@ -58,7 +58,7 @@ type ConfirmState =
   | { type: "reset" };
 
 interface DeviceVisual {
-  mode: "neutral" | "selected" | "related" | "muted";
+  mode: "neutral" | "selected" | "related";
   tags: Array<{ label: string; color: string }>;
   color?: string;
 }
@@ -162,7 +162,7 @@ function deviceVisual(
       color: related[0].color,
     };
   }
-  return { mode: "muted", tags: [] };
+  return { mode: "neutral", tags: [] };
 }
 
 function connectorAnchors(
@@ -1289,10 +1289,6 @@ export function OuchiPortal({
             <span>
               <i className="ouchi-legend-swatch ouchi-legend-swatch--relation" />
               関係先はタグ色
-            </span>
-            <span>
-              <i className="ouchi-legend-swatch ouchi-legend-swatch--muted" />
-              無関係はグレーアウト
             </span>
           </div>
         </div>

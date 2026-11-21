@@ -1855,7 +1855,7 @@
   min-height: 174px;
   padding: 12px 13px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.78);
+  background: #fff;
   border: 1.5px solid #e0e5eb;
   border-radius: 13px;
   box-shadow: none;
@@ -1863,8 +1863,6 @@
   transition:
     border-color 160ms ease,
     background 160ms ease,
-    opacity 160ms ease,
-    filter 160ms ease,
     transform 160ms ease;
 }
 
@@ -1886,15 +1884,6 @@
     #fff
   );
   border: 2px solid var(--ouchi-relation-color);
-}
-
-.ouchi-device-card--muted {
-  opacity: 0.46;
-  filter: grayscale(0.42);
-}
-
-.ouchi-device-card--muted:hover {
-  opacity: 0.7;
 }
 
 .ouchi-node-header {
@@ -2200,11 +2189,6 @@
   border-color: #e0a72b;
 }
 
-.ouchi-legend-swatch--muted {
-  background: #e6e8eb;
-  border-color: #d6d9de;
-}
-
 .ouchi-list-node--selected {
   background: #f3f1ff;
   box-shadow: inset 3px 0 #6259d8;
@@ -2217,10 +2201,6 @@
     #fff
   );
   box-shadow: inset 3px 0 var(--ouchi-relation-color, #d5a22b);
-}
-
-.ouchi-list-node--muted {
-  opacity: 0.5;
 }
 
 .ouchi-list-select-button {
