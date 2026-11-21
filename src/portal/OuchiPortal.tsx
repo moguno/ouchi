@@ -67,11 +67,19 @@ interface RelationConnector {
   id: string;
   kind: "same-device" | "relation";
   color: string;
+  tooltip: string;
   d: string;
   startX: number;
   startY: number;
   endX: number;
   endY: number;
+}
+
+interface ConnectorTooltip {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
 }
 
 type ConnectorRect = Pick<
@@ -797,6 +805,8 @@ export function OuchiPortal({
   const [relationConnectors, setRelationConnectors] = useState<
     RelationConnector[]
   >([]);
+  const [connectorTooltip, setConnectorTooltip] =
+    useState<ConnectorTooltip>();
 
   useEffect(() => {
     if (!message) {
@@ -860,6 +870,9 @@ export function OuchiPortal({
 
       const connectors: RelationConnector[] = [];
       const selectedCards = cardsFor(selectedDeviceId);
+      const selectedDeviceName =
+        portalData.devices.find((device) => device.id === selectedDeviceId)
+          ?.name ?? selectedDeviceId;
       selectedCards.forEach((selectedCard, selectedIndex) => {
         selectedCards.slice(selectedIndex + 1).forEach((sameDeviceCard) => {
           const relatedIndex = selectedCards.indexOf(sameDeviceCard);
@@ -871,6 +884,7 @@ export function OuchiPortal({
             id: `same-device-${selectedIndex}-${relatedIndex}`,
             kind: "same-device",
             color: "#6259d8",
+            tooltip: `同一デバイス: ${selectedDeviceName}`,
             ...anchors,
           });
         });
@@ -887,6 +901,14 @@ export function OuchiPortal({
           relation.fromDeviceId === selectedDeviceId
             ? relation.toDeviceId
             : relation.fromDeviceId;
+        const fromDeviceName =
+          portalData.devices.find(
+            (device) => device.id === relation.fromDeviceId,
+          )?.name ?? relation.fromDeviceId;
+        const toDeviceName =
+          portalData.devices.find(
+            (device) => device.id === relation.toDeviceId,
+          )?.name ?? relation.toDeviceId;
         const relatedCards = cardsFor(relatedDeviceId);
 
         selectedCards.forEach((selectedCard, selectedIndex) => {
@@ -899,6 +921,7 @@ export function OuchiPortal({
               id: `${relation.id}-${selectedIndex}-${relatedIndex}`,
               kind: "relation",
               color: relation.color,
+              tooltip: `${fromDeviceName} [${relation.fromLabel}] ↔ [${relation.toLabel}] ${toDeviceName}`,
               ...anchors,
             });
           });
@@ -1123,6 +1146,22 @@ export function OuchiPortal({
     );
   }
 
+  function updateConnectorTooltip(
+    event: React.PointerEvent<SVGGElement>,
+    connector: RelationConnector,
+  ) {
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) {
+      return;
+    }
+    setConnectorTooltip({
+      id: connector.id,
+      text: connector.tooltip,
+      x: event.clientX - canvasRect.left + 12,
+      y: event.clientY - canvasRect.top + 12,
+    });
+  }
+
   const vmCount = portalData.devices.filter((device) => device.isVm).length;
   const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.deviceNetworks.length}所属IP、${portalData.relations.length}関係、${portalData.services.length}サービス`;
 
@@ -1229,9 +1268,24 @@ export function OuchiPortal({
               <g
                 className={`ouchi-relation-connector ouchi-relation-connector--${connector.kind}`}
                 key={connector.id}
+                onPointerEnter={(event) =>
+                  updateConnectorTooltip(event, connector)
+                }
+                onPointerLeave={() => setConnectorTooltip(undefined)}
+                onPointerMove={(event) =>
+                  updateConnectorTooltip(event, connector)
+                }
                 style={{ "--ouchi-relation-color": connector.color } as CSSProperties}
               >
-                <path d={connector.d} />
+                <title>{connector.tooltip}</title>
+                <path
+                  className="ouchi-relation-hit-area"
+                  d={connector.d}
+                />
+                <path
+                  className="ouchi-relation-visible"
+                  d={connector.d}
+                />
                 <circle
                   cx={connector.startX}
                   cy={connector.startY}
@@ -1245,6 +1299,18 @@ export function OuchiPortal({
               </g>
             ))}
           </svg>
+        )}
+        {connectorTooltip && (
+          <div
+            className="ouchi-relation-tooltip"
+            role="tooltip"
+            style={{
+              left: connectorTooltip.x,
+              top: connectorTooltip.y,
+            }}
+          >
+            {connectorTooltip.text}
+          </div>
         )}
         {portalData.networks.length === 0 ? (
           <div className="ouchi-global-empty">

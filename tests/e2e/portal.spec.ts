@@ -35,6 +35,8 @@ for (const viewport of viewports) {
         name: "ouchi.local",
       }),
     ).toHaveCount(0);
+    await expect(page.locator(".ouchi-device-card--selected")).toHaveCount(0);
+    await expect(page.locator(".ouchi-device-card--related")).toHaveCount(0);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(viewport.width);
@@ -202,6 +204,18 @@ test("connects duplicate device displays with a same-device line", async ({
   await expect(
     page.locator(".ouchi-relation-connector--same-device"),
   ).toHaveCount(1);
+  await expect(page.locator(".ouchi-relation-connectors")).toHaveCSS(
+    "z-index",
+    "2",
+  );
+  await page
+    .locator(
+      ".ouchi-relation-connector--same-device .ouchi-relation-hit-area",
+    )
+    .hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "同一デバイス: FortiGate 50E",
+  );
   await page.screenshot({
     path: "成果物/screenshots/portal-same-device-line.png",
     fullPage: true,
@@ -212,8 +226,33 @@ test("connects duplicate device displays with a same-device line", async ({
 test("relation highlight is visible on the portal", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.goto("/");
-  await expect(page.getByText("親ホスト")).toBeVisible();
+  await page
+    .getByRole("button", { name: "openmediavaultを選択" })
+    .click();
+  await expect(
+    page.getByText("親ホスト", { exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".ouchi-relation-connector")).toHaveCount(1);
+  const relationHitArea = page.locator(
+    ".ouchi-relation-connector--relation .ouchi-relation-hit-area",
+  );
+  const hoverPoint = await relationHitArea.evaluate((path) => {
+    const svgPath = path as SVGPathElement;
+    const localPoint = svgPath.getPointAtLength(
+      svgPath.getTotalLength() / 2,
+    );
+    const svgPoint = svgPath.ownerSVGElement!.createSVGPoint();
+    svgPoint.x = localPoint.x;
+    svgPoint.y = localPoint.y;
+    const screenPoint = svgPoint.matrixTransform(
+      svgPath.getScreenCTM()!,
+    );
+    return { x: screenPoint.x, y: screenPoint.y };
+  });
+  await page.mouse.move(hoverPoint.x, hoverPoint.y);
+  await expect(page.getByRole("tooltip")).toContainText(
+    "openmediavault [VM] ↔ [親ホスト] ACEMAGIC",
+  );
   await page.screenshot({
     path: "成果物/screenshots/portal-relations.png",
     fullPage: true,

@@ -36,6 +36,12 @@ describe("OuchiPortal", () => {
     expect(
       container.querySelectorAll(".ouchi-node-card"),
     ).toHaveLength(11);
+    expect(
+      container.querySelectorAll(".ouchi-device-card--selected"),
+    ).toHaveLength(0);
+    expect(
+      container.querySelectorAll(".ouchi-device-card--related"),
+    ).toHaveLength(0);
     const networkCards = container.querySelectorAll(".ouchi-network-card");
     expect(networkCards[0]).toHaveAttribute(
       "aria-labelledby",
