@@ -36,6 +36,12 @@ describe("OuchiPortal", () => {
     expect(
       container.querySelectorAll(".ouchi-node-card"),
     ).toHaveLength(11);
+    expect(
+      container.querySelectorAll(".ouchi-device-card--selected"),
+    ).toHaveLength(0);
+    expect(
+      container.querySelectorAll(".ouchi-device-card--related"),
+    ).toHaveLength(0);
     const networkCards = container.querySelectorAll(".ouchi-network-card");
     expect(networkCards[0]).toHaveAttribute(
       "aria-labelledby",
@@ -191,8 +197,13 @@ describe("OuchiPortal", () => {
 
     const omv = container.querySelector('[data-device-id="omv-vm"]');
     const aceMagic = container.querySelector('[data-device-id="acemagic"]');
+    const unrelated = container.querySelector(
+      '[data-device-id="nanopi-r2s"]',
+    );
     expect(omv).toHaveClass("ouchi-device-card--selected");
     expect(aceMagic).toHaveClass("ouchi-device-card--related");
+    expect(unrelated).toHaveClass("ouchi-device-card--neutral");
+    expect(unrelated).not.toHaveClass("ouchi-device-card--muted");
     expect(screen.getByText("親ホスト")).toBeInTheDocument();
     expect(screen.queryByText("選択中")).not.toBeInTheDocument();
 

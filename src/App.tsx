@@ -87,7 +87,6 @@ export default function App() {
         onPortalTitleChange={handlePortalTitleChange}
         portalTitle={portalTitle}
         showTitle={false}
-        initialSelectedDeviceId="omv-vm"
       />
       <p className="demo-note">
         Reactコンポーネント・デモ / データはブラウザ内に保存されます
