@@ -79,8 +79,7 @@ npm start
 ## Docker
 
 GHCR でマルチアーキイメージ（linux/amd64 / linux/arm64）を公開しています。
-アーキテクチャは自動で選択されます。このリポジトリの `compose.yaml` を
-取得して起動するだけです。
+このリポジトリの `compose.yaml` を取得して起動するだけです。
 
 ```bash
 docker compose up -d
