@@ -42,7 +42,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 成果物/demo-pages
+          path: pages-dist
 
   deploy:
     needs: build

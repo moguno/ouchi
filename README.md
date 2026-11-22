@@ -293,13 +293,13 @@ Apache-2.0 の独自 SVG です。
 ### GitHub Pages 向け YAML デモ
 
 `npm run build:pages` は `--mode pages` で SPA をビルドし、静的ファイル一式を
-`成果物/demo-pages/` へ出力します。このビルドは API ではなく、同梱の
+`pages-dist/` へ出力します。このビルドは API ではなく、同梱の
 `ouchi-ledger.sample.yaml` を相対 URL で読み込みます。`index.html`、JavaScript、
 CSS、YAML はすべて相対参照なので、GitHub Pages の `/<リポジトリ名>/` 配下へ
-`成果物/demo-pages/` の中身をそのまま配置できます。
+`pages-dist/` の中身をそのまま配置できます。
 
 `main` ブランチへのpush時は `.github/workflows/pages.yml` が
-`npm run build:pages` を実行し、`成果物/demo-pages/` をGitHub Pagesへ
+`npm run build:pages` を実行し、`pages-dist/` をGitHub Pagesへ
 自動配備します。公開URLは
 `https://moguno.github.io/ouchi/` です。
 

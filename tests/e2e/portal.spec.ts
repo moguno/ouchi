@@ -45,7 +45,7 @@ for (const viewport of viewports) {
     ).toBeLessThanOrEqual(viewport.width);
 
     await page.screenshot({
-      path: `成果物/screenshots/portal-v1-${viewport.name}.png`,
+      path: `test-results/portal-v1-${viewport.name}.png`,
       fullPage: true,
       animations: "disabled",
     });
@@ -147,7 +147,7 @@ test("management drawer and service form expose v1 fields", async ({
   ).toHaveCount(0);
 
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-service-form.png",
+    path: "test-results/portal-v1-service-form.png",
     fullPage: false,
     animations: "disabled",
   });
@@ -176,7 +176,7 @@ test("device management keeps SSH metadata without meter controls", async ({
   ).toBeVisible();
   await expect(dialog.getByText(/メモリ|ディスク|使用率/)).toHaveCount(0);
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-device-form.png",
+    path: "test-results/portal-v1-device-form.png",
     fullPage: false,
     animations: "disabled",
   });
@@ -207,7 +207,7 @@ test("same-device connector is drawn from seeded memberships", async ({
   await expect(sameDeviceLine).toHaveCSS("stroke-width", "2px");
   await expect(sameDeviceLine).toHaveCSS("opacity", "0.62");
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-same-device-line.png",
+    path: "test-results/portal-v1-same-device-line.png",
     fullPage: true,
     animations: "disabled",
   });
@@ -251,7 +251,7 @@ test("duplicate 関所 displays draw adjacent-point connectors", async ({
   await expect(page.getByRole("tooltip")).toHaveCSS("z-index", "3");
 
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-multi-membership-connectors-after.png",
+    path: "test-results/portal-v1-multi-membership-connectors-after.png",
     fullPage: true,
     animations: "disabled",
   });
@@ -278,7 +278,7 @@ test("relation labels and connectors use seeded tag fallbacks", async ({
   await expect(relationLine).toHaveCSS("stroke-width", "2.5px");
   await expect(relationLine).toHaveCSS("opacity", "0.82");
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-relations.png",
+    path: "test-results/portal-v1-relations.png",
     fullPage: true,
     animations: "disabled",
   });
@@ -296,7 +296,7 @@ test("list view keeps category headings for populated categories only", async ({
   await expect(networks.first()).not.toContainText("登録なし");
   await expect(networks.last()).toContainText("サービス");
   await page.screenshot({
-    path: "成果物/screenshots/portal-v1-list.png",
+    path: "test-results/portal-v1-list.png",
     fullPage: true,
     animations: "disabled",
   });

@@ -12,3 +12,5 @@ playwright-report/
 *.sqlite-wal
 *.log
 .DS_Store
+成果物/
+pages-dist/
