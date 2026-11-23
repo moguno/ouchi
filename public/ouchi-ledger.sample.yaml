@@ -1,4 +1,4 @@
-format: ouchi-ledger/1
+format: ouchi-ledger/2
 exportedAt: "2026-11-21T09:00:00.000Z"
 settings:
   domain: ouchi.example
@@ -255,37 +255,27 @@ devices:
       - network: インターネット
         ip: null
         label: Static hosting
+relationNames:
+  - name: VM
+    color: "#d48a2f"
+    fromLabel: 親ホスト
+    toLabel: VM
 relations:
   - from: cedar-host
     to: harbor-core
-    tag: VM
-    fromLabel: 親ホスト
-    toLabel: VM
-    color: "#d48a2f"
+    relationName: VM
   - from: cedar-host
     to: atlas-lab
-    tag: VM
-    fromLabel: 親ホスト
-    toLabel: VM
-    color: "#d48a2f"
+    relationName: VM
   - from: cedar-host
     to: forge-ci
-    tag: VM
-    fromLabel: 親ホスト
-    toLabel: VM
-    color: "#d48a2f"
+    relationName: VM
   - from: akari
     to: acorn-notes
-    tag: VM
-    fromLabel: 親ホスト
-    toLabel: VM
-    color: "#d48a2f"
+    relationName: VM
   - from: akari
     to: fern-gallery
-    tag: VM
-    fromLabel: 親ホスト
-    toLabel: VM
-    color: "#d48a2f"
+    relationName: VM
 services:
   - subdomain: home
     device: l3-switch

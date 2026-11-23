@@ -1,10 +1,17 @@
+import "./styles/base.css";
+import "./styles/portal-shell.css";
+import "./styles/portal-board.css";
+import "./styles/entity-dialog.css";
+import "./styles/portal-motion.css";
+import "./styles/portal.css";
+import "./styles/portal-connectors.css";
+import "./styles/portal-board-v2.css";
+import "./styles/portal-responsive.css";
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import {
   PortalApiError,
@@ -12,11 +19,13 @@ import {
   createMembership,
   createNetwork,
   createRelation,
+  createRelationName,
   createService,
   deleteDevice,
   deleteMembership,
   deleteNetwork,
   deleteRelation,
+  deleteRelationName,
   deleteService,
   exportLedger,
   importLedger,
@@ -24,7 +33,7 @@ import {
   updateMembership,
   updateNetwork,
   updateRelation,
-  updateRelationTagColor,
+  updateRelationName,
   updateService,
   updateSettings,
 } from "./apiClient";
@@ -35,42 +44,42 @@ import {
   type PortalEntity,
 } from "./EntityDialog";
 import {
-  ExternalLinkIcon,
   GridIcon,
   ListIcon,
-  ServiceIcon,
   SettingsIcon,
 } from "./icons";
+import { DemoServiceLinkDialog } from "./DemoServiceLinkDialog";
+import { DeviceMemoDialog } from "./DeviceMemoDialog";
+import { ServiceMemoDialog } from "./ServiceMemoDialog";
+import { ServiceTopDialog } from "./ServiceTopDialog";
+import { ServiceIconDialog } from "./ServiceIconDialog";
+import { ManageView } from "./ManageView";
 import {
-  routeConnectorLinks,
-  type ConnectorLink,
-  type ConnectorRect,
-} from "./connectors";
+  PortalConnectorLayer,
+  usePortalConnectors,
+} from "./PortalConnectorLayer";
+import { IconBoard, ListBoard } from "./PortalBoard";
+import { RelationDialog } from "./RelationDialog";
+import type { EntityKind, ManageTab } from "./managementTypes";
 import {
-  ManageDrawer,
-  type EntityKind,
-  type ManageTab,
-} from "./ManageDrawer";
-import { sortNetworksForDisplay } from "./networkOrder";
-import {
-  DEVICE_CATEGORY_LABELS,
-  PORTAL_DEVICE_CATEGORIES,
   type OuchiPortalProps,
+  type PortalDevice,
   type PortalDeviceInput,
   type PortalDataV2,
-  type PortalDevice,
-  type PortalDeviceNetwork,
   type PortalNetwork,
+  type PortalProperties,
   type PortalRelation,
+  type PortalRelationName,
   type PortalService,
+  type PortalServiceInput,
 } from "./types";
+import { serviceName } from "./portalPresentation";
 import { usePortalData } from "./usePortalData";
+import { fetchDemoLedgerYaml } from "./yamlDataSource";
 import {
   DEFAULT_PORTAL_TITLE,
   validatePortalData,
 } from "./validation";
-import "./styles.css";
-
 type ViewMode = "icons" | "list";
 
 interface DialogState {
@@ -79,38 +88,18 @@ interface DialogState {
 }
 
 type ConfirmState =
-  | { type: "delete"; kind: EntityKind; id: string };
-
-interface DeviceVisual {
-  mode: "neutral" | "selected" | "related";
-  tags: Array<{ label: string; color: string }>;
-  color?: string;
-}
-
-interface RelationConnector {
-  id: string;
-  kind: "same-device" | "relation";
-  color: string;
-  tooltip: string;
-  d: string;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-}
-
-interface ConnectorTooltip {
-  id: string;
-  text: string;
-  x: number;
-  y: number;
-}
+  | {
+      type: "delete";
+      kind: EntityKind | "relation" | "relationName";
+      id: string;
+    };
 
 const EMPTY_DATA: PortalDataV2 = {
   version: 2,
   networks: [],
   devices: [],
   deviceNetworks: [],
+  relationNames: [],
   relations: [],
   services: [],
   settings: {
@@ -125,730 +114,36 @@ const KIND_LABELS: Record<EntityKind, string> = {
   service: "サービス",
 };
 
-const DEMO_SERVICE_LINK_MESSAGE =
-  "ここをクリックすると設定したURLにジャンプします";
-
-function serviceName(service: PortalService): string {
-  return service.petname?.trim() || service.subdomain;
+function toDeviceInput(device: PortalDevice): PortalDeviceInput {
+  return {
+    hostname: device.name.trim(),
+    petname: device.petname?.trim() || null,
+    properties: device.properties ?? {},
+    category: device.category,
+    isVm: device.isVm,
+    sshUser: device.ssh?.user || null,
+    sshPort: device.ssh?.port ?? null,
+    meterEnabled: device.meterEnabled ?? false,
+    note: device.note || null,
+  };
 }
 
-function deviceName(device: PortalDevice): string {
-  return device.petname?.trim() || device.name;
-}
-
-function serviceDescription(service: PortalService): string {
-  return service.description?.trim() || "";
-}
-
-function relationLabelFor(
-  relation: PortalRelation,
-  fromPerspective: boolean,
-): string {
-  return fromPerspective
-    ? relation.fromLabel?.trim() || relation.tag?.trim() || ""
-    : relation.toLabel?.trim() || relation.tag?.trim() || "";
-}
-
-function relationTooltip(relation: PortalRelation): string {
-  return `${relationLabelFor(relation, true)}⇒${relationLabelFor(
-    relation,
-    false,
-  )}`;
-}
-
-function deviceVisual(
-  deviceId: string,
-  selectedDeviceId: string | undefined,
-  relations: PortalRelation[],
-): DeviceVisual {
-  if (!selectedDeviceId) {
-    return { mode: "neutral", tags: [] };
-  }
-  if (deviceId === selectedDeviceId) {
-    return { mode: "selected", tags: [] };
-  }
-
-  const related = relations.filter(
-    (relation) =>
-      (relation.fromDeviceId === selectedDeviceId &&
-        relation.toDeviceId === deviceId) ||
-      (relation.toDeviceId === selectedDeviceId &&
-        relation.fromDeviceId === deviceId),
-  );
-  if (related.length > 0) {
-    const viewingFrom = related.some(
-      (relation) => relation.fromDeviceId === selectedDeviceId,
-    );
-    return {
-      mode: "related",
-      tags: related.map((relation) => ({
-        label: relationLabelFor(relation, !viewingFrom),
-        color: relation.color,
-      })),
-      color: related[0].color,
-    };
-  }
-  return { mode: "neutral", tags: [] };
-}
-
-function RelationBadges({ visual }: { visual: DeviceVisual }) {
-  if (visual.mode === "related") {
-    return (
-      <div className="ouchi-relation-badges">
-        {visual.tags.map((tag, index) => (
-          <span
-            className="ouchi-relation-badge"
-            key={`${tag.label}-${index}`}
-            style={
-              {
-                "--ouchi-relation-color": tag.color,
-              } as CSSProperties
-            }
-          >
-            {tag.label}
-          </span>
-        ))}
-      </div>
-    );
-  }
-  return null;
-}
-
-function DemoServiceLinkDialog({ onClose }: { onClose: () => void }) {
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCloseRef.current();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    closeRef.current?.focus();
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  return (
-    <div
-      className="ouchi-dialog-backdrop ouchi-dialog-backdrop--confirm"
-      onMouseDown={(event) => {
-        if (event.currentTarget === event.target) {
-          onClose();
-        }
-      }}
-      role="presentation"
-    >
-      <section
-        aria-describedby="ouchi-demo-service-message"
-        aria-labelledby="ouchi-demo-service-title"
-        aria-modal="true"
-        className="ouchi-confirm-dialog ouchi-demo-service-dialog"
-        role="alertdialog"
-      >
-        <p className="ouchi-eyebrow">表示専用デモ</p>
-        <h3 id="ouchi-demo-service-title">サービスのリンク</h3>
-        <p id="ouchi-demo-service-message">
-          {DEMO_SERVICE_LINK_MESSAGE}
-        </p>
-        <div className="ouchi-form-actions">
-          <button
-            className="ouchi-primary-button"
-            onClick={onClose}
-            ref={closeRef}
-            type="button"
-          >
-            閉じる
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ServiceTile({
-  service,
-  membership,
-  demoMode,
-  iconBaseUrl,
-  allowRemoteIcons,
-  onDemoClick,
-}: {
-  service: PortalService;
-  membership: PortalDeviceNetwork;
-  demoMode: boolean;
-  iconBaseUrl: string;
-  allowRemoteIcons: boolean;
-  onDemoClick: () => void;
-}) {
-  const href = service.url ?? "";
-  const content = (
-    <>
-      <span className="ouchi-service-icon-wrap">
-        <ServiceIcon
-          allowRemoteAssets={allowRemoteIcons}
-          iconKey={service.iconKey}
-          serviceUrl={href}
-          size={50}
-        />
-      </span>
-      <span className="ouchi-service-copy">
-        <strong>{serviceName(service)}</strong>
-        <small>{serviceDescription(service) || membership.ip || "IP未登録"}</small>
-      </span>
-    </>
-  );
-  if (demoMode) {
-    return (
-      <button
-        className="ouchi-service-tile ouchi-service-tile--demo"
-        onClick={onDemoClick}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
-  return href ? (
-    <a
-      className="ouchi-service-tile"
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {content}
-    </a>
-  ) : (
-    <div className="ouchi-service-tile ouchi-service-tile--disabled">
-      {content}
-    </div>
-  );
-}
-
-function DeviceCard({
-  membership,
-  device,
-  services,
-  visual,
-  sameDevice,
-  selectedDeviceId,
-  onSelect,
-  demoMode,
-  iconBaseUrl,
-  allowRemoteIcons,
-  onDemoServiceClick,
-}: {
-  membership: PortalDeviceNetwork;
-  device: PortalDevice;
-  services: PortalService[];
-  visual: DeviceVisual;
-  sameDevice: boolean;
-  selectedDeviceId?: string;
-  onSelect: (deviceId: string) => void;
-  demoMode: boolean;
-  iconBaseUrl: string;
-  allowRemoteIcons: boolean;
-  onDemoServiceClick: () => void;
-}) {
-  const selected = device.id === selectedDeviceId;
-  const petname = device.petname?.trim();
-  const displayName = deviceName(device);
-  const style =
-    visual.mode === "related" && visual.color
-      ? ({ "--ouchi-relation-color": visual.color } as CSSProperties)
-      : undefined;
-
-  return (
-    <article
-      aria-labelledby={`device-${membership.id}`}
-      className={[
-        "ouchi-node-card",
-        device.isVm ? "ouchi-device-card--vm" : "",
-        `ouchi-device-card--${visual.mode}`,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      data-device-id={device.id}
-      onClick={(event) => {
-        if (
-          event.target instanceof Element &&
-          event.target.closest("a, button")
-        ) {
-          return;
-        }
-        onSelect(device.id);
-      }}
-      style={style}
-    >
-      <header className="ouchi-node-header">
-        <button
-          aria-label={`${displayName}を${selected ? "選択解除" : "選択"}`}
-          aria-pressed={selected}
-          className="ouchi-node-select-button"
-          onClick={() => onSelect(device.id)}
-          type="button"
-        >
-          <span className="ouchi-node-radio" aria-hidden="true" />
-          <span className="ouchi-device-title">
-            <span id={`device-${membership.id}`}>{displayName}</span>
-            {device.isVm && <span className="ouchi-vm-badge">VM</span>}
-            {sameDevice && selected && (
-              <span className="ouchi-same-device-badge">同一デバイス</span>
-            )}
-          </span>
-          <span className="ouchi-node-address">
-            {membership.ip || "IP未登録"}
-            {petname ? ` / ${device.name}` : ""}
-            {` / ${DEVICE_CATEGORY_LABELS[device.category]}`}
-          </span>
-        </button>
-        <div className="ouchi-node-header-side">
-          <RelationBadges visual={visual} />
-        </div>
-      </header>
-
-      {services.length === 0 ? (
-        <p className="ouchi-node-empty">サービス未登録</p>
-      ) : (
-        <div className="ouchi-service-grid">
-          {services.map((service) => (
-            <ServiceTile
-              key={service.id}
-              membership={membership}
-              service={service}
-              demoMode={demoMode}
-              iconBaseUrl={iconBaseUrl}
-              allowRemoteIcons={allowRemoteIcons}
-              onDemoClick={onDemoServiceClick}
-            />
-          ))}
-        </div>
-      )}
-
-    </article>
-  );
-}
-
-function NetworkCard({
-  network,
-  data,
-  selectedDeviceId,
-  onSelect,
-  demoMode,
-  iconBaseUrl,
-  allowRemoteIcons,
-  onDemoServiceClick,
-}: {
-  network: PortalNetwork;
-  data: PortalDataV2;
-  selectedDeviceId?: string;
-  onSelect: (deviceId: string) => void;
-  demoMode: boolean;
-  iconBaseUrl: string;
-  allowRemoteIcons: boolean;
-  onDemoServiceClick: () => void;
-}) {
-  const memberships = data.deviceNetworks.filter(
-    (membership) => membership.networkId === network.id,
-  );
-  const membershipCounts = new Map<string, number>();
-  for (const membership of data.deviceNetworks) {
-    membershipCounts.set(
-      membership.deviceId,
-      (membershipCounts.get(membership.deviceId) ?? 0) + 1,
-    );
-  }
-
-  return (
-    <article
-      aria-labelledby={`network-${network.id}`}
-      className={`ouchi-network-card ouchi-accent-scope--${network.accent}`}
-    >
-      <header className="ouchi-network-header">
-        <span className="ouchi-network-label">
-          <span className="ouchi-network-glyph" aria-hidden="true">
-            {network.name.slice(0, 1)}
-          </span>
-          <span id={`network-${network.id}`}>{network.name}</span>
-        </span>
-        <span className="ouchi-network-meta">
-          {network.cidr && <code>{network.cidr}</code>}
-          <small>
-            {new Set(memberships.map((item) => item.deviceId)).size}台 / IP{" "}
-            {memberships.length}件
-          </small>
-        </span>
-      </header>
-
-      {memberships.length > 0 && (
-        <div className="ouchi-device-category-stack">
-          {PORTAL_DEVICE_CATEGORIES.filter((category) =>
-            memberships.some(
-              (membership) =>
-                data.devices.find(
-                  (device) => device.id === membership.deviceId,
-                )?.category === category,
-            ),
-          ).map((category) => {
-            const categoryMemberships = memberships.filter(
-              (membership) =>
-                data.devices.find(
-                  (device) => device.id === membership.deviceId,
-                )?.category === category,
-            );
-            return (
-              <div
-                className={`ouchi-device-category ouchi-device-category--${category}`}
-                key={category}
-              >
-                <header className="ouchi-device-category-header">
-                  <h3 id={`category-${network.id}-${category}`}>
-                    {DEVICE_CATEGORY_LABELS[category]}
-                  </h3>
-                  <span>{categoryMemberships.length}</span>
-                </header>
-                {categoryMemberships.length === 0 ? (
-                  <p className="ouchi-device-category-empty">登録なし</p>
-                ) : (
-                  <div className="ouchi-node-grid">
-                    {categoryMemberships.map((membership) => {
-                      const device = data.devices.find(
-                        (item) => item.id === membership.deviceId,
-                      );
-                      if (!device) {
-                        return null;
-                      }
-                      const services = data.services.filter(
-                        (service) =>
-                          service.deviceNetworkId === membership.id,
-                      );
-                      return (
-                        <DeviceCard
-                          key={membership.id}
-                          demoMode={demoMode}
-                          device={device}
-                          allowRemoteIcons={allowRemoteIcons}
-                          iconBaseUrl={iconBaseUrl}
-                          membership={membership}
-                          onDemoServiceClick={onDemoServiceClick}
-                          onSelect={onSelect}
-                          sameDevice={
-                            (membershipCounts.get(device.id) ?? 0) > 1
-                          }
-                          selectedDeviceId={selectedDeviceId}
-                          services={services}
-                          visual={deviceVisual(
-                            device.id,
-                            selectedDeviceId,
-                            data.relations,
-                          )}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </article>
-  );
-}
-
-function IconBoard({
-  data,
-  selectedDeviceId,
-  onSelect,
-  demoMode,
-  iconBaseUrl,
-  allowRemoteIcons,
-  onDemoServiceClick,
-}: {
-  data: PortalDataV2;
-  selectedDeviceId?: string;
-  onSelect: (deviceId: string) => void;
-  demoMode: boolean;
-  iconBaseUrl: string;
-  allowRemoteIcons: boolean;
-  onDemoServiceClick: () => void;
-}) {
-  return (
-    <div className="ouchi-network-stack">
-      {sortNetworksForDisplay(data.networks).map((network) => (
-        <NetworkCard
-          data={data}
-          demoMode={demoMode}
-          allowRemoteIcons={allowRemoteIcons}
-          iconBaseUrl={iconBaseUrl}
-          key={network.id}
-          network={network}
-          onDemoServiceClick={onDemoServiceClick}
-          onSelect={onSelect}
-          selectedDeviceId={selectedDeviceId}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ListService({
-  service,
-  membership,
-  demoMode,
-  onDemoClick,
-}: {
-  service: PortalService;
-  membership: PortalDeviceNetwork;
-  demoMode: boolean;
-  onDemoClick: () => void;
-}) {
-  const href = service.url ?? "";
-  const content = (
-    <>
-      <span className="ouchi-list-service-name">{serviceName(service)}</span>
-      <small>{serviceDescription(service) || membership.ip || "IP未登録"}</small>
-      {href && <ExternalLinkIcon size={14} />}
-    </>
-  );
-  if (demoMode) {
-    return (
-      <button
-        className="ouchi-list-service ouchi-service-tile--demo"
-        onClick={onDemoClick}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
-  return href ? (
-    <a
-      className="ouchi-list-service"
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {content}
-    </a>
-  ) : (
-    <span className="ouchi-list-service ouchi-service-tile--disabled">
-      {content}
-    </span>
-  );
-}
-
-function ListBoard({
-  data,
-  selectedDeviceId,
-  onSelect,
-  demoMode,
-  onDemoServiceClick,
-}: {
-  data: PortalDataV2;
-  selectedDeviceId?: string;
-  onSelect: (deviceId: string) => void;
-  demoMode: boolean;
-  onDemoServiceClick: () => void;
-}) {
-  const membershipCounts = new Map<string, number>();
-  for (const membership of data.deviceNetworks) {
-    membershipCounts.set(
-      membership.deviceId,
-      (membershipCounts.get(membership.deviceId) ?? 0) + 1,
-    );
-  }
-
-  return (
-    <div className="ouchi-list-stack">
-      {sortNetworksForDisplay(data.networks).map((network) => {
-        const memberships = data.deviceNetworks.filter(
-          (membership) => membership.networkId === network.id,
-        );
-
-        return (
-          <section
-            className={`ouchi-list-network ouchi-accent-scope--${network.accent}`}
-            key={network.id}
-          >
-            <header className="ouchi-list-network-header">
-              <div>
-                <span className="ouchi-network-label">
-                  <span className="ouchi-network-glyph" aria-hidden="true">
-                    {network.name.slice(0, 1)}
-                  </span>
-                  <strong>{network.name}</strong>
-                </span>
-                <p>{network.cidr || "CIDRなし"}</p>
-              </div>
-              <span className="ouchi-list-count">
-                デバイス{" "}
-                {new Set(memberships.map((item) => item.deviceId)).size}台 / IP{" "}
-                {memberships.length}件
-              </span>
-            </header>
-
-            {memberships.length > 0 && (
-              <div className="ouchi-list-category-stack">
-                {PORTAL_DEVICE_CATEGORIES.filter((category) =>
-                  memberships.some(
-                    (membership) =>
-                      data.devices.find(
-                        (device) => device.id === membership.deviceId,
-                      )?.category === category,
-                  ),
-                ).map((category) => {
-                  const categoryMemberships = memberships.filter(
-                    (membership) =>
-                      data.devices.find(
-                        (device) => device.id === membership.deviceId,
-                      )?.category === category,
-                  );
-                  return (
-                    <section
-                      className={`ouchi-list-category ouchi-list-category--${category}`}
-                      key={category}
-                    >
-                      <header className="ouchi-list-category-header">
-                        <strong>{DEVICE_CATEGORY_LABELS[category]}</strong>
-                        <span>{categoryMemberships.length}</span>
-                      </header>
-                      {categoryMemberships.length === 0 ? (
-                        <p className="ouchi-list-category-empty">登録なし</p>
-                      ) : (
-                        <div className="ouchi-list-node-list">
-                          {categoryMemberships.map((membership) => {
-                            const device = data.devices.find(
-                              (item) => item.id === membership.deviceId,
-                            );
-                            if (!device) {
-                              return null;
-                            }
-                            const visual = deviceVisual(
-                              device.id,
-                              selectedDeviceId,
-                              data.relations,
-                            );
-                            const services = data.services.filter(
-                              (service) =>
-                                service.deviceNetworkId === membership.id,
-                            );
-                            const selected =
-                              device.id === selectedDeviceId;
-                            const petname = device.petname?.trim();
-                            const displayName = deviceName(device);
-                            return (
-                              <div
-                                className={[
-                                  "ouchi-list-node",
-                                  device.isVm ? "ouchi-list-node--vm" : "",
-                                  `ouchi-list-node--${visual.mode}`,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" ")}
-                                data-device-id={device.id}
-                                key={membership.id}
-                                onClick={(event) => {
-                                  if (
-                                    event.target instanceof Element &&
-                                    event.target.closest("a, button")
-                                  ) {
-                                    return;
-                                  }
-                                  onSelect(device.id);
-                                }}
-                                style={
-                                  visual.mode === "related" &&
-                                  visual.color
-                                    ? ({
-                                        "--ouchi-relation-color":
-                                          visual.color,
-                                      } as CSSProperties)
-                                    : undefined
-                                }
-                              >
-                                <div className="ouchi-list-node-summary">
-                                  <div className="ouchi-list-node-meta">
-                                    <button
-                                      aria-label={`${displayName}を${selected ? "選択解除" : "選択"}`}
-                                      aria-pressed={selected}
-                                      className="ouchi-list-select-button"
-                                      onClick={() => onSelect(device.id)}
-                                      type="button"
-                                    >
-                                      <strong>{displayName}</strong>
-                                    </button>
-                                    {device.isVm && (
-                                      <span className="ouchi-vm-badge">
-                                        VM
-                                      </span>
-                                    )}
-                                    {selected &&
-                                      (membershipCounts.get(device.id) ?? 0) >
-                                        1 && (
-                                        <span className="ouchi-same-device-badge">
-                                          同一デバイス
-                                        </span>
-                                      )}
-                                    <code>{membership.ip || "IP未登録"}</code>
-                                    {petname && <small>{device.name}</small>}
-                                    <small>
-                                      {DEVICE_CATEGORY_LABELS[device.category]}
-                                    </small>
-                                    {visual.mode === "related" &&
-                                      visual.tags.map((tag, index) => (
-                                        <span
-                                          className="ouchi-relation-badge"
-                                          key={`${tag.label}-${index}`}
-                                          style={
-                                            {
-                                              "--ouchi-relation-color":
-                                                tag.color,
-                                            } as CSSProperties
-                                          }
-                                        >
-                                          {tag.label}
-                                        </span>
-                                      ))}
-                                  </div>
-                                  <div className="ouchi-list-services">
-                                    {services.length === 0 ? (
-                                      <span className="ouchi-list-service-empty">
-                                        サービス未登録
-                                      </span>
-                                    ) : (
-                                      services.map((service) => (
-                                        <ListService
-                                          demoMode={demoMode}
-                                          key={service.id}
-                                          membership={membership}
-                                          onDemoClick={onDemoServiceClick}
-                                          service={service}
-                                        />
-                                      ))
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </section>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
+function toServiceInput(service: PortalService): PortalServiceInput {
+  return {
+    deviceNetworkId: Number(service.deviceNetworkId),
+    subdomain: service.subdomain.trim().toLowerCase(),
+    petname: service.petname || null,
+    description: service.description || null,
+    properties: service.properties ?? {},
+    port: service.port,
+    protocol: service.protocol,
+    scheme: service.scheme,
+    topPath: service.topPath || null,
+    monitorPath: service.monitorPath || null,
+    serviceUrl: service.serviceUrl || null,
+    iconKey: service.iconKey,
+    enabled: service.enabled,
+  };
 }
 
 export function OuchiPortal({
@@ -861,7 +156,9 @@ export function OuchiPortal({
   onDataChange,
   className,
 }: OuchiPortalProps) {
-  const isReadOnly = readOnly || Boolean(yamlUrl);
+  const demoMode = Boolean(yamlUrl);
+  const isReadOnly = readOnly || demoMode;
+  const canOpenManage = demoMode || !isReadOnly;
   const seedResult = useMemo(
     () => (data ? validatePortalData(data) : undefined),
     [data],
@@ -885,6 +182,13 @@ export function OuchiPortal({
   const [manageOpen, setManageOpen] = useState(false);
   const [manageTab, setManageTab] = useState<ManageTab>("networks");
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [relationDialog, setRelationDialog] = useState<{
+    editingId?: string;
+  } | null>(null);
+  const [deviceMemoId, setDeviceMemoId] = useState<string | null>(null);
+  const [serviceMemoId, setServiceMemoId] = useState<string | null>(null);
+  const [serviceTopId, setServiceTopId] = useState<string | null>(null);
+  const [serviceIconId, setServiceIconId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [message, setMessage] = useState<string>();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(
@@ -892,12 +196,17 @@ export function OuchiPortal({
   );
   const portalRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [relationConnectors, setRelationConnectors] = useState<
-    RelationConnector[]
-  >([]);
-  const [connectorTooltip, setConnectorTooltip] =
-    useState<ConnectorTooltip>();
   const [demoServiceNoticeOpen, setDemoServiceNoticeOpen] = useState(false);
+  const {
+    connectorHandlers,
+    connectorTooltip,
+    relationConnectors,
+  } = usePortalConnectors({
+    canvasRef,
+    data: portalData,
+    layoutMode: viewMode,
+    selectedDeviceId,
+  });
 
   useEffect(() => {
     if (!message) {
@@ -908,7 +217,7 @@ export function OuchiPortal({
   }, [message]);
 
   useEffect(() => {
-    if (!selectedDeviceId || typeof document === "undefined") {
+    if (!selectedDeviceId || manageOpen || typeof document === "undefined") {
       return;
     }
 
@@ -925,128 +234,7 @@ export function OuchiPortal({
     return () => {
       document.removeEventListener("pointerdown", handleOutsidePointerDown);
     };
-  }, [selectedDeviceId]);
-
-  useLayoutEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !selectedDeviceId) {
-      setRelationConnectors([]);
-      return;
-    }
-
-    let animationFrame = 0;
-    const updateConnectors = () => {
-      const canvasRect = canvas.getBoundingClientRect();
-      if (canvasRect.width === 0 || canvasRect.height === 0) {
-        setRelationConnectors([]);
-        return;
-      }
-
-      const cards = Array.from(
-        canvas.querySelectorAll<HTMLElement>("[data-device-id]"),
-      ).filter((card) => card.getClientRects().length > 0);
-      const localRect = (card: HTMLElement): ConnectorRect => {
-        const rect = card.getBoundingClientRect();
-        return {
-          left: rect.left - canvasRect.left,
-          right: rect.right - canvasRect.left,
-          top: rect.top - canvasRect.top,
-          bottom: rect.bottom - canvasRect.top,
-          width: rect.width,
-          height: rect.height,
-        };
-      };
-      const cardNodes = cards.map((card, index) => ({
-        id: `card-${index}`,
-        rect: localRect(card),
-      }));
-      const cardsFor = (deviceId: string) =>
-        cards
-          .map((card, index) => ({ card, node: cardNodes[index] }))
-          .filter(({ card }) => card.dataset.deviceId === deviceId);
-
-      const links: ConnectorLink[] = [];
-      const metadata = new Map<
-        string,
-        Pick<RelationConnector, "kind" | "color" | "tooltip">
-      >();
-      const selectedCards = cardsFor(selectedDeviceId);
-      selectedCards.forEach((selectedCard, selectedIndex) => {
-        const sameDeviceCard = selectedCards[selectedIndex + 1];
-        if (!sameDeviceCard) {
-          return;
-        }
-        const id = `same-device-${selectedIndex}-${selectedIndex + 1}`;
-        links.push({
-          id,
-          from: selectedCard.node,
-          to: sameDeviceCard.node,
-        });
-        metadata.set(id, {
-          kind: "same-device",
-          color: "#6259d8",
-          tooltip: "同一デバイス",
-        });
-      });
-
-      for (const relation of portalData.relations) {
-        if (
-          relation.fromDeviceId !== selectedDeviceId &&
-          relation.toDeviceId !== selectedDeviceId
-        ) {
-          continue;
-        }
-        const relatedDeviceId =
-          relation.fromDeviceId === selectedDeviceId
-            ? relation.toDeviceId
-            : relation.fromDeviceId;
-        const relatedCards = cardsFor(relatedDeviceId);
-
-        selectedCards.forEach((selectedCard, selectedIndex) => {
-          relatedCards.forEach((relatedCard, relatedIndex) => {
-            const id = `${relation.id}-${selectedIndex}-${relatedIndex}`;
-            links.push({
-              id,
-              from: selectedCard.node,
-              to: relatedCard.node,
-            });
-            metadata.set(id, {
-              kind: "relation",
-              color: relation.color,
-              tooltip: relationTooltip(relation),
-            });
-          });
-        });
-      }
-      setRelationConnectors(
-        routeConnectorLinks(links).map((connector) => ({
-          ...metadata.get(connector.id)!,
-          ...connector,
-        })),
-      );
-    };
-
-    const scheduleUpdate = () => {
-      window.cancelAnimationFrame(animationFrame);
-      animationFrame = window.requestAnimationFrame(updateConnectors);
-    };
-
-    updateConnectors();
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(scheduleUpdate);
-    resizeObserver?.observe(canvas);
-    window.addEventListener("resize", scheduleUpdate);
-    window.addEventListener("scroll", scheduleUpdate, true);
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", scheduleUpdate);
-      window.removeEventListener("scroll", scheduleUpdate, true);
-    };
-  }, [portalData, selectedDeviceId, viewMode]);
+  }, [manageOpen, selectedDeviceId]);
 
   function openAdd(kind: EntityKind) {
     setManageTab(
@@ -1065,6 +253,22 @@ export function OuchiPortal({
     setMessage(undefined);
   }
 
+  function openManagement() {
+    setManageTab("networks");
+    setManageOpen(true);
+    setMessage(undefined);
+  }
+
+  function openAddRelation() {
+    setRelationDialog({});
+    setMessage(undefined);
+  }
+
+  function openEditRelation(id: string) {
+    setRelationDialog({ editingId: id });
+    setMessage(undefined);
+  }
+
   function requestDelete(kind: EntityKind, id: string) {
     setMessage(undefined);
     if (kind === "network") {
@@ -1079,35 +283,103 @@ export function OuchiPortal({
       }
     }
 
-    if (kind === "device") {
-      const membershipIds = new Set(
-        portalData.deviceNetworks
-          .filter((membership) => membership.deviceId === id)
-          .map((membership) => membership.id),
-      );
-      const childCount = portalData.services.filter((service) =>
-        membershipIds.has(service.deviceNetworkId),
-      ).length;
-      if (childCount > 0) {
-        setMessage(
-          `サービスが${childCount}件登録されています。先にサービスを削除または移動してください。`,
-        );
-        return;
-      }
-    }
-
     setConfirm({ type: "delete", kind, id });
   }
 
-  function entityName(kind: EntityKind, id: string) {
+  function requestDeleteRelation(id: string) {
+    setMessage(undefined);
+    setConfirm({ type: "delete", kind: "relation", id });
+  }
+
+  function requestDeleteRelationName(id: string) {
+    setMessage(undefined);
+    const relationName = portalData.relationNames.find(
+      (candidate) => candidate.id === id,
+    );
+    if (relationName && relationName.relationCount > 0) {
+      setMessage(
+        `関係名「${relationName.name}」は${relationName.relationCount}件の関係で使用中です。先に関係を削除してください。`,
+      );
+      return;
+    }
+    setConfirm({ type: "delete", kind: "relationName", id });
+  }
+
+  function entityName(
+    kind: EntityKind | "relation" | "relationName",
+    id: string,
+  ) {
     if (kind === "network") {
       return portalData.networks.find((item) => item.id === id)?.name ?? "";
     }
     if (kind === "device") {
       return portalData.devices.find((item) => item.id === id)?.name ?? "";
     }
+    if (kind === "relation") {
+      const relation = portalData.relations.find((item) => item.id === id);
+      if (!relation) {
+        return "";
+      }
+      const from =
+        portalData.devices.find(
+          (device) => device.id === relation.fromDeviceId,
+        )?.name ?? relation.fromDeviceId;
+      const to =
+        portalData.devices.find((device) => device.id === relation.toDeviceId)
+          ?.name ?? relation.toDeviceId;
+      return `${from} → ${to}（${relation.relationName}）`;
+    }
+    if (kind === "relationName") {
+      return (
+        portalData.relationNames.find((item) => item.id === id)?.name ?? ""
+      );
+    }
     const service = portalData.services.find((item) => item.id === id);
     return service ? serviceName(service) : "";
+  }
+
+  function deleteKindLabel(
+    kind: EntityKind | "relation" | "relationName",
+  ) {
+    if (kind === "relation") {
+      return "関係";
+    }
+    if (kind === "relationName") {
+      return "関係名";
+    }
+    return KIND_LABELS[kind];
+  }
+
+  function deleteConfirmationDescription(
+    kind: EntityKind | "relation" | "relationName",
+    id: string,
+  ) {
+    const target = `「${entityName(kind, id)}」を削除します。`;
+    if (kind !== "device") {
+      return `${target}この操作は元に戻せません。`;
+    }
+
+    const membershipIds = new Set(
+      portalData.deviceNetworks
+        .filter((membership) => membership.deviceId === id)
+        .map((membership) => membership.id),
+    );
+    const serviceCount = portalData.services.filter((service) =>
+      membershipIds.has(service.deviceNetworkId),
+    ).length;
+    const relationCount = portalData.relations.filter(
+      (relation) =>
+        relation.fromDeviceId === id || relation.toDeviceId === id,
+    ).length;
+    const cascaded = [
+      serviceCount > 0 ? `サービス${serviceCount}件` : "",
+      relationCount > 0 ? `関係${relationCount}件` : "",
+    ].filter(Boolean);
+    const cascadeNotice =
+      cascaded.length > 0
+        ? `${cascaded.join("・")}も一緒に削除されます。`
+        : "";
+    return `${target}${cascadeNotice}この操作は元に戻せません。`;
   }
 
   function apiFailure(cause: unknown) {
@@ -1121,12 +393,16 @@ export function OuchiPortal({
   }
 
   async function handleDelete() {
-    if (!confirm || confirm.type !== "delete") {
+    if (demoMode || !confirm || confirm.type !== "delete") {
       return;
     }
 
     try {
-      if (confirm.kind === "network") {
+      if (confirm.kind === "relation") {
+        await deleteRelation(apiBaseUrl, confirm.id);
+      } else if (confirm.kind === "relationName") {
+        await deleteRelationName(apiBaseUrl, confirm.id);
+      } else if (confirm.kind === "network") {
         await deleteNetwork(apiBaseUrl, confirm.id);
       } else if (confirm.kind === "device") {
         await deleteDevice(apiBaseUrl, confirm.id);
@@ -1136,7 +412,7 @@ export function OuchiPortal({
       if (confirm.kind === "device" && selectedDeviceId === confirm.id) {
         setSelectedDeviceId(undefined);
       }
-      setMessage(`${KIND_LABELS[confirm.kind]}を削除しました。`);
+      setMessage(`${deleteKindLabel(confirm.kind)}を削除しました。`);
       setConfirm(null);
       await reload();
     } catch (cause) {
@@ -1146,7 +422,12 @@ export function OuchiPortal({
   }
 
   async function handleExportLedger() {
-    const download = await exportLedger(apiBaseUrl);
+    const download = demoMode && yamlUrl
+      ? {
+          filename: "ouchi-ledger-demo.yaml",
+          yaml: await fetchDemoLedgerYaml(yamlUrl),
+        }
+      : await exportLedger(apiBaseUrl);
     if (typeof document === "undefined") {
       return download.filename;
     }
@@ -1169,6 +450,9 @@ export function OuchiPortal({
   }
 
   async function handleImportLedger(yaml: string) {
+    if (demoMode) {
+      return "デモモードでは保存されません。";
+    }
     const result = await importLedger(apiBaseUrl, yaml);
     setSelectedDeviceId(undefined);
     await reload();
@@ -1176,18 +460,25 @@ export function OuchiPortal({
     return (
       `全置き換えが完了しました。ネットワーク ${imported.networks}件、` +
       `デバイス ${imported.devices}件、所属IP ${imported.memberships}件、` +
-      `関係 ${imported.relations}件、サービス ${imported.services}件、` +
+      `関係名 ${imported.relationNames}件、関係 ${imported.relations}件、` +
+      `サービス ${imported.services}件、` +
       `SSH公開鍵 ${imported.sshKeys}件を読み込みました。`
     );
   }
 
   async function handleSavePortalTitle(title: string) {
+    if (demoMode) {
+      return;
+    }
     await updateSettings(apiBaseUrl, { title });
     await reload();
     setMessage("ポータルタイトルを保存しました。");
   }
 
   async function handleSave(kind: EntityKind, entity: PortalEntity) {
+    if (demoMode) {
+      return;
+    }
     try {
       if (kind === "network") {
         const network = entity as PortalNetwork;
@@ -1204,20 +495,7 @@ export function OuchiPortal({
         }
       } else if (kind === "service") {
         const service = entity as PortalService;
-        const input = {
-          deviceNetworkId: Number(service.deviceNetworkId),
-          subdomain: service.subdomain.trim().toLowerCase(),
-          petname: service.petname || null,
-          description: service.description || null,
-          port: service.port,
-          protocol: service.protocol,
-          scheme: service.scheme,
-          topPath: service.topPath || null,
-          monitorPath: service.monitorPath || null,
-          serviceUrl: service.serviceUrl || null,
-          iconKey: service.iconKey,
-          enabled: service.enabled,
-        };
+        const input = toServiceInput(service);
         if (portalData.services.some((item) => item.id === service.id)) {
           await updateService(apiBaseUrl, service.id, input);
         } else {
@@ -1244,16 +522,7 @@ export function OuchiPortal({
             "サービスが紐づく所属IPを削除する前に、サービスを削除または移動してください",
           );
         }
-        const deviceInput: PortalDeviceInput = {
-          hostname: mutation.device.name.trim(),
-          petname: mutation.device.petname?.trim() || null,
-          category: mutation.device.category,
-          isVm: mutation.device.isVm,
-          sshUser: mutation.device.ssh?.user || null,
-          sshPort: mutation.device.ssh?.port ?? null,
-          meterEnabled: mutation.device.meterEnabled ?? false,
-          note: mutation.device.note || null,
-        };
+        const deviceInput = toDeviceInput(mutation.device);
         let savedDeviceId = mutation.device.id;
         if (existing) {
           await updateDevice(apiBaseUrl, savedDeviceId, deviceInput);
@@ -1289,59 +558,6 @@ export function OuchiPortal({
           }
         }
 
-        const relationColors = new Map(
-          portalData.relations.map((relation) => [
-            relation.tag.trim(),
-            relation.color.trim(),
-          ]),
-        );
-        const recoloredTags = new Set<string>();
-        for (const relation of mutation.relations) {
-          const tag = relation.tag.trim();
-          const color = relation.color.trim();
-          const currentColor = relationColors.get(tag);
-          if (
-            tag &&
-            color &&
-            currentColor &&
-            currentColor !== color &&
-            !recoloredTags.has(tag)
-          ) {
-            await updateRelationTagColor(apiBaseUrl, tag, color);
-            recoloredTags.add(tag);
-          }
-        }
-
-        const currentRelations = portalData.relations.filter(
-          (relation) => relation.fromDeviceId === savedDeviceId,
-        );
-        const nextRelationIds = new Set(
-          mutation.relations.map((relation) => relation.id),
-        );
-        for (const relation of currentRelations) {
-          if (!nextRelationIds.has(relation.id)) {
-            await deleteRelation(apiBaseUrl, relation.id);
-          }
-        }
-        for (const relation of mutation.relations) {
-          const input = {
-            fromDeviceId: Number(savedDeviceId),
-            toDeviceId: Number(relation.toDeviceId),
-            tag: relation.tag.trim(),
-            fromLabel: relation.fromLabel || null,
-            toLabel: relation.toLabel || null,
-            color: relation.color.trim(),
-          };
-          if (
-            currentRelations.some(
-              (currentRelation) => currentRelation.id === relation.id,
-            )
-          ) {
-            await updateRelation(apiBaseUrl, relation.id, input);
-          } else {
-            await createRelation(apiBaseUrl, input);
-          }
-        }
       }
       setMessage(`${KIND_LABELS[kind]}を保存しました。`);
       setDialog(null);
@@ -1351,30 +567,328 @@ export function OuchiPortal({
     }
   }
 
+  async function handleSaveRelation(
+    relation: PortalRelation,
+  ) {
+    if (demoMode) {
+      return;
+    }
+    try {
+      const input = {
+        fromDeviceId: Number(relation.fromDeviceId),
+        toDeviceId: Number(relation.toDeviceId),
+        relationName: relation.relationName.trim(),
+        fromPlaceholder: relation.fromPlaceholder?.trim() ?? "",
+        toPlaceholder: relation.toPlaceholder?.trim() ?? "",
+      };
+      if (
+        portalData.relations.some((candidate) => candidate.id === relation.id)
+      ) {
+        await updateRelation(apiBaseUrl, relation.id, input);
+      } else {
+        await createRelation(apiBaseUrl, input);
+      }
+      setRelationDialog(null);
+      setMessage("関係を保存しました。");
+      await reload();
+    } catch (cause) {
+      setMessage(apiFailure(cause));
+    }
+  }
+
+  async function handleSaveDeviceMemo(
+    deviceId: string,
+    properties: PortalProperties,
+  ) {
+    if (demoMode) {
+      return;
+    }
+    const device = portalData.devices.find((item) => item.id === deviceId);
+    if (!device) {
+      return;
+    }
+    try {
+      await updateDevice(apiBaseUrl, deviceId, {
+        ...toDeviceInput(device),
+        properties,
+      });
+      setDeviceMemoId(null);
+      setMessage("メモを保存しました。");
+      await reload();
+    } catch (cause) {
+      setMessage(apiFailure(cause));
+    }
+  }
+
+  async function handleSaveServiceMemo(
+    serviceId: string,
+    properties: PortalProperties,
+  ) {
+    if (demoMode) {
+      return;
+    }
+    const service = portalData.services.find((item) => item.id === serviceId);
+    if (!service) {
+      return;
+    }
+    try {
+      await updateService(apiBaseUrl, serviceId, {
+        ...toServiceInput(service),
+        properties,
+      });
+      setServiceMemoId(null);
+      setMessage("メモを保存しました。");
+      await reload();
+    } catch (cause) {
+      setMessage(apiFailure(cause));
+    }
+  }
+
+  async function handleSaveServiceTop(
+    serviceId: string,
+    patch: Pick<
+      PortalService,
+      "scheme" | "port" | "protocol" | "topPath" | "serviceUrl"
+    >,
+  ) {
+    if (demoMode) {
+      return;
+    }
+    const service = portalData.services.find((item) => item.id === serviceId);
+    if (!service) {
+      return;
+    }
+    try {
+      await updateService(apiBaseUrl, serviceId, {
+        ...toServiceInput(service),
+        scheme: patch.scheme,
+        port: patch.port,
+        protocol: patch.protocol,
+        topPath: patch.topPath || null,
+        serviceUrl: patch.serviceUrl || null,
+      });
+      setServiceTopId(null);
+      setMessage("トップを保存しました。");
+      await reload();
+    } catch (cause) {
+      setMessage(apiFailure(cause));
+    }
+  }
+
+  async function handleSaveServiceIcon(
+    serviceId: string,
+    iconKey: PortalService["iconKey"],
+  ) {
+    if (demoMode) {
+      return;
+    }
+    const service = portalData.services.find((item) => item.id === serviceId);
+    if (!service) {
+      return;
+    }
+    try {
+      await updateService(apiBaseUrl, serviceId, {
+        ...toServiceInput(service),
+        iconKey,
+      });
+      setServiceIconId(null);
+      setMessage("アイコンを保存しました。");
+      await reload();
+    } catch (cause) {
+      setMessage(apiFailure(cause));
+    }
+  }
+
+  async function handleSaveRelationName(
+    relationName: PortalRelationName,
+  ) {
+    if (demoMode) {
+      return false;
+    }
+    try {
+      const input = {
+        name: relationName.name,
+        color: relationName.color,
+        fromLabel: relationName.fromLabel?.trim() || null,
+        toLabel: relationName.toLabel?.trim() || null,
+      };
+      if (
+        portalData.relationNames.some(
+          (candidate) => candidate.id === relationName.id,
+        )
+      ) {
+        await updateRelationName(apiBaseUrl, relationName.id, input);
+      } else {
+        await createRelationName(apiBaseUrl, input);
+      }
+      setMessage("関係名を保存しました。");
+      await reload();
+      return true;
+    } catch (cause) {
+      setMessage(apiFailure(cause));
+      return false;
+    }
+  }
+
   function toggleSelection(deviceId: string) {
     setSelectedDeviceId((current) =>
       current === deviceId ? undefined : deviceId,
     );
   }
 
-  function updateConnectorTooltip(
-    event: React.PointerEvent<SVGGElement>,
-    connector: RelationConnector,
-  ) {
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (!canvasRect) {
-      return;
-    }
-    setConnectorTooltip({
-      id: connector.id,
-      text: connector.tooltip,
-      x: event.clientX - canvasRect.left + 12,
-      y: event.clientY - canvasRect.top,
-    });
-  }
 
   const vmCount = portalData.devices.filter((device) => device.isVm).length;
   const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.deviceNetworks.length}所属IP、${portalData.relations.length}関係、${portalData.services.length}サービス`;
+  const memoDevice = deviceMemoId
+    ? portalData.devices.find((item) => item.id === deviceMemoId)
+    : undefined;
+  const memoService = serviceMemoId
+    ? portalData.services.find((item) => item.id === serviceMemoId)
+    : undefined;
+  const topService = serviceTopId
+    ? portalData.services.find((item) => item.id === serviceTopId)
+    : undefined;
+  const iconService = serviceIconId
+    ? portalData.services.find((item) => item.id === serviceIconId)
+    : undefined;
+  const dialogs = (
+    <>
+      {canOpenManage && dialog && (
+        <EntityDialog
+          data={portalData}
+          editingId={dialog.editingId}
+          kind={dialog.kind}
+          onClose={() => setDialog(null)}
+          onSave={handleSave}
+          saveDisabled={demoMode}
+        />
+      )}
+
+      {canOpenManage && relationDialog && (
+        <RelationDialog
+          data={portalData}
+          editing={
+            relationDialog.editingId
+              ? portalData.relations.find(
+                  (relation) => relation.id === relationDialog.editingId,
+                )
+              : undefined
+          }
+          onClose={() => setRelationDialog(null)}
+          onSave={handleSaveRelation}
+          saveDisabled={demoMode}
+        />
+      )}
+
+      {canOpenManage && memoDevice && (
+        <DeviceMemoDialog
+          device={memoDevice}
+          onClose={() => setDeviceMemoId(null)}
+          onSave={handleSaveDeviceMemo}
+          saveDisabled={demoMode}
+        />
+      )}
+
+      {canOpenManage && memoService && (
+        <ServiceMemoDialog
+          onClose={() => setServiceMemoId(null)}
+          onSave={handleSaveServiceMemo}
+          saveDisabled={demoMode}
+          service={memoService}
+        />
+      )}
+
+      {canOpenManage && topService && (
+        <ServiceTopDialog
+          data={portalData}
+          onClose={() => setServiceTopId(null)}
+          onSave={handleSaveServiceTop}
+          saveDisabled={demoMode}
+          service={topService}
+        />
+      )}
+
+      {canOpenManage && iconService && (
+        <ServiceIconDialog
+          data={portalData}
+          onClose={() => setServiceIconId(null)}
+          onSave={handleSaveServiceIcon}
+          saveDisabled={demoMode}
+          service={iconService}
+        />
+      )}
+
+      {canOpenManage && confirm?.type === "delete" && (
+        <ConfirmDialog
+          confirmDisabled={demoMode}
+          description={deleteConfirmationDescription(
+            confirm.kind,
+            confirm.id,
+          )}
+          onCancel={() => setConfirm(null)}
+          onConfirm={handleDelete}
+          title={`${deleteKindLabel(confirm.kind)}を削除しますか？`}
+        />
+      )}
+    </>
+  );
+
+  if (canOpenManage && manageOpen) {
+    return (
+      <>
+        <ManageView
+          activeTab={manageTab}
+          data={portalData}
+          message={message}
+          onAdd={openAdd}
+          onAddRelation={openAddRelation}
+          onBack={() => {
+            setManageOpen(false);
+            setDialog(null);
+            setRelationDialog(null);
+            setDeviceMemoId(null);
+            setServiceMemoId(null);
+            setServiceTopId(null);
+            setServiceIconId(null);
+            setConfirm(null);
+          }}
+          onDelete={requestDelete}
+          onDeviceMemo={(id) => {
+            setDeviceMemoId(id);
+            setMessage(undefined);
+          }}
+          onServiceMemo={(id) => {
+            setServiceMemoId(id);
+            setMessage(undefined);
+          }}
+          onServiceTop={(id) => {
+            setServiceTopId(id);
+            setMessage(undefined);
+          }}
+          onServiceIcon={(id) => {
+            setServiceIconId(id);
+            setMessage(undefined);
+          }}
+          onDeleteRelation={requestDeleteRelation}
+          onDeleteRelationName={requestDeleteRelationName}
+          onEdit={openEdit}
+          onEditRelation={openEditRelation}
+          onExportLedger={handleExportLedger}
+          onImportLedger={handleImportLedger}
+          onSavePortalTitle={handleSavePortalTitle}
+          onSaveRelationName={handleSaveRelationName}
+          savingDisabled={demoMode}
+          onTabChange={(tab) => {
+            setManageTab(tab);
+            setMessage(undefined);
+          }}
+          portalTitle={portalTitle}
+          warning={seedWarning ?? apiError}
+        />
+        {dialogs}
+      </>
+    );
+  }
 
   return (
     <section
@@ -1449,14 +963,14 @@ export function OuchiPortal({
               リスト表示
             </button>
           </div>
-          {isReadOnly ? (
+          {isReadOnly && !demoMode ? (
             <span className="ouchi-readonly-note">表示専用デモ</span>
           ) : (
             <button
               className="ouchi-manage-button"
-              onClick={() => {
-                setManageOpen(true);
-                setMessage(undefined);
+              onClick={(event) => {
+                event.stopPropagation();
+                openManagement();
               }}
               type="button"
             >
@@ -1468,63 +982,11 @@ export function OuchiPortal({
       </header>
 
       <div className="ouchi-canvas" ref={canvasRef}>
-        {relationConnectors.length > 0 && (
-          <svg
-            aria-hidden="true"
-            className="ouchi-relation-connectors"
-            focusable="false"
-          >
-            {relationConnectors.map((connector) => (
-              <g
-                className={`ouchi-relation-connector ouchi-relation-connector--${connector.kind}`}
-                key={connector.id}
-                onPointerEnter={(event) =>
-                  updateConnectorTooltip(event, connector)
-                }
-                onPointerLeave={() => setConnectorTooltip(undefined)}
-                onPointerMove={(event) =>
-                  updateConnectorTooltip(event, connector)
-                }
-                style={
-                  {
-                    "--ouchi-relation-color": connector.color,
-                  } as CSSProperties
-                }
-              >
-                <path
-                  className="ouchi-relation-hit-area"
-                  d={connector.d}
-                />
-                <path
-                  className="ouchi-relation-visible"
-                  d={connector.d}
-                />
-                <circle
-                  cx={connector.startX}
-                  cy={connector.startY}
-                  r="3.5"
-                />
-                <circle
-                  cx={connector.endX}
-                  cy={connector.endY}
-                  r="3.5"
-                />
-              </g>
-            ))}
-          </svg>
-        )}
-        {connectorTooltip && (
-          <div
-            className="ouchi-relation-tooltip"
-            role="tooltip"
-            style={{
-              left: connectorTooltip.x,
-              top: connectorTooltip.y,
-            }}
-          >
-            {connectorTooltip.text}
-          </div>
-        )}
+        <PortalConnectorLayer
+          connectors={relationConnectors}
+          handlers={connectorHandlers}
+          tooltip={connectorTooltip}
+        />
         {loading && !loadedData ? (
           <div className="ouchi-global-empty" role="status">
             <strong>台帳を読み込んでいます</strong>
@@ -1555,7 +1017,7 @@ export function OuchiPortal({
             <button
               className="ouchi-primary-button"
               onClick={() => {
-                setManageOpen(true);
+                openManagement();
                 openAdd("network");
               }}
               type="button"
@@ -1584,50 +1046,7 @@ export function OuchiPortal({
         )}
       </div>
 
-      {!isReadOnly && (
-        <ManageDrawer
-          activeTab={manageTab}
-          data={portalData}
-          message={message}
-          onExportLedger={handleExportLedger}
-          onImportLedger={handleImportLedger}
-          onSavePortalTitle={handleSavePortalTitle}
-          onAdd={openAdd}
-          onClose={() => {
-            setManageOpen(false);
-            setDialog(null);
-            setConfirm(null);
-          }}
-          onDelete={requestDelete}
-          onEdit={openEdit}
-          onTabChange={(tab) => {
-            setManageTab(tab);
-            setMessage(undefined);
-          }}
-          open={manageOpen}
-          portalTitle={portalTitle}
-          warning={seedWarning ?? apiError}
-        />
-      )}
-
-      {!isReadOnly && dialog && (
-        <EntityDialog
-          data={portalData}
-          editingId={dialog.editingId}
-          kind={dialog.kind}
-          onClose={() => setDialog(null)}
-          onSave={handleSave}
-        />
-      )}
-
-      {!isReadOnly && confirm?.type === "delete" && (
-        <ConfirmDialog
-          description={`「${entityName(confirm.kind, confirm.id)}」を削除します。この操作は元に戻せません。`}
-          onCancel={() => setConfirm(null)}
-          onConfirm={handleDelete}
-          title={`${KIND_LABELS[confirm.kind]}を削除しますか？`}
-        />
-      )}
+      {dialogs}
 
       {isReadOnly && demoServiceNoticeOpen && (
         <DemoServiceLinkDialog

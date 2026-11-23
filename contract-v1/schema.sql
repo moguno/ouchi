@@ -1,4 +1,13 @@
--- ouchi.local ledger schema v0.4 (draft, 2026-11-21)
+-- ouchi.local ledger schema v0.6 (2026-11-22)
+-- Addendum 24 separates reusable relation definitions from relation edges:
+--  * relation_names owns the natural key, colour and directional labels.
+--  * relations stores the relation-name reference, both devices and both
+--    placeholder values.
+--  * the same device pair may have multiple relation names, while
+--    the relation name, devices and both placeholders stay unique together.
+-- Addendum 24 supplement 1 makes directional labels templates. Each relation
+-- carries optional from_placeholder/to_placeholder values, and uniqueness
+-- includes both values so aggregation links to different ports can coexist.
 -- From DB_SCHEMA_DRAFT.md v0.4. Changes from v0.3:
 --  * devices.petname stores an optional display nickname. It is trimmed by the
 --    API and an empty value is stored as NULL.
@@ -37,6 +46,7 @@ CREATE TABLE IF NOT EXISTS devices (
   ssh_port INTEGER CHECK (ssh_port BETWEEN 1 AND 65535),
   meter_enabled INTEGER NOT NULL DEFAULT 1,
   note TEXT,
+  properties TEXT NOT NULL DEFAULT '{}',
   CHECK (is_vm = (category = 'vm'))
 );
 CREATE TABLE IF NOT EXISTS device_networks (
@@ -47,15 +57,28 @@ CREATE TABLE IF NOT EXISTS device_networks (
   label TEXT,
   UNIQUE (device_id, network_id)
 );
+CREATE TABLE IF NOT EXISTS relation_names (
+  id INTEGER PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  color TEXT NOT NULL,
+  from_label TEXT,
+  to_label TEXT
+);
 CREATE TABLE IF NOT EXISTS relations (
   id INTEGER PRIMARY KEY,
+  relation_name_id INTEGER NOT NULL REFERENCES relation_names(id),
   from_device_id INTEGER NOT NULL REFERENCES devices(id),
   to_device_id INTEGER NOT NULL REFERENCES devices(id),
-  tag TEXT,
-  from_label TEXT,
-  to_label TEXT,
-  color TEXT NOT NULL,
-  CHECK (from_device_id <> to_device_id)
+  from_placeholder TEXT NOT NULL DEFAULT '',
+  to_placeholder TEXT NOT NULL DEFAULT '',
+  CHECK (from_device_id <> to_device_id),
+  UNIQUE (
+    relation_name_id,
+    from_device_id,
+    to_device_id,
+    from_placeholder,
+    to_placeholder
+  )
 );
 CREATE TABLE IF NOT EXISTS services (
   id INTEGER PRIMARY KEY,
@@ -73,6 +96,7 @@ CREATE TABLE IF NOT EXISTS services (
   -- favicon_url remains only as a legacy import/read compatibility column.
   icon_key TEXT,
   favicon_url TEXT,
+  properties TEXT NOT NULL DEFAULT '{}',
   enabled INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS settings (

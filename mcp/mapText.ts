@@ -16,7 +16,11 @@ type RelationTraversal = {
 
 function deviceLabel(device: PortalApiDevice): string {
   const petname = device.petname ? ` / ${device.petname}` : "";
-  return `${device.hostname}${petname} (id=${device.id}, category=${device.category})`;
+  return (
+    `${device.hostname}${petname} (id=${device.id}, ` +
+    `category=${device.category}, ` +
+    `properties=${JSON.stringify(device.properties ?? {})})`
+  );
 }
 
 function networkLabel(
@@ -39,7 +43,8 @@ function serviceLine(service: PortalApiService): string {
   return (
     `${service.subdomain}${petname} (id=${service.id}, ` +
     `${service.scheme}:${service.port}${service.topPath ?? ""}, ` +
-    `url=${url})${description}`
+    `url=${url}, properties=${JSON.stringify(service.properties ?? {})})` +
+    description
   );
 }
 
@@ -50,12 +55,14 @@ function relationLine(
   const deviceById = new Map(data.devices.map((device) => [device.id, device]));
   const from = deviceById.get(relation.fromDeviceId)?.hostname ?? "?";
   const to = deviceById.get(relation.toDeviceId)?.hostname ?? "?";
-  const fromLabel = relation.fromLabel ?? relation.tag;
-  const toLabel = relation.toLabel ?? relation.tag;
+  const fromLabel = relation.fromLabel || relation.relationName;
+  const toLabel = relation.toLabel || relation.relationName;
   return (
     `${from} --[${fromLabel}]--> ${to} ` +
-    `[tag=${relation.tag}, color=${relation.color}, ` +
-    `fromLabel=${fromLabel}, toLabel=${toLabel}, id=${relation.id}]`
+    `[relationName=${relation.relationName}, color=${relation.color}, ` +
+    `fromLabel=${fromLabel}, toLabel=${toLabel}, ` +
+    `fromPlaceholder=${relation.fromPlaceholder || ""}, ` +
+    `toPlaceholder=${relation.toPlaceholder || ""}, id=${relation.id}]`
   );
 }
 
@@ -152,8 +159,8 @@ function collectRelationTraversal(
         : relation.fromDeviceId;
       const direction = isOutgoing ? "outgoing" : "incoming";
       const directionLabel = isOutgoing
-        ? (relation.fromLabel ?? relation.tag)
-        : (relation.toLabel ?? relation.tag);
+        ? relation.fromLabel
+        : relation.toLabel;
       const existingTraversal = traversals.get(relation.id);
       const traversalDepth = current.currentDepth + 1;
       if (
@@ -290,7 +297,7 @@ export function deviceRelationTags(
             relation.fromDeviceId === deviceId ||
             relation.toDeviceId === deviceId,
         )
-        .map((relation) => relation.tag),
+        .map((relation) => relation.relationName),
     ),
   ];
 }

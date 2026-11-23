@@ -47,7 +47,11 @@ jobs:
           {
             echo "tags<<EOF_TAGS"
             echo "ghcr.io/${{ github.repository }}:${V}"
-            echo "ghcr.io/${{ github.repository }}:latest"
+            # プレリリース（例: 2.0.0-beta.1）では latest を動かさない
+            case "$V" in
+              *-*) ;;
+              *) echo "ghcr.io/${{ github.repository }}:latest" ;;
+            esac
             echo "EOF_TAGS"
           } >> "$GITHUB_OUTPUT"
 

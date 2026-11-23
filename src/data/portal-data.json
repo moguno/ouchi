@@ -156,9 +156,21 @@
       "ip": "192.168.253.3"
     }
   ],
+  "relationNames": [
+    {
+      "id": "relation-name-host-os",
+      "name": "ホストOS",
+      "color": "#d5a22b",
+      "fromLabel": "親ホスト",
+      "toLabel": "VMホスト",
+      "relationCount": 1
+    }
+  ],
   "relations": [
     {
       "id": "omv-host-of-acemagic",
+      "relationNameId": "relation-name-host-os",
+      "relationName": "ホストOS",
       "fromDeviceId": "acemagic",
       "toDeviceId": "omv-vm",
       "fromLabel": "親ホスト",

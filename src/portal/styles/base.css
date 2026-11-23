@@ -1,0 +1,79 @@
+.ouchi-portal {
+  --ouchi-ink: #20252c;
+  --ouchi-muted: #727983;
+  --ouchi-subtle: #99a1aa;
+  --ouchi-line: #dfe5ea;
+  --ouchi-canvas: #f6f8fa;
+  --ouchi-white: #ffffff;
+  --ouchi-blue: #5b9bd6;
+  --ouchi-green: #4ba755;
+  --ouchi-orange: #d69132;
+  --ouchi-violet: #7467a8;
+  --ouchi-slate: #667483;
+  --ouchi-danger: #d54d4d;
+  --ouchi-radius-xl: 24px;
+  --ouchi-radius-lg: 18px;
+  --ouchi-radius-md: 13px;
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 27px 27px 22px;
+  overflow: hidden;
+  color: var(--ouchi-ink);
+  background: var(--ouchi-white);
+  border: 1px solid #e2e7ec;
+  border-radius: var(--ouchi-radius-xl);
+  box-shadow:
+    0 24px 60px rgba(31, 48, 62, 0.12),
+    0 2px 7px rgba(31, 48, 62, 0.04);
+  font-family:
+    "Avenir Next",
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    Meiryo,
+    sans-serif;
+  line-height: 1.45;
+}
+
+.ouchi-portal *,
+.ouchi-portal *::before,
+.ouchi-portal *::after,
+.ouchi-overlay *,
+.ouchi-overlay *::before,
+.ouchi-overlay *::after,
+.ouchi-dialog-backdrop *,
+.ouchi-dialog-backdrop *::before,
+.ouchi-dialog-backdrop *::after {
+  box-sizing: border-box;
+}
+
+.ouchi-portal button,
+.ouchi-portal input,
+.ouchi-portal select,
+.ouchi-portal textarea,
+.ouchi-overlay button,
+.ouchi-overlay input,
+.ouchi-overlay select,
+.ouchi-overlay textarea,
+.ouchi-dialog-backdrop button,
+.ouchi-dialog-backdrop input,
+.ouchi-dialog-backdrop select,
+.ouchi-dialog-backdrop textarea {
+  font: inherit;
+}
+
+.ouchi-portal button,
+.ouchi-overlay button,
+.ouchi-dialog-backdrop button {
+  color: inherit;
+}
+
+.ouchi-portal :focus-visible,
+.ouchi-overlay :focus-visible,
+.ouchi-dialog-backdrop :focus-visible {
+  outline: 3px solid rgba(80, 148, 215, 0.34);
+  outline-offset: 2px;
+}
+

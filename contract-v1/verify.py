@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Build the v0.4 ledger in memory and verify the design end to end.
+"""Build the v0.6 ledger in memory and verify the design end to end.
 
 Checks:
   1. schema + seed load with foreign keys on; foreign_key_check is clean
   2. row counts match the seed's intent
   3. category / is_vm consistency holds
-  4. relation traversal for omv works both directions, with the label
-     resolution rule (from_label/to_label fall back to tag)
+  4. relation traversal for omv works both directions, with relation-name
+     templates resolving placeholders back to display labels
   5. redirect and monitor URLs assemble from scheme + membership IP +
      port + paths for every enabled service
   6. category='service' pseudo-devices (external SaaS): is_vm=0,
@@ -36,40 +36,63 @@ fk = cur.execute("PRAGMA foreign_key_check").fetchall()
 check("foreign_key_check", fk == [], f"violations={fk}")
 
 counts = {t: cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-          for t in ("networks", "devices", "device_networks", "relations", "services")}
+          for t in ("networks", "devices", "device_networks", "relation_names",
+                    "relations", "services")}
 check("row counts", counts == {"networks": 3, "devices": 16,
-                               "device_networks": 17, "relations": 5,
+                               "device_networks": 17, "relation_names": 2,
+                               "relations": 5,
                                "services": 9}, str(counts))
 
 bad = cur.execute(
     "SELECT COUNT(*) FROM devices WHERE is_vm <> (category = 'vm')").fetchone()[0]
 check("category/is_vm consistency", bad == 0, f"mismatch={bad}")
 
+relation_columns = [row[1] for row in cur.execute(
+    "PRAGMA table_info(relations)").fetchall()]
+check("relation placeholder columns",
+      "from_placeholder" in relation_columns
+      and "to_placeholder" in relation_columns,
+      str(relation_columns))
+
 # --- relation traversal for omv (both directions, labels resolved) ---
+def relation_label(template, placeholder, name):
+    if not template or not template.strip():
+        return name
+    return template.replace("{}", placeholder if placeholder else "-")
+
 def traverse(hostname):
     did = cur.execute("SELECT id FROM devices WHERE hostname = ?",
                       (hostname,)).fetchone()[0]
     out = cur.execute(
-        """SELECT d.hostname, COALESCE(r.from_label, r.tag), r.color
-           FROM relations r JOIN devices d ON d.id = r.to_device_id
+        """SELECT d.hostname, n.from_label, r.from_placeholder, n.name, n.color
+           FROM relations r
+           JOIN relation_names n ON n.id = r.relation_name_id
+           JOIN devices d ON d.id = r.to_device_id
            WHERE r.from_device_id = ?""", (did,)).fetchall()
     inc = cur.execute(
-        """SELECT d.hostname, COALESCE(r.to_label, r.tag), r.color
-           FROM relations r JOIN devices d ON d.id = r.from_device_id
+        """SELECT d.hostname, n.to_label, r.to_placeholder, n.name, n.color
+           FROM relations r
+           JOIN relation_names n ON n.id = r.relation_name_id
+           JOIN devices d ON d.id = r.from_device_id
            WHERE r.to_device_id = ?""", (did,)).fetchall()
-    return out, inc
+    return (
+        [(hostname, relation_label(template, placeholder, name), color)
+         for hostname, template, placeholder, name, color in out],
+        [(hostname, relation_label(template, placeholder, name), color)
+         for hostname, template, placeholder, name, color in inc],
+    )
 
 out, inc = traverse("omv")
 print("omv ->", out)
 print("omv <-", inc)
 check("omv traversal",
-      ("acemagic", "ホストOS", "yellow") in out
-      and ("nanopi-r2s", "バックアップ先", "blue") in out)
+      ("acemagic", "ホストOS", "#d5a22b") in out
+      and ("nanopi-r2s", "バックアップ先", "#3b82f6") in out)
 
 out_ace, inc_ace = traverse("acemagic")
 check("acemagic reverse traversal",
-      ("omv", "ホストOS", "yellow") in inc_ace
-      and ("omv2", "ホストOS", "yellow") in inc_ace)
+      ("omv", "ホストOS", "#d5a22b") in inc_ace
+      and ("omv2", "ホストOS", "#d5a22b") in inc_ace)
 
 # --- URL assembly (redirect + monitor) ---
 rows = cur.execute(

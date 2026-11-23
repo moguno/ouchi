@@ -66,13 +66,13 @@ test("API data survives localStorage removal", async ({ page }) => {
 test("management edit is persisted through the REST API", async ({ page }) => {
   await openPortal(page);
   await page.getByRole("button", { name: "管理" }).click();
-  await page.getByRole("button", { name: "追加" }).click();
+  await page.getByRole("button", { name: "ネットワークを追加" }).click();
   await page
     .getByRole("textbox", { name: "ネットワーク名" })
     .fill("E2Eネットワーク");
   await page.getByRole("button", { name: "追加する" }).click();
   await expect(page.getByText("E2Eネットワーク").first()).toBeVisible();
-  await page.getByRole("button", { name: "管理画面を閉じる" }).click();
+  await page.getByRole("button", { name: "ポータルに戻る" }).click();
   await expect(
     page.getByRole("article", { name: "E2Eネットワーク" }),
   ).toBeVisible();
@@ -93,11 +93,13 @@ test("management edit is persisted through the REST API", async ({ page }) => {
 test("portal title is persisted through the REST API", async ({ page }) => {
   await openPortal(page);
   await page.getByRole("button", { name: "管理" }).click();
+  await page.getByRole("tab", { name: "共通設定" }).click();
   const titleInput = page.getByRole("textbox", {
     name: "ポータルタイトル",
   });
   await titleInput.fill("E2Eポータル");
   await page.getByRole("button", { name: "タイトルを保存" }).click();
+  await page.getByRole("button", { name: "ポータルに戻る" }).click();
   await expect(
     page.getByRole("heading", { level: 2, name: "E2Eポータル" }),
   ).toBeVisible();
@@ -108,10 +110,12 @@ test("portal title is persisted through the REST API", async ({ page }) => {
   ).toBeVisible();
 
   await page.getByRole("button", { name: "管理" }).click();
+  await page.getByRole("tab", { name: "共通設定" }).click();
   await page
     .getByRole("textbox", { name: "ポータルタイトル" })
     .fill("あなたのホームラボ");
   await page.getByRole("button", { name: "タイトルを保存" }).click();
+  await page.getByRole("button", { name: "ポータルに戻る" }).click();
   await expect(
     page.getByRole("heading", {
       level: 2,
@@ -120,18 +124,18 @@ test("portal title is persisted through the REST API", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("management drawer and service form expose v1 fields", async ({
+test("full-screen management and service form expose v1 fields", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openPortal(page);
   await page.getByRole("button", { name: "管理" }).click();
-  const drawer = page.getByRole("dialog", { name: "ポータルを管理" });
-  await expect(drawer.getByText("SQLite台帳（API）へ保存")).toBeVisible();
-  await expect(drawer.getByText(/localStorage/)).toHaveCount(0);
+  const view = page.getByRole("region", { name: "ポータルを管理" });
+  await expect(view.getByText("SQLite台帳（API）へ保存")).toBeVisible();
+  await expect(view.getByText(/localStorage/)).toHaveCount(0);
 
   await page.getByRole("tab", { name: /サービス/ }).click();
-  await page.getByRole("button", { name: "追加" }).click();
+  await page.getByRole("button", { name: "サービスを追加" }).click();
   const dialog = page.getByRole("dialog", { name: "サービスを追加" });
   await expect(
     dialog.getByRole("textbox", { name: "サブドメイン" }),
@@ -163,7 +167,7 @@ test("device management keeps SSH metadata without meter controls", async ({
   await page.getByRole("button", { name: "関所を編集" }).click();
   const dialog = page.getByRole("dialog", { name: "デバイスを編集" });
   await expect(
-    dialog.getByRole("textbox", { name: "ペットネーム" }),
+    dialog.getByRole("textbox", { name: "名前" }),
   ).toHaveValue("関所");
   await expect(
     dialog.getByRole("combobox", { name: "所属ネットワーク 2" }),

@@ -10,6 +10,7 @@ import {
   type PortalMembershipInput,
   type PortalNetworkInput,
   type PortalRelationInput,
+  type PortalRelationNameInput,
   type PortalServiceInput,
   type PortalSettings,
   type PortalSettingsInput,
@@ -76,7 +77,7 @@ function normalizeAccent(value: string): AccentTone {
 }
 
 function normalizeIconKey(value: string | null) {
-  return normalizeServiceIconReference(value, undefined, "generic:monitor");
+  return normalizeServiceIconReference(value, undefined, "favicon");
 }
 
 function deviceNetworksFrom(
@@ -100,6 +101,7 @@ function serviceFrom(service: PortalApiService) {
     subdomain: service.subdomain,
     petname: service.petname ?? undefined,
     description: service.description ?? undefined,
+    properties: service.properties ?? {},
     scheme: service.scheme,
     port: service.port,
     protocol: service.protocol,
@@ -128,6 +130,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       id: String(device.id),
       name: device.hostname,
       petname: device.petname ?? undefined,
+      properties: device.properties ?? {},
       category: device.category,
       isVm: device.isVm,
       meterEnabled: device.meterEnabled,
@@ -141,13 +144,24 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
           : undefined,
     })),
     deviceNetworks: deviceNetworksFrom(data.devices),
+    relationNames: data.relationNames.map((relationName) => ({
+      id: String(relationName.id),
+      name: relationName.name,
+      color: relationName.color,
+      fromLabel: relationName.fromLabel ?? undefined,
+      toLabel: relationName.toLabel ?? undefined,
+      relationCount: relationName.relationCount,
+    })),
     relations: data.relations.map((relation) => ({
       id: String(relation.id),
+      relationNameId: String(relation.relationNameId),
+      relationName: relation.relationName,
       fromDeviceId: String(relation.fromDeviceId),
       toDeviceId: String(relation.toDeviceId),
-      tag: relation.tag,
-      fromLabel: relation.fromLabel ?? undefined,
-      toLabel: relation.toLabel ?? undefined,
+      fromPlaceholder: relation.fromPlaceholder,
+      toPlaceholder: relation.toPlaceholder,
+      fromLabel: relation.fromLabel,
+      toLabel: relation.toLabel,
       color: relation.color,
     })),
     services: data.services.map(serviceFrom),
@@ -179,6 +193,7 @@ export interface LedgerImportResult {
     networks: number;
     devices: number;
     memberships: number;
+    relationNames: number;
     relations: number;
     services: number;
     sshKeys: number;
@@ -332,6 +347,33 @@ export function deleteService(baseUrl: string, id: string) {
   });
 }
 
+export function createRelationName(
+  baseUrl: string,
+  input: PortalRelationNameInput,
+) {
+  return request(baseUrl, "/api/relation-names", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRelationName(
+  baseUrl: string,
+  id: string,
+  input: PortalRelationNameInput,
+) {
+  return request(baseUrl, `/api/relation-names/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteRelationName(baseUrl: string, id: string) {
+  return request(baseUrl, `/api/relation-names/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export function createRelation(
   baseUrl: string,
   input: PortalRelationInput,
@@ -351,21 +393,6 @@ export function updateRelation(
     method: "PUT",
     body: JSON.stringify(input),
   });
-}
-
-export function updateRelationTagColor(
-  baseUrl: string,
-  tag: string,
-  color: string,
-) {
-  return request(
-    baseUrl,
-    `/api/relations/tags/${encodeURIComponent(tag)}/color`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ color }),
-    },
-  );
 }
 
 export function deleteRelation(baseUrl: string, id: string) {

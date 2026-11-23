@@ -1,0 +1,95 @@
+@media (max-width: 1120px) {
+  .ouchi-node-grid {
+    grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
+  }
+
+  .ouchi-portal {
+    padding: 27px 25px 22px;
+  }
+}
+
+@media (max-width: 760px) {
+  .ouchi-portal {
+    padding: 20px 14px 17px;
+  }
+
+  .ouchi-canvas {
+    padding: 12px 0 8px;
+  }
+
+  .ouchi-node-grid {
+    grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
+  }
+
+  .ouchi-network-header {
+    align-items: flex-start;
+  }
+
+  .ouchi-network-meta {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ouchi-relation-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .ouchi-property-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .ouchi-property-row > .ouchi-icon-button {
+    justify-self: end;
+  }
+
+  .ouchi-color-field {
+    align-items: center;
+  }
+
+  .ouchi-color-field code {
+    padding-bottom: 0;
+  }
+
+  .ouchi-portal-title-settings form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ouchi-setting-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 500px) {
+  .ouchi-service-grid {
+    grid-template-columns: repeat(2, minmax(0, 96px));
+  }
+
+  .ouchi-form-section > header {
+    flex-direction: column;
+  }
+
+  .ouchi-icon-picker-heading {
+    flex-direction: column;
+  }
+
+  .ouchi-icon-picker-selected {
+    max-width: 100%;
+  }
+
+  .ouchi-icon-reference-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .ouchi-icon-reference-controls > .ouchi-secondary-button {
+    margin-bottom: 0;
+  }
+
+  .ouchi-icon-option-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

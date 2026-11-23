@@ -11,7 +11,7 @@ describe("Pages sample ledger", () => {
     );
     const ledger = parseLedgerYaml(yaml);
 
-    expect(ledger.format).toBe("ouchi-ledger/1");
+    expect(ledger.format).toBe("ouchi-ledger/2");
     expect(ledger.settings.title).toBe("あなたのおうち環境");
     expect(ledger.networks).toHaveLength(4);
     expect(ledger.networks.map((network) => network.name)).toEqual([
@@ -32,8 +32,14 @@ describe("Pages sample ledger", () => {
     ).toHaveLength(21);
     expect(ledger.services).toHaveLength(16);
     expect(ledger.relations).toHaveLength(5);
-    expect(ledger.relations.every((relation) => relation.color === "#d48a2f"))
-      .toBe(true);
+    expect(ledger.relationNames).toEqual([
+      expect.objectContaining({
+        name: "VM",
+        color: "#d48a2f",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+      }),
+    ]);
     const devicePetnames = ledger.devices.map((device) => device.petname);
     const servicePetnames = ledger.services.map((service) => service.petname);
     expect(devicePetnames.every((petname) => Boolean(petname))).toBe(true);
@@ -289,51 +295,33 @@ describe("Pages sample ledger", () => {
       ledger.relations.map((relation) => ({
         from: relation.from,
         to: relation.to,
-        tag: relation.tag,
-        fromLabel: relation.fromLabel,
-        toLabel: relation.toLabel,
-        color: relation.color,
+        relationName: relation.relationName,
       })),
     ).toEqual([
       {
         from: "cedar-host",
         to: "harbor-core",
-        tag: "VM",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
-        color: "#d48a2f",
+        relationName: "VM",
       },
       {
         from: "cedar-host",
         to: "atlas-lab",
-        tag: "VM",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
-        color: "#d48a2f",
+        relationName: "VM",
       },
       {
         from: "cedar-host",
         to: "forge-ci",
-        tag: "VM",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
-        color: "#d48a2f",
+        relationName: "VM",
       },
       {
         from: "akari",
         to: "acorn-notes",
-        tag: "VM",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
-        color: "#d48a2f",
+        relationName: "VM",
       },
       {
         from: "akari",
         to: "fern-gallery",
-        tag: "VM",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
-        color: "#d48a2f",
+        relationName: "VM",
       },
     ]);
 

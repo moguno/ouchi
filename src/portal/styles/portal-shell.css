@@ -1,0 +1,231 @@
+.ouchi-portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.ouchi-title-block {
+  min-width: 0;
+}
+
+.ouchi-eyebrow {
+  margin: 0 0 3px;
+  color: #8a939d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.ouchi-title-block h1,
+.ouchi-title-block h2 {
+  margin: 0;
+  font-size: clamp(25px, 3vw, 31px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+
+.ouchi-summary {
+  margin: 5px 0 0;
+  color: var(--ouchi-muted);
+  font-size: 12px;
+}
+
+.ouchi-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.ouchi-segmented {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d6dde4;
+  border-radius: 11px;
+  background: #f8fafb;
+}
+
+.ouchi-segmented button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 15px;
+  color: #77808a;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.ouchi-segmented button + button {
+  border-left: 1px solid #d6dde4;
+}
+
+.ouchi-segmented button.is-active {
+  color: #2e3a45;
+  background: #cfd7e1;
+}
+
+.ouchi-manage-button,
+.ouchi-primary-button,
+.ouchi-secondary-button,
+.ouchi-danger-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 15px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.ouchi-manage-button {
+  position: relative;
+  color: #3e4b57;
+  background: #f8fafb;
+  border: 1px solid #d9e0e6;
+}
+
+.ouchi-manage-lock {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  color: #6259d8;
+  background: #efedff;
+  border-radius: 999px;
+}
+
+.ouchi-manage-button:hover {
+  background: #eef3f6;
+}
+
+.ouchi-readonly-note {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  padding: 0 13px;
+  color: #665f91;
+  background: #f1efff;
+  border: 1px solid #ddd8ff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.ouchi-primary-button {
+  color: #fff;
+  background: #2f5067;
+  border: 1px solid #2f5067;
+  box-shadow: 0 5px 14px rgba(47, 80, 103, 0.2);
+}
+
+.ouchi-primary-button:hover:not(:disabled) {
+  background: #253f51;
+  transform: translateY(-1px);
+}
+
+.ouchi-primary-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ouchi-primary-button--compact {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.ouchi-secondary-button {
+  color: #4d5964;
+  background: #fff;
+  border: 1px solid #d7dee5;
+}
+
+.ouchi-danger-button {
+  color: #fff;
+  background: var(--ouchi-danger);
+  border: 1px solid var(--ouchi-danger);
+}
+
+.ouchi-portal button.ouchi-primary-button,
+.ouchi-portal button.ouchi-danger-button,
+.ouchi-overlay button.ouchi-primary-button,
+.ouchi-overlay button.ouchi-danger-button,
+.ouchi-dialog-backdrop button.ouchi-primary-button,
+.ouchi-dialog-backdrop button.ouchi-danger-button,
+.ouchi-manage-view button.ouchi-primary-button,
+.ouchi-manage-view button.ouchi-danger-button {
+  color: #fff;
+}
+
+.ouchi-canvas {
+  min-height: 430px;
+  padding: 18px;
+  background-color: var(--ouchi-canvas);
+  background-image: radial-gradient(#d2d9df 1.05px, transparent 1.05px);
+  background-size: 22px 22px;
+  border: 1px solid #dfe5ea;
+  border-radius: var(--ouchi-radius-lg);
+}
+
+.ouchi-network-stack,
+.ouchi-list-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ouchi-accent-scope--blue {
+  --network-color: var(--ouchi-blue);
+  --network-bg: rgba(91, 155, 214, 0.075);
+  --network-line: rgba(91, 155, 214, 0.53);
+}
+
+.ouchi-accent-scope--green {
+  --network-color: var(--ouchi-green);
+  --network-bg: rgba(75, 167, 85, 0.07);
+  --network-line: rgba(75, 167, 85, 0.47);
+}
+
+.ouchi-accent-scope--orange {
+  --network-color: var(--ouchi-orange);
+  --network-bg: rgba(214, 145, 50, 0.075);
+  --network-line: rgba(214, 145, 50, 0.48);
+}
+
+.ouchi-accent-scope--violet {
+  --network-color: var(--ouchi-violet);
+  --network-bg: rgba(116, 103, 168, 0.075);
+  --network-line: rgba(116, 103, 168, 0.48);
+}
+
+.ouchi-accent-scope--slate {
+  --network-color: var(--ouchi-slate);
+  --network-bg: rgba(102, 116, 131, 0.075);
+  --network-line: rgba(102, 116, 131, 0.48);
+}
+

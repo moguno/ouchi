@@ -8,16 +8,23 @@ import {
   type PortalDeviceNetwork,
   type PortalNetwork,
   type PortalRelation,
+  type PortalRelationName,
   type PortalService,
   type PortalServiceProtocol,
   type PortalServiceScheme,
   type ValidationIssue,
 } from "./types";
 import { normalizeServiceIconReference } from "./iconCatalog";
+import { resolveRelationLabel } from "./relationLabels";
 import { buildMonitorUrl, buildServiceUrl } from "./urls";
-import { validatePortalData } from "./validation";
+import {
+  normalizeProperties,
+  validatePortalData,
+  validatePropertiesPayload,
+} from "./validation";
 
-export const LEDGER_FORMAT = "ouchi-ledger/1";
+export const LEDGER_FORMAT = "ouchi-ledger/2";
+export const LEGACY_LEDGER_FORMAT = "ouchi-ledger/1";
 
 type RecordValue = Record<string, unknown>;
 
@@ -93,8 +100,48 @@ function formatIssues(issues: ValidationIssue[]): string {
     .join(" / ");
 }
 
+function upgradeLegacyDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== LEGACY_LEDGER_FORMAT) {
+    return root;
+  }
+  const relationNames: RecordValue[] = [];
+  const byName = new Map<string, RecordValue>();
+  const relations = (Array.isArray(root.relations) ? root.relations : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const relationName = text(item.tag) || "未分類";
+      if (!byName.has(relationName)) {
+        const definition: RecordValue = {
+          name: relationName,
+          color: text(item.color),
+          fromLabel: nullableText(item.fromLabel),
+          toLabel: nullableText(item.toLabel),
+        };
+        byName.set(relationName, definition);
+        relationNames.push(definition);
+      }
+      return {
+        from: item.from,
+        to: item.to,
+        relationName,
+      };
+    },
+  );
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
+    relationNames,
+    relations,
+  };
+}
+
 /**
- * Convert the natural-key `ouchi-ledger/1` export into the SPA display model.
+ * Convert the natural-key `ouchi-ledger/2` export into the SPA display model.
+ * Legacy `ouchi-ledger/1` relation rows are upgraded before validation.
  * This is the YAML counterpart to `normalizePortalData` in apiClient.ts.
  */
 export function ledgerYamlToPortalData(input: string): PortalDataV2 {
@@ -120,20 +167,23 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     );
   }
 
-  if (parsed.format !== LEDGER_FORMAT) {
+  const root = upgradeLegacyDocument(parsed);
+
+  if (root.format !== LEDGER_FORMAT) {
     issues.push({
       path: "format",
       message: `formatは「${LEDGER_FORMAT}」である必要があります`,
     });
   }
 
-  const settings = requiredRecord(parsed.settings, "settings", issues);
-  const networksRaw = requiredArray(parsed, "networks", issues);
-  const devicesRaw = requiredArray(parsed, "devices", issues);
-  const relationsRaw = requiredArray(parsed, "relations", issues);
-  const servicesRaw = requiredArray(parsed, "services", issues);
-  requiredArray(parsed, "sshKeys", issues);
-  requiredArray(parsed, "deviceKeys", issues);
+  const settings = requiredRecord(root.settings, "settings", issues);
+  const networksRaw = requiredArray(root, "networks", issues);
+  const devicesRaw = requiredArray(root, "devices", issues);
+  const relationNamesRaw = requiredArray(root, "relationNames", issues);
+  const relationsRaw = requiredArray(root, "relations", issues);
+  const servicesRaw = requiredArray(root, "services", issues);
+  requiredArray(root, "sshKeys", issues);
+  requiredArray(root, "deviceKeys", issues);
 
   const networks: PortalNetwork[] = networksRaw.map((item, index) => {
     const network = requiredRecord(item, `networks[${index}]`, issues);
@@ -183,11 +233,20 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         message: "ホスト名は必須です",
       });
     }
+    if (device.properties !== undefined) {
+      issues.push(
+        ...validatePropertiesPayload(
+          device.properties,
+          `${path}.properties`,
+        ),
+      );
+    }
 
     const portalDevice: PortalDevice = {
       id: `device-${index + 1}`,
       name: hostname,
       petname: nullableText(device.petname),
+      properties: normalizeProperties(device.properties),
       category: text(device.category) as PortalDeviceCategory,
       isVm: device.isVm === true,
       meterEnabled: device.meterEnabled === true,
@@ -267,12 +326,49 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     }
   });
 
+  const relationNameByName = new Map<string, PortalRelationName>();
+  const relationNameCounts = new Map<string, number>();
+  const relationNames: PortalRelationName[] = relationNamesRaw.map(
+    (item, index) => {
+      const path = `relationNames[${index}]`;
+      const relationName = requiredRecord(item, path, issues);
+      const name = text(relationName.name);
+      if (!name) {
+        issues.push({
+          path: `${path}.name`,
+          message: "関係名は必須です",
+        });
+      } else if (relationNameByName.has(name)) {
+        issues.push({
+          path: `${path}.name`,
+          message: `関係名「${name}」が重複しています`,
+        });
+      }
+      const portalRelationName: PortalRelationName = {
+        id: `relation-name-${index + 1}`,
+        name,
+        color: text(relationName.color),
+        fromLabel: nullableText(relationName.fromLabel),
+        toLabel: nullableText(relationName.toLabel),
+        relationCount: 0,
+      };
+      if (name && !relationNameByName.has(name)) {
+        relationNameByName.set(name, portalRelationName);
+      }
+      relationNameCounts.set(name, 0);
+      return portalRelationName;
+    },
+  );
+
   const relations: PortalRelation[] = relationsRaw.map((item, index) => {
     const path = `relations[${index}]`;
     const relation = requiredRecord(item, path, issues);
     const from = text(relation.from);
     const to = text(relation.to);
-    const tag = text(relation.tag);
+    const relationNameText = text(relation.relationName);
+    const relationName = relationNameByName.get(relationNameText);
+    const fromPlaceholder = text(relation.fromPlaceholder);
+    const toPlaceholder = text(relation.toPlaceholder);
     const fromDevice = deviceByName.get(from);
     const toDevice = deviceByName.get(to);
     if (!fromDevice) {
@@ -287,29 +383,48 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         message: `デバイス「${to}」が存在しません`,
       });
     }
-    if (!tag) {
+    if (!relationNameText) {
       issues.push({
-        path: `${path}.tag`,
-        message: "タグ名は必須です",
+        path: `${path}.relationName`,
+        message: "関係名は必須です",
+      });
+    } else if (!relationName) {
+      issues.push({
+        path: `${path}.relationName`,
+        message: `関係名「${relationNameText}」が存在しません`,
       });
     }
-    const color = text(relation.color);
-    if (!color) {
-      issues.push({
-        path: `${path}.color`,
-        message: "関係色は必須です",
-      });
+    if (relationNameText) {
+      relationNameCounts.set(
+        relationNameText,
+        (relationNameCounts.get(relationNameText) ?? 0) + 1,
+      );
     }
     return {
       id: `relation-${index + 1}`,
+      relationNameId: relationName?.id ?? "",
+      relationName: relationNameText,
       fromDeviceId: fromDevice?.id ?? "",
       toDeviceId: toDevice?.id ?? "",
-      tag,
-      fromLabel: nullableText(relation.fromLabel),
-      toLabel: nullableText(relation.toLabel),
-      color,
+      fromPlaceholder,
+      toPlaceholder,
+      fromLabel: resolveRelationLabel(
+        relationName?.fromLabel,
+        fromPlaceholder,
+        relationNameText,
+      ),
+      toLabel: resolveRelationLabel(
+        relationName?.toLabel,
+        toPlaceholder,
+        relationNameText,
+      ),
+      color: relationName?.color ?? "",
     };
   });
+  for (const relationName of relationNames) {
+    relationName.relationCount =
+      relationNameCounts.get(relationName.name) ?? 0;
+  }
 
   const services: PortalService[] = servicesRaw.map((item, index) => {
     const path = `services[${index}]`;
@@ -337,6 +452,14 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         message: `${deviceName} の ${networkName} 所属が存在しません`,
       });
     }
+    if (service.properties !== undefined) {
+      issues.push(
+        ...validatePropertiesPayload(
+          service.properties,
+          `${path}.properties`,
+        ),
+      );
+    }
 
     const portalService: PortalService = {
       id: `service-${index + 1}`,
@@ -344,6 +467,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       subdomain: text(service.subdomain).toLowerCase(),
       petname: nullableText(service.petname),
       description: nullableText(service.description),
+      properties: normalizeProperties(service.properties),
       scheme: text(service.scheme) as PortalServiceScheme,
       port: nullableNumber(service.port) ?? 0,
       protocol: text(service.protocol) as PortalServiceProtocol,
@@ -353,7 +477,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       iconKey: normalizeServiceIconReference(
         service.iconKey,
         service.faviconUrl,
-        "generic:monitor",
+        "favicon",
       ),
       enabled: service.enabled === true,
       url: null,
@@ -371,6 +495,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     networks,
     devices,
     deviceNetworks,
+    relationNames,
     relations,
     services,
     settings: {
@@ -395,6 +520,10 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
 export async function fetchPortalFromYaml(
   yamlUrl: string,
 ): Promise<PortalDataV2> {
+  return ledgerYamlToPortalData(await fetchDemoLedgerYaml(yamlUrl));
+}
+
+export async function fetchDemoLedgerYaml(yamlUrl: string): Promise<string> {
   const response = await fetch(yamlUrl, {
     headers: { Accept: "application/yaml" },
   });
@@ -403,5 +532,5 @@ export async function fetchPortalFromYaml(
       `YAMLを取得できませんでした（HTTP ${response.status}）`,
     );
   }
-  return ledgerYamlToPortalData(await response.text());
+  return response.text();
 }

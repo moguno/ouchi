@@ -233,10 +233,129 @@ describe("MCP block", () => {
     expect(text).toContain("traversed relations:");
     expect(text).toContain("direction=outgoing");
     expect(text).toContain("label=ホストOS");
-    expect(text).toContain("tag=ホストOS");
-    expect(text).toContain("color=yellow");
+    expect(text).toContain("relationName=ホストOS");
+    expect(text).toContain("color=#d5a22b");
     expect(text).toContain("fromLabel=ホストOS");
     expect(text).toContain("toLabel=ホストOS");
+  });
+
+  it("uses substituted labels in map and neighborhood text", async () => {
+    await callMcpTool("create_relation_name", {
+      name: "ポート接続",
+      color: "#0ea5e9",
+      fromLabel: "始点{}",
+      toLabel: "ポート{}",
+    });
+    const created = await callMcpTool("create_relation", {
+      fromDeviceId: 3,
+      toDeviceId: 1,
+      relationName: "ポート接続",
+      fromPlaceholder: "LAN",
+      toPlaceholder: "8",
+    });
+    expect(created.isError).toBe(false);
+    const empty = await callMcpTool("create_relation", {
+      fromDeviceId: 3,
+      toDeviceId: 1,
+      relationName: "ポート接続",
+    });
+    expect(empty.isError).toBe(false);
+
+    const map = await callMcpTool("get_network_map", {
+      deviceId: 3,
+      depth: 1,
+    });
+    const mapText = map.content?.[0]?.text ?? "";
+    expect(mapText).toContain("relationName=ポート接続");
+    expect(mapText).toContain("fromLabel=始点LAN");
+    expect(mapText).toContain("toLabel=ポート8");
+    expect(mapText).toContain("fromLabel=始点-");
+    expect(mapText).toContain("toLabel=ポート-");
+
+    const neighborhood = await callMcpTool("get_device_neighborhood", {
+      deviceId: 3,
+      depth: 1,
+    });
+    const neighborhoodText = neighborhood.content?.[0]?.text ?? "";
+    expect(neighborhoodText).toContain("label=始点LAN");
+    expect(neighborhoodText).toContain("toLabel=ポート8");
+    expect(neighborhoodText).toContain("label=始点-");
+    expect(neighborhoodText).toContain("toLabel=ポート-");
+  });
+
+  it("includes properties in map, neighborhood, and search output", async () => {
+    const nanopi = database
+      .listDevices()
+      .find((device) => device.hostname === "nanopi-r2s")!;
+    const gitea = database
+      .listServices()
+      .find((service) => service.subdomain === "gitea")!;
+    database.database
+      .prepare("UPDATE devices SET properties = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          vault_path: "sops/devices/nanopi/monitor",
+          ai_note: "門番の保守メモ",
+        }),
+        nanopi.id,
+      );
+    database.database
+      .prepare("UPDATE services SET properties = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          ciphertext: "ENC[AES256_GCM,data:gitea]",
+        }),
+        gitea.id,
+      );
+
+    const map = await callMcpTool("get_network_map", {
+      deviceId: nanopi.id,
+      depth: 1,
+    });
+    const mapText = map.content?.[0]?.text ?? "";
+    expect(mapText).toContain(
+      'properties={"vault_path":"sops/devices/nanopi/monitor","ai_note":"門番の保守メモ"}',
+    );
+    expect(mapText).toContain(
+      'properties={"ciphertext":"ENC[AES256_GCM,data:gitea]"}',
+    );
+
+    const neighborhood = await callMcpTool("get_device_neighborhood", {
+      deviceId: nanopi.id,
+      depth: 1,
+    });
+    expect(neighborhood.content?.[0]?.text).toContain(
+      '"vault_path":"sops/devices/nanopi/monitor"',
+    );
+
+    const deviceSearch = await callMcpTool("search_devices", {
+      query: "門番の保守メモ",
+    });
+    expect(deviceSearch.structuredContent).toMatchObject({
+      devices: [
+        expect.objectContaining({
+          hostname: "nanopi-r2s",
+          properties: {
+            vault_path: "sops/devices/nanopi/monitor",
+            ai_note: "門番の保守メモ",
+          },
+        }),
+      ],
+    });
+
+    const serviceSearch = await callMcpTool("search_services", {
+      query: "data:gitea",
+    });
+    expect(serviceSearch.structuredContent).toMatchObject({
+      services: [
+        expect.objectContaining({
+          subdomain: "gitea",
+          properties: {
+            ciphertext: "ENC[AES256_GCM,data:gitea]",
+          },
+        }),
+      ],
+    });
   });
 
   it("resolves service and monitor URLs with the REST assembly rules", async () => {
@@ -330,6 +449,9 @@ describe("MCP block", () => {
     const deviceInput: PortalDeviceInput = {
       hostname: "mcp-test",
       petname: "MCP検証機",
+      properties: {
+        source: "mcp-create",
+      },
       category: "physical",
       isVm: false,
       sshUser: "monitor",
@@ -338,15 +460,39 @@ describe("MCP block", () => {
       note: null,
     };
     const device = (await callMcpTool("create_device", deviceInput))
-      .structuredContent?.result as { id: number; hostname: string };
+      .structuredContent?.result as {
+        id: number;
+        hostname: string;
+        properties: Record<string, string>;
+      };
     expect(device.hostname).toBe("mcp-test");
+    expect(device.properties).toEqual({ source: "mcp-create" });
+    const {
+      properties: deviceProperties,
+      ...deviceInputWithoutProperties
+    } = deviceInput;
+    void deviceProperties;
     expect(
       (await callMcpTool("update_device", {
         id: device.id,
-        ...deviceInput,
+        ...deviceInputWithoutProperties,
         petname: "MCP検証機 更新",
       })).structuredContent?.result,
-    ).toMatchObject({ id: device.id, petname: "MCP検証機 更新" });
+    ).toMatchObject({
+      id: device.id,
+      petname: "MCP検証機 更新",
+      properties: { source: "mcp-create" },
+    });
+    expect(
+      (await callMcpTool("update_device", {
+        id: device.id,
+        ...deviceInputWithoutProperties,
+        properties: { source: "mcp-update" },
+      })).structuredContent?.result,
+    ).toMatchObject({
+      id: device.id,
+      properties: { source: "mcp-update" },
+    });
 
     const membership = (await callMcpTool("create_membership", {
       deviceId: device.id,
@@ -368,6 +514,7 @@ describe("MCP block", () => {
       subdomain: "mcp-test",
       petname: "MCP Test",
       description: "round trip",
+      properties: { source: "mcp-service" },
       port: 8080,
       protocol: "tcp",
       scheme: "http",
@@ -380,6 +527,7 @@ describe("MCP block", () => {
     const service = (await callMcpTool("create_service", serviceInput))
       .structuredContent?.result as PortalApiService;
     expect(service.url).toBe("http://10.44.0.20:8080/");
+    expect(service.properties).toEqual({ source: "mcp-service" });
     expect(
       (await callMcpTool("get_service", { id: service.id }))
         .structuredContent?.result,
@@ -388,6 +536,7 @@ describe("MCP block", () => {
     const updatedService = (await callMcpTool("update_service", {
       id: service.id,
       ...serviceInput,
+      properties: { source: "mcp-service-updated" },
       petname: "MCP Test Updated",
       port: 9090,
     })).structuredContent?.result as PortalApiService;
@@ -396,15 +545,40 @@ describe("MCP block", () => {
       petname: "MCP Test Updated",
       port: 9090,
       url: "http://10.44.0.20:9090/",
+      properties: { source: "mcp-service-updated" },
     });
+    const {
+      properties: serviceProperties,
+      ...serviceInputWithoutProperties
+    } = serviceInput;
+    void serviceProperties;
+    expect(
+      (await callMcpTool("update_service", {
+        id: service.id,
+        ...serviceInputWithoutProperties,
+        petname: "MCP Test Preserved",
+      })).structuredContent?.result,
+    ).toMatchObject({
+      id: service.id,
+      petname: "MCP Test Preserved",
+      properties: { source: "mcp-service-updated" },
+    });
+
+    const relationName = (await callMcpTool("create_relation_name", {
+      name: "MCP検証関係",
+      color: "#123456",
+      fromLabel: "検証元",
+      toLabel: "検証先",
+    })).structuredContent?.result as { id: number };
+    expect(
+      (await callMcpTool("get_relation_name", { id: relationName.id }))
+        .structuredContent?.result,
+    ).toMatchObject({ name: "MCP検証関係", relationCount: 0 });
 
     const relationInput: PortalRelationInput = {
       fromDeviceId: device.id,
       toDeviceId: 1,
-      tag: "MCP検証関係",
-      fromLabel: "検証元",
-      toLabel: "検証先",
-      color: "#123456",
+      relationName: "MCP検証関係",
     };
     const relation = (await callMcpTool("create_relation", relationInput))
       .structuredContent?.result as { id: number };
@@ -412,13 +586,17 @@ describe("MCP block", () => {
       (await callMcpTool("update_relation", {
         id: relation.id,
         ...relationInput,
-        fromLabel: "更新元",
+        relationName: "MCP検証関係",
       })).structuredContent?.result,
-    ).toMatchObject({ id: relation.id, fromLabel: "更新元" });
+    ).toMatchObject({
+      id: relation.id,
+      fromLabel: "検証元",
+      toLabel: "検証先",
+    });
     expect(
       (await callMcpTool("get_relation", { id: relation.id }))
         .structuredContent?.result,
-    ).toMatchObject({ id: relation.id, tag: "MCP検証関係" });
+    ).toMatchObject({ id: relation.id, relationName: "MCP検証関係" });
     expect(
       (await callMcpTool("get_device_relations", {
         deviceId: device.id,
@@ -427,6 +605,10 @@ describe("MCP block", () => {
 
     expect(
       (await callMcpTool("delete_relation", { id: relation.id }))
+        .structuredContent?.result,
+    ).toEqual({ ok: true });
+    expect(
+      (await callMcpTool("delete_relation_name", { id: relationName.id }))
         .structuredContent?.result,
     ).toEqual({ ok: true });
     expect(
@@ -475,25 +657,82 @@ describe("MCP block", () => {
     });
   });
 
-  it("rejects a conflicting colour for an existing tag through REST", async () => {
+  it("cascades device children through delete_device", async () => {
+    const device = (await callMcpTool("create_device", {
+      hostname: "mcp-delete-cascade",
+      petname: "MCP削除回帰機",
+      category: "physical",
+      isVm: false,
+      sshUser: null,
+      sshPort: null,
+      meterEnabled: false,
+      note: null,
+    })).structuredContent?.result as { id: number };
+    const membership = (await callMcpTool("create_membership", {
+      deviceId: device.id,
+      networkId: 1,
+      ip: "192.168.0.251",
+      label: "mcp-delete-regression",
+    })).structuredContent?.result as { id: number };
+    const relation = (await callMcpTool("create_relation", {
+      fromDeviceId: device.id,
+      toDeviceId: 1,
+      relationName: "ホストOS",
+    })).structuredContent?.result as { id: number };
+    const service = (await callMcpTool("create_service", {
+      deviceNetworkId: membership.id,
+      subdomain: "mcp-delete-cascade-service",
+      petname: "MCP削除回帰サービス",
+      description: null,
+      port: 8081,
+      protocol: "tcp",
+      scheme: "http",
+      topPath: "/",
+      monitorPath: "/",
+      serviceUrl: null,
+      iconKey: "generic:monitor",
+      enabled: true,
+    })).structuredContent?.result as { id: number };
+
+    expect(database.deviceCascadeCounts(device.id)).toEqual({
+      memberships: 1,
+      services: 1,
+      relations: 1,
+    });
+    expect(
+      (await callMcpTool("delete_device", {
+        id: device.id,
+      })).structuredContent?.result,
+    ).toEqual({ ok: true });
+    expect(database.getDevice(device.id)).toBeUndefined();
+    expect(database.getMembership(membership.id)).toBeUndefined();
+    expect(database.getRelation(relation.id)).toBeUndefined();
+    expect(database.getService(service.id)).toBeUndefined();
+  });
+
+  it("rejects duplicate and unresolved relation edges through REST", async () => {
     const before = database.listRelations().length;
     const createResult = await callMcpTool("create_relation", {
       fromDeviceId: 3,
       toDeviceId: 1,
-      tag: "ホストOS",
-      fromLabel: null,
-      toLabel: null,
-      color: "green",
+      relationName: "ホストOS",
     });
-    expect(createResult.isError).toBe(true);
-    expect(createResult.structuredContent).toMatchObject({
+    expect(createResult.isError).toBe(false);
+    const duplicateResult = await callMcpTool("create_relation", {
+      fromDeviceId: 3,
+      toDeviceId: 1,
+      relationName: "ホストOS",
+    });
+    expect(duplicateResult.isError).toBe(true);
+    expect(duplicateResult.structuredContent).toMatchObject({
       error: {
         status: 400,
         body: {
           issues: [
             {
-              path: "color",
-              message: "タグ「ホストOS」の色は「yellow」に固定されています",
+              path: "relationName",
+              message:
+                "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
             },
           ],
         },
@@ -501,13 +740,10 @@ describe("MCP block", () => {
     });
 
     const updateResult = await callMcpTool("update_relation", {
-      id: 1,
-      fromDeviceId: 4,
-      toDeviceId: 2,
-      tag: "ホストOS",
-      fromLabel: null,
-      toLabel: null,
-      color: "green",
+      id: (createResult.structuredContent?.result as { id: number }).id,
+      fromDeviceId: 3,
+      toDeviceId: 1,
+      relationName: "存在しない関係名",
     });
     expect(updateResult.isError).toBe(true);
     expect(updateResult.structuredContent).toMatchObject({
@@ -516,14 +752,14 @@ describe("MCP block", () => {
         body: {
           issues: [
             {
-              path: "color",
-              message: "タグ「ホストOS」の色は「yellow」に固定されています",
+              path: "relationName",
+              message: "関係名が存在しません",
             },
           ],
         },
       },
     });
-    expect(database.listRelations()).toHaveLength(before);
+    expect(database.listRelations()).toHaveLength(before + 1);
   });
 
   it("enforces the service-category pseudo-device rules in REST", async () => {
@@ -595,6 +831,7 @@ describe("MCP block", () => {
         networks: 3,
         devices: 16,
         memberships: 17,
+        relationNames: 2,
         relations: 5,
         services: 9,
       },
@@ -668,10 +905,12 @@ describe("MCP block", () => {
         "search_devices",
         "resolve_service_url",
         "create_service",
+        "create_relation_name",
+        "create_relation",
         "import_ledger_yaml",
       ]),
     );
-    expect(listed.result?.tools).toHaveLength(33);
+    expect(listed.result?.tools).toHaveLength(38);
 
     const mapResponse = await httpRequestToApp(actualMcpApp.fetch, {
       method: "POST",
@@ -717,7 +956,7 @@ describe("MCP block", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(33);
+      expect(tools.tools).toHaveLength(38);
       expect(tools.tools.map((tool) => tool.name)).toContain(
         "get_network_map",
       );

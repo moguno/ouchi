@@ -13,7 +13,7 @@ const sampleYaml = readFileSync(
 );
 
 describe("YAML data source", () => {
-  it("converts the ouchi-ledger/1 natural-key export to portal data", () => {
+  it("converts the ouchi-ledger/2 natural-key export to portal data", () => {
     const data = ledgerYamlToPortalData(sampleYaml);
 
     expect(data.version).toBe(2);
@@ -85,23 +85,121 @@ describe("YAML data source", () => {
     expect(homeLanMembership?.ip).toBe("198.51.100.1");
     expect(atlasRelation).toEqual(
       expect.objectContaining({
-        tag: "VM",
+        relationName: "VM",
         fromLabel: "親ホスト",
         toLabel: "VM",
       }),
     );
     expect(
-      data.relations.map((relation) => relation.color),
-    ).toEqual(Array.from({ length: 5 }, () => "#d48a2f"));
+      data.relationNames.map((relationName) => relationName.color),
+    ).toEqual(["#d48a2f"]);
   });
 
-  it("rejects conflicting colours for one tag in YAML", () => {
-    const parsed = parse(sampleYaml) as {
-      tags?: unknown;
-      relations: Array<{ color: string }>;
+  it("loads relation placeholders and applies the label templates", () => {
+    const document = parse(sampleYaml) as {
+      relationNames: Array<Record<string, unknown>>;
+      relations: Array<Record<string, unknown>>;
     };
-    expect(parsed).not.toHaveProperty("tags");
-    parsed.relations[1].color = "#4d9b78";
+    document.relationNames[0].fromLabel = "ホスト{}";
+    document.relationNames[0].toLabel = "VM{}";
+    document.relations[0].fromPlaceholder = "cedar";
+    document.relations[0].toPlaceholder = "01";
+    document.relations[1].fromPlaceholder = "cedar";
+    document.relations[1].toPlaceholder = "02";
+
+    const data = ledgerYamlToPortalData(stringify(document));
+    expect(data.relations[0]).toEqual(
+      expect.objectContaining({
+        fromPlaceholder: "cedar",
+        toPlaceholder: "01",
+        fromLabel: "ホストcedar",
+        toLabel: "VM01",
+      }),
+    );
+    expect(data.relations[1]).toEqual(
+      expect.objectContaining({
+        toPlaceholder: "02",
+        toLabel: "VM02",
+      }),
+    );
+    expect(data.relations[2]).toEqual(
+      expect.objectContaining({
+        fromPlaceholder: "",
+        toPlaceholder: "",
+        fromLabel: "ホスト-",
+        toLabel: "VM-",
+      }),
+    );
+  });
+
+  it("loads properties and treats missing properties as an empty map", () => {
+    const document = parse(sampleYaml) as {
+      devices: Array<Record<string, unknown>>;
+      services: Array<Record<string, unknown>>;
+    };
+    const device = document.devices.find(
+      (item) => item.hostname === "l3-switch",
+    )!;
+    const service = document.services.find(
+      (item) => item.subdomain === "home",
+    )!;
+    device.properties = {
+      vault_path: "sops/devices/l3-switch",
+      note: "設定メモ",
+    };
+    service.properties = {
+      ciphertext: "ENC[AES256_GCM,data:home]",
+    };
+
+    const data = ledgerYamlToPortalData(stringify(document));
+    expect(
+      data.devices.find((item) => item.name === "l3-switch")?.properties,
+    ).toEqual({
+      vault_path: "sops/devices/l3-switch",
+      note: "設定メモ",
+    });
+    expect(
+      data.services.find((item) => item.subdomain === "home")?.properties,
+    ).toEqual({
+      ciphertext: "ENC[AES256_GCM,data:home]",
+    });
+    expect(
+      data.devices
+        .filter((item) => item.name !== "l3-switch")
+        .every((item) => Object.keys(item.properties ?? {}).length === 0),
+    ).toBe(true);
+  });
+
+  it("rejects invalid properties in the static YAML data source", () => {
+    const document = parse(sampleYaml) as {
+      devices: Array<Record<string, unknown>>;
+    };
+    document.devices[0].properties = {
+      numeric_value: 42,
+    };
+
+    expect(() => ledgerYamlToPortalData(stringify(document))).toThrow(
+      YAMLDataSourceError,
+    );
+    try {
+      ledgerYamlToPortalData(stringify(document));
+    } catch (error) {
+      expect((error as YAMLDataSourceError).issues).toContainEqual(
+        expect.objectContaining({
+          path: "devices[0].properties.numeric_value",
+          message: "プロパティ値は文字列で入力してください",
+        }),
+      );
+    }
+  });
+
+  it("rejects duplicate relation triples and unknown relation names in YAML", () => {
+    const parsed = parse(sampleYaml) as {
+      relations: Array<Record<string, unknown>>;
+    };
+    parsed.relations.push({
+      ...parsed.relations[0],
+    });
 
     expect(() => ledgerYamlToPortalData(stringify(parsed))).toThrowError(
       YAMLDataSourceError,
@@ -112,11 +210,72 @@ describe("YAML data source", () => {
       expect(error).toBeInstanceOf(YAMLDataSourceError);
       expect((error as YAMLDataSourceError).issues).toContainEqual(
         expect.objectContaining({
-          path: "relations.relation-2.color",
-          message: expect.stringContaining("統一してください"),
+          message: expect.stringContaining("重複"),
         }),
       );
     }
+  });
+
+  it("allows distinct placeholder pairs and rejects an exact duplicate", () => {
+    const document = parse(sampleYaml) as {
+      relations: Array<Record<string, unknown>>;
+    };
+    const base = {
+      from: document.relations[0].from,
+      to: document.relations[0].to,
+      relationName: document.relations[0].relationName,
+      fromPlaceholder: "host",
+      toPlaceholder: "8",
+    };
+    document.relations.push(base);
+    expect(() =>
+      ledgerYamlToPortalData(stringify(document)),
+    ).not.toThrow();
+
+    document.relations.push({ ...base });
+    expect(() =>
+      ledgerYamlToPortalData(stringify(document)),
+    ).toThrow(YAMLDataSourceError);
+  });
+
+  it("converts legacy tagged relations in one YAML migration step", () => {
+    const parsed = parse(sampleYaml) as Record<string, unknown> & {
+      relationNames?: unknown;
+      relations: Array<Record<string, unknown>>;
+    };
+    delete parsed.relationNames;
+    parsed.format = "ouchi-ledger/1";
+    parsed.relations = [
+      {
+        from: "cedar-host",
+        to: "harbor-core",
+        tag: "旧VM",
+        fromLabel: "旧ホスト",
+        toLabel: "旧VM",
+        color: "#112233",
+      },
+      {
+        from: "cedar-host",
+        to: "atlas-lab",
+        tag: "旧VM",
+        fromLabel: "無視されるラベル",
+        toLabel: "無視されるVM",
+        color: "#445566",
+      },
+    ];
+
+    const data = ledgerYamlToPortalData(stringify(parsed));
+    expect(data.relationNames).toEqual([
+      expect.objectContaining({
+        name: "旧VM",
+        color: "#112233",
+        fromLabel: "旧ホスト",
+        toLabel: "旧VM",
+        relationCount: 2,
+      }),
+    ]);
+    expect(data.relations.every((relation) => relation.relationName === "旧VM"))
+      .toBe(true);
   });
 
   it("resolves the personal network and its host-to-VM relations", () => {
@@ -288,14 +447,14 @@ describe("YAML data source", () => {
     }
   });
 
-  it("rejects documents that are not ouchi-ledger/1", () => {
+  it("rejects unknown ledger format versions", () => {
     expect(() =>
       ledgerYamlToPortalData(
         sampleYaml.replace(
-          "format: ouchi-ledger/1",
           "format: ouchi-ledger/2",
+          "format: ouchi-ledger/9",
         ),
       ),
-    ).toThrow(/formatは「ouchi-ledger\/1」/);
+    ).toThrow(/formatは「ouchi-ledger\/2」/);
   });
 });

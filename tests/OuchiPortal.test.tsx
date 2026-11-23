@@ -17,13 +17,32 @@ import type {
   PortalService,
 } from "../src/portal/types";
 import { EntityDialog } from "../src/portal/EntityDialog";
+import { ServiceIconDialog } from "../src/portal/ServiceIconDialog";
 import { ServiceIcon } from "../src/portal/icons";
+import { colorValueForInput } from "../src/portal/colorValue";
 import { ledgerYamlToPortalData } from "../src/portal/yamlDataSource";
 
 const sampleYaml = readFileSync(
   resolve(process.cwd(), "public/ouchi-ledger.sample.yaml"),
   "utf8",
 );
+const portalStyleFiles = [
+  "base.css",
+  "portal-shell.css",
+  "portal-board.css",
+  "entity-dialog.css",
+  "portal-motion.css",
+  "portal.css",
+  "portal-connectors.css",
+  "portal-board-v2.css",
+  "portal-responsive.css",
+  "manage-simple.css",
+];
+const portalStyles = portalStyleFiles
+  .map((file) =>
+    readFileSync(resolve(process.cwd(), "src/portal/styles", file), "utf8"),
+  )
+  .join("\n");
 const demoServiceLinkMessage =
   "ここをクリックすると設定したURLにジャンプします";
 
@@ -122,13 +141,26 @@ const portalData: PortalDataV2 = {
       ip: "",
     },
   ],
+  relationNames: [
+    {
+      id: "relation-name-1",
+      name: "バックアップ先",
+      color: "#3b82f6",
+      fromLabel: "VM",
+      toLabel: "親ホスト",
+      relationCount: 1,
+    },
+  ],
   relations: [
     {
       id: "20",
+      relationNameId: "relation-name-1",
+      relationName: "バックアップ先",
       fromDeviceId: "3",
       toDeviceId: "2",
-      tag: "バックアップ先",
-      color: "blue",
+      fromLabel: "VM",
+      toLabel: "親ホスト",
+      color: "#3b82f6",
     },
   ],
   services: [
@@ -166,6 +198,7 @@ const apiData: PortalApiData = {
     id: index + 1,
     hostname: device.name,
     petname: device.petname ?? null,
+    properties: device.properties ?? {},
     category: device.category,
     isVm: device.isVm,
     sshUser: device.ssh?.user ?? null,
@@ -193,6 +226,7 @@ const apiData: PortalApiData = {
     subdomain: item.subdomain,
     petname: item.petname ?? null,
     description: item.description ?? null,
+    properties: item.properties ?? {},
     port: item.port,
     protocol: item.protocol,
     scheme: item.scheme,
@@ -204,13 +238,24 @@ const apiData: PortalApiData = {
     url: item.url ?? null,
     monitorUrl: item.monitorUrl ?? null,
   })),
+  relationNames: portalData.relationNames.map((relationName, index) => ({
+    id: index + 1,
+    name: relationName.name,
+    color: relationName.color,
+    fromLabel: relationName.fromLabel ?? null,
+    toLabel: relationName.toLabel ?? null,
+    relationCount: relationName.relationCount,
+  })),
   relations: portalData.relations.map((relation, index) => ({
     id: index + 1,
+    relationNameId: Number(relation.relationNameId),
+    relationName: relation.relationName,
     fromDeviceId: Number(relation.fromDeviceId),
     toDeviceId: Number(relation.toDeviceId),
-    tag: relation.tag ?? null,
-    fromLabel: relation.fromLabel ?? null,
-    toLabel: relation.toLabel ?? null,
+    fromPlaceholder: relation.fromPlaceholder ?? "",
+    toPlaceholder: relation.toPlaceholder ?? "",
+    fromLabel: relation.fromLabel,
+    toLabel: relation.toLabel,
     color: relation.color,
   })),
   settings: {
@@ -256,7 +301,8 @@ describe("OuchiPortal", () => {
     );
   });
 
-  it("loads a relative YAML source as a read-only portal", async () => {
+  it("opens management from a relative YAML demo source", async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.fn(() =>
       Promise.resolve(
         new Response(sampleYaml, {
@@ -279,27 +325,235 @@ describe("OuchiPortal", () => {
     expect(
       screen.getByRole("heading", { name: "あなたのおうち環境" }),
     ).toBeVisible();
-    expect(screen.getByText("表示専用デモ")).toBeVisible();
+    expect(screen.queryByText("表示専用デモ")).not.toBeInTheDocument();
     expect(
       container.querySelector(".ouchi-relation-legend"),
     ).not.toBeInTheDocument();
     expect(
       container.querySelector(".ouchi-portal-footer"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("同一デバイス")).not.toBeInTheDocument();
-    expect(screen.queryByText("関係先はタグ色")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "管理" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "管理" }),
+    ).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
     expect(
-      screen.queryByRole("dialog", { name: "ポータルを管理" }),
-    ).not.toBeInTheDocument();
+      within(view).getByText(/デモモードでは保存されません/),
+    ).toBeVisible();
+    expect(
+      within(view).getByText("デモモード: 保存無効"),
+    ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith(
       "ouchi-ledger.sample.yaml",
       expect.objectContaining({
         headers: { Accept: "application/yaml" },
       }),
     );
+  });
+
+  it("opens every management tab in YAML demo mode", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(sampleYaml, {
+            headers: { "Content-Type": "application/yaml" },
+          }),
+        ),
+      ),
+    );
+
+    render(
+      <OuchiPortal
+        showTitle={false}
+        yamlUrl="ouchi-ledger.sample.yaml"
+      />,
+    );
+    await screen.findByText("ホームダッシュボード", { exact: true });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+
+    expect(
+      within(view).getByRole("heading", { name: "ネットワーク" }),
+    ).toBeVisible();
+
+    await user.click(within(view).getByRole("tab", { name: /デバイス/ }));
+    expect(
+      within(view).getByRole("heading", { name: "デバイス" }),
+    ).toBeVisible();
+
+    await user.click(within(view).getByRole("tab", { name: /サービス/ }));
+    expect(
+      within(view).getByRole("heading", { name: "サービス" }),
+    ).toBeVisible();
+
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    expect(
+      within(view).getByRole("heading", { name: "関係名" }),
+    ).toBeVisible();
+    expect(
+      within(view).getByRole("heading", { name: "関係" }),
+    ).toBeVisible();
+
+    await user.click(within(view).getByRole("tab", { name: "共通設定" }));
+    expect(
+      within(view).getByRole("heading", {
+        name: "ポータルのタイトル",
+      }),
+    ).toBeVisible();
+  });
+
+  it("keeps demo dialogs editable but disables every save action except export", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(
+      (_input: string | URL | Request, _init?: RequestInit) =>
+        Promise.resolve(
+          new Response(sampleYaml, {
+            headers: { "Content-Type": "application/yaml" },
+          }),
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      () => undefined,
+    );
+
+    render(
+      <OuchiPortal
+        showTitle={false}
+        yamlUrl="ouchi-ledger.sample.yaml"
+      />,
+    );
+    await screen.findByText("ホームダッシュボード", { exact: true });
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+
+    within(view)
+      .getAllByRole("button", { name: /を削除$/ })
+      .forEach((button) => expect(button).toBeDisabled());
+
+    await user.click(
+      within(view).getByRole("button", { name: "ネットワークを追加" }),
+    );
+    let dialog = screen.getByRole("dialog", {
+      name: "ネットワークを追加",
+    });
+    expect(
+      within(dialog).getByRole("textbox", { name: "ネットワーク名" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: "追加する" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+
+    await user.click(within(view).getByRole("tab", { name: /デバイス/ }));
+    await user.click(
+      within(view).getByRole("button", { name: "L3 Switchを編集" }),
+    );
+    dialog = screen.getByRole("dialog", { name: "デバイスを編集" });
+    expect(
+      within(dialog).getByRole("button", { name: "保存" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+
+    await user.click(
+      within(view).getByRole("button", { name: "L3 Switchのメモ" }),
+    );
+    dialog = screen.getByRole("dialog", { name: "L3 Switchのメモ" });
+    expect(
+      within(dialog).getByRole("button", { name: "プロパティを追加" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: "保存" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+
+    await user.click(within(view).getByRole("tab", { name: /サービス/ }));
+    await user.click(
+      within(view).getByRole("button", {
+        name: "ホームダッシュボードのアイコン",
+      }),
+    );
+    dialog = screen.getByRole("dialog", {
+      name: "ホームダッシュボードのアイコン",
+    });
+    expect(
+      within(dialog).getByRole("searchbox", { name: "アイコンを検索" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: "保存" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    await user.click(
+      within(view).getByRole("button", { name: "VMを編集" }),
+    );
+    dialog = screen.getByRole("dialog", { name: "関係名を編集" });
+    expect(
+      within(dialog).getByRole("textbox", { name: "関係名" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: "保存" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+
+    await user.click(
+      within(view).getAllByRole("button", {
+        name: "cedar-hostからharbor-coreへの関係を編集",
+      })[0],
+    );
+    dialog = screen.getByRole("dialog", { name: "関係を編集" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "始点デバイス 1" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: "保存" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+
+    await user.click(within(view).getByRole("tab", { name: "共通設定" }));
+    const titleInput = within(view).getByRole("textbox", {
+      name: "ポータルタイトル",
+    });
+    expect(titleInput).toBeEnabled();
+    await user.clear(titleInput);
+    await user.type(titleInput, "デモで編集したタイトル");
+    expect(
+      within(view).getByRole("button", { name: "タイトルを保存" }),
+    ).toBeDisabled();
+    expect(
+      within(view).getByLabelText("インポートするYAMLファイル"),
+    ).toBeDisabled();
+    const exportButton = within(view).getByRole("button", {
+      name: "YAMLをエクスポート",
+    });
+    expect(exportButton).toBeEnabled();
+    await user.click(exportButton);
+    expect(
+      await within(view).findByText(
+        "ouchi-ledger-demo.yaml をダウンロードしました。",
+      ),
+    ).toBeVisible();
+    expect(
+      fetchMock.mock.calls.every(
+        ([input]) => String(input) === "ouchi-ledger.sample.yaml",
+      ),
+    ).toBe(true);
   });
 
   it("keeps API mode service tiles as external links", () => {
@@ -406,6 +660,25 @@ describe("OuchiPortal", () => {
     expect(
       within(homeLan).queryByRole("heading", { name: "サービス" }),
     ).not.toBeInTheDocument();
+    const categoryIcons = Array.from(
+      homeLan.querySelectorAll(".ouchi-device-category-icon"),
+    );
+    expect(categoryIcons).toHaveLength(3);
+    expect(
+      homeLan.querySelector(
+        ".ouchi-device-category-icon--network svg",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      homeLan.querySelector(
+        ".ouchi-device-category-icon--physical svg",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      homeLan.querySelector(
+        ".ouchi-device-category-icon--vm svg",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("falls back to the hostname without duplicating it in the card subline", () => {
@@ -499,14 +772,14 @@ describe("OuchiPortal", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("resolves relation labels from tag and keeps unrelated devices neutral", async () => {
+  it("resolves relation labels from the relation-name definition", async () => {
     const user = userEvent.setup();
     const { container } = render(<OuchiPortal data={portalData} />);
 
     await user.click(
       screen.getByRole("button", { name: "openmediavaultを選択" }),
     );
-    expect(screen.getByText("バックアップ先")).toBeInTheDocument();
+    expect(screen.getByText("親ホスト")).toBeInTheDocument();
     expect(
       container.querySelector('[data-device-id="2"]'),
     ).toHaveClass("ouchi-device-card--related");
@@ -515,53 +788,398 @@ describe("OuchiPortal", () => {
     ).toHaveClass("ouchi-device-card--neutral");
   });
 
-  it("locks an existing relation tag colour and explains global recolouring", async () => {
+  it("renders resolved placeholder labels in the portal", async () => {
     const user = userEvent.setup();
-    render(
-      <EntityDialog
-        data={portalData}
-        editingId="3"
-        kind="device"
-        onClose={() => undefined}
-        onSave={() => undefined}
-      />,
-    );
-    const dialog = screen.getByRole("dialog", { name: "デバイスを編集" });
-    const tagInput = within(dialog).getByRole("combobox", {
-      name: "関係タグ 1",
-    });
-    const colorInput = within(dialog).getByRole("textbox", {
-      name: "関係色 1",
-    });
+    const templated = structuredClone(portalData);
+    templated.relationNames[0].fromLabel = "VM{}";
+    templated.relationNames[0].toLabel = "親ホスト{}";
+    templated.relations[0].fromPlaceholder = "host";
+    templated.relations[0].toPlaceholder = "8";
+    templated.relations[0].fromLabel = "VMhost";
+    templated.relations[0].toLabel = "親ホスト8";
 
-    expect(tagInput).toHaveAttribute(
-      "list",
-      "ouchi-relation-tag-suggestions",
-    );
-    expect(colorInput).toHaveValue("blue");
-    expect(colorInput).toHaveAttribute("readonly");
-    expect(
-      within(dialog).getByText(/全1件へ反映されます/),
-    ).toBeVisible();
-
+    render(<OuchiPortal data={templated} />);
     await user.click(
-      within(dialog).getByRole("button", {
-        name: "タグの色を変更",
+      screen.getByRole("button", { name: "openmediavaultを選択" }),
+    );
+    expect(screen.getByText("親ホスト8")).toBeInTheDocument();
+  });
+
+  it("uses a relation-name selector in the shared relation editor", async () => {
+    const user = userEvent.setup();
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    await user.click(
+      within(view).getByRole("button", {
+        name: "openmediavaultからnanopi-r2sへの関係を編集",
       }),
     );
-    expect(colorInput).not.toHaveAttribute("readonly");
+    const dialog = screen.getByRole("dialog", {
+      name: "関係を編集",
+    });
+    expect(
+      within(dialog).getByRole("combobox", { name: "関係名 1" }),
+    ).toHaveValue("バックアップ先");
     expect(
       within(dialog).getByText(
-        /保存すると、このタグを持つ全1件の関係へ一括反映されます/,
+        /色と方向ラベルは関係名「バックアップ先」の定義を使います。/,
       ),
     ).toBeVisible();
-
-    await user.clear(tagInput);
-    await user.type(tagInput, "新規タグ");
-    expect(colorInput).not.toHaveAttribute("readonly");
     expect(
-      within(dialog).getByText("新規タグです。色を自由に選べます。"),
-    ).toBeVisible();
+      within(dialog).queryByRole("textbox", { name: "関係色 1" }),
+    ).not.toBeInTheDocument();
+    const route = dialog.querySelector(".ouchi-relation-row-route");
+    expect(route?.textContent).toContain("openmediavault");
+    expect(route?.textContent).toContain("VM");
+    expect(route?.textContent).toContain("→");
+    expect(route?.textContent).toContain("nanopi-r2s");
+    expect(route?.textContent).toContain("親ホスト");
+  });
+
+  it("shows placeholder inputs only for templates that contain {}", async () => {
+    const user = userEvent.setup();
+    const templated = structuredClone(portalData);
+    templated.relationNames[0].fromLabel = "親ホスト{}";
+    templated.relationNames[0].toLabel = "VM{}";
+    templated.relationNames.push({
+      id: "relation-name-2",
+      name: "固定ラベル",
+      color: "#22c55e",
+      fromLabel: "固定元",
+      toLabel: "固定先",
+      relationCount: 0,
+    });
+    render(<OuchiPortal data={templated} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    await user.click(
+      within(view).getByRole("button", {
+        name: "openmediavaultからnanopi-r2sへの関係を編集",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "関係を編集",
+    });
+    const fromInput = within(dialog).getByRole("textbox", {
+      name: "始点プレースホルダー 1",
+    });
+    const toInput = within(dialog).getByRole("textbox", {
+      name: "終点プレースホルダー 1",
+    });
+    expect(fromInput).toBeVisible();
+    expect(toInput).toBeVisible();
+
+    await user.type(fromInput, "host");
+    await user.type(toInput, "8");
+    expect(
+      dialog.querySelector(".ouchi-relation-row-route")?.textContent,
+    ).toContain("openmediavault親ホストhost→nanopi-r2sVM8");
+
+    await user.selectOptions(
+      within(dialog).getByRole("combobox", { name: "関係名 1" }),
+      "固定ラベル",
+    );
+    expect(
+      within(dialog).queryByRole("textbox", {
+        name: "始点プレースホルダー 1",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("textbox", {
+        name: "終点プレースホルダー 1",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lists every relation and edits it through the shared relation editor", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(
+      (input: string | URL | Request, init?: RequestInit) => {
+        if (
+          String(input).endsWith("/api/relations/20") &&
+          init?.method === "PUT"
+        ) {
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ ok: true });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+
+    const editButton = within(view).getByRole("button", {
+      name: "openmediavaultからnanopi-r2sへの関係を編集",
+    });
+    const row = editButton.closest("tr") as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.textContent).toContain("openmediavault（VM）");
+    expect(row.textContent).toContain("nanopi-r2s（親ホスト）");
+    expect(row.textContent).toContain("バックアップ先");
+    expect(
+      within(view)
+        .getByRole("button", { name: "バックアップ先を編集" })
+        .closest("tr")?.textContent,
+    ).toContain("1");
+
+    await user.click(editButton);
+    const dialog = screen.getByRole("dialog", { name: "関係を編集" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "始点デバイス 1" }),
+    ).toHaveValue("3");
+    expect(
+      within(dialog).getByRole("combobox", { name: "終点デバイス 1" }),
+    ).toHaveValue("2");
+    expect(
+      within(dialog).getByRole("combobox", { name: "関係名 1" }),
+    ).toHaveValue("バックアップ先");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      const updateCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).endsWith("/api/relations/20") &&
+          init?.method === "PUT",
+      );
+      expect(updateCall).toBeDefined();
+      expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
+        fromDeviceId: 3,
+        toDeviceId: 2,
+        relationName: "バックアップ先",
+        fromPlaceholder: "",
+        toPlaceholder: "",
+      });
+    });
+  });
+
+  it("shows resolved placeholder labels in the management relation row", async () => {
+    const user = userEvent.setup();
+    const templated = structuredClone(portalData);
+    templated.relationNames[0].fromLabel = "VM{}";
+    templated.relationNames[0].toLabel = "親ホスト{}";
+    templated.relations[0].fromPlaceholder = "host";
+    templated.relations[0].toPlaceholder = "8";
+    templated.relations[0].fromLabel = "VMhost";
+    templated.relations[0].toLabel = "親ホスト8";
+    render(<OuchiPortal data={templated} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    const row = within(view)
+      .getByRole("button", {
+        name: "openmediavaultからnanopi-r2sへの関係を編集",
+      })
+      .closest("tr") as HTMLElement;
+
+    expect(row.textContent).toContain("openmediavault（VMhost）");
+    expect(row.textContent).toContain("nanopi-r2s（親ホスト8）");
+  });
+
+  it("falls back to the relation name for empty management endpoint labels", async () => {
+    const user = userEvent.setup();
+    const unlabeled = structuredClone(portalData);
+    unlabeled.relations[0].fromLabel = "";
+    unlabeled.relations[0].toLabel = "";
+    render(<OuchiPortal data={unlabeled} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    const row = within(view)
+      .getByRole("button", {
+        name: "openmediavaultからnanopi-r2sへの関係を編集",
+      })
+      .closest("tr") as HTMLElement;
+
+    expect(row.textContent).toContain("openmediavault（バックアップ先）");
+    expect(row.textContent).toContain("nanopi-r2s（バックアップ先）");
+  });
+
+  it("adds and deletes relations from the relations tab", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(
+      (_input: string | URL | Request, _init?: RequestInit) =>
+        jsonResponse({ ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    await user.click(
+      within(view).getByRole("button", { name: "関係を追加" }),
+    );
+
+    const addDialog = screen.getByRole("dialog", { name: "関係を追加" });
+    expect(
+      within(addDialog).getByRole("combobox", { name: "始点デバイス 1" }),
+    ).toHaveValue("1");
+    expect(
+      within(addDialog).getByRole("combobox", { name: "終点デバイス 1" }),
+    ).toHaveValue("2");
+    expect(
+      within(addDialog).getByRole("combobox", { name: "関係名 1" }),
+    ).toHaveValue("バックアップ先");
+    await user.click(
+      within(addDialog).getByRole("button", { name: "追加する" }),
+    );
+
+    await waitFor(() => {
+      const createCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).endsWith("/api/relations") &&
+          init?.method === "POST",
+      );
+      expect(createCall).toBeDefined();
+      expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+        fromDeviceId: 1,
+        toDeviceId: 2,
+        relationName: "バックアップ先",
+        fromPlaceholder: "",
+        toPlaceholder: "",
+      });
+    });
+
+    await user.click(
+      within(view).getByRole("button", {
+        name: "openmediavaultからnanopi-r2sへの関係を削除",
+      }),
+    );
+    const confirm = screen.getByRole("alertdialog", {
+      name: "関係を削除しますか？",
+    });
+    await user.click(within(confirm).getByRole("button", { name: "削除する" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/relations/20",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+  });
+
+  it("creates, edits, counts, and deletes unused relation names", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(
+      (_input: string | URL | Request, _init?: RequestInit) =>
+        jsonResponse({ ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    await user.click(
+      within(view).getByRole("button", {
+        name: "関係名を追加",
+      }),
+    );
+    const addRelationNameDialog = screen.getByRole("dialog", {
+      name: "関係名を追加",
+    });
+    await user.type(
+      within(addRelationNameDialog).getByRole("textbox", {
+        name: "関係名",
+      }),
+      "監視",
+    );
+    await user.clear(
+      within(addRelationNameDialog).getByRole("textbox", {
+        name: "関係名の色コード",
+      }),
+    );
+    await user.type(
+      within(addRelationNameDialog).getByRole("textbox", {
+        name: "関係名の色コード",
+      }),
+      "#22c55e",
+    );
+    await user.click(
+      within(addRelationNameDialog).getByRole("button", {
+        name: "追加する",
+      }),
+    );
+
+    await waitFor(() => {
+      const updateCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).endsWith("/api/relation-names") &&
+          init?.method === "POST",
+      );
+      expect(updateCall).toBeDefined();
+      expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
+        name: "監視",
+        color: "#22c55e",
+        fromLabel: null,
+        toLabel: null,
+      });
+    });
+
+    await user.click(
+      within(view).getByRole("button", {
+        name: "バックアップ先を編集",
+      }),
+    );
+    const editRelationNameDialog = screen.getByRole("dialog", {
+      name: "関係名を編集",
+    });
+    await user.clear(
+      within(editRelationNameDialog).getByRole("textbox", {
+        name: "終点の名前",
+      }),
+    );
+    await user.type(
+      within(editRelationNameDialog).getByRole("textbox", {
+        name: "終点の名前",
+      }),
+      "転送先",
+    );
+    await user.click(
+      within(editRelationNameDialog).getByRole("button", { name: "保存" }),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/relation-names/relation-name-1",
+        expect.objectContaining({ method: "PUT" }),
+      );
+    });
+    expect(
+      within(view).getByRole("button", {
+        name: "バックアップ先は使用中のため削除できません",
+      }),
+    ).toBeDisabled();
+  });
+
+  it("normalizes relation-name colors for the native color input", async () => {
+    const user = userEvent.setup();
+    const namedColorData = structuredClone(portalData);
+    namedColorData.relationNames[0].color = "blue";
+    render(<OuchiPortal data={namedColorData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("tab", { name: "関係" }));
+    await user.click(
+      screen.getByRole("button", { name: "バックアップ先を編集" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "関係名を編集" });
+
+    expect(
+      within(dialog).getByRole("textbox", { name: "関係名の色コード" }),
+    ).toHaveValue("blue");
+    expect(
+      within(dialog).getByLabelText("関係名の色"),
+    ).toHaveValue("#0000ff");
+    expect(colorValueForInput("rebeccapurple")).toBe("#663399");
   });
 
   it("draws adjacent pairs between duplicate device displays", async () => {
@@ -841,10 +1459,143 @@ describe("OuchiPortal", () => {
     render(<OuchiPortal data={portalData} />);
 
     await user.click(screen.getByRole("button", { name: "管理" }));
-    const drawer = screen.getByRole("dialog", { name: "ポータルを管理" });
-    expect(within(drawer).getByText("SQLite台帳（API）へ保存")).toBeVisible();
-    expect(within(drawer).queryByText(/localStorage/)).not.toBeInTheDocument();
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    expect(within(view).getByText("SQLite台帳（API）へ保存")).toBeVisible();
+    expect(within(view).queryByText(/localStorage/)).not.toBeInTheDocument();
     expect(storageSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows device cascade counts in the deletion confirmation", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(
+      (input: string | URL | Request, init?: RequestInit) => {
+        if (
+          String(input).endsWith("/api/devices/2") &&
+          init?.method === "DELETE"
+        ) {
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ ok: true });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("tab", { name: /デバイス/ }));
+    await user.click(
+      screen.getByRole("button", { name: "nanopi-r2sを削除" }),
+    );
+    const confirm = screen.getByRole("alertdialog", {
+      name: "デバイスを削除しますか？",
+    });
+    expect(
+      within(confirm).getByText(
+        /サービス1件・関係1件も一緒に削除されます。/,
+      ),
+    ).toBeVisible();
+    await user.click(
+      within(confirm).getByRole("button", { name: "削除する" }),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/devices/2",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+    expect(
+      screen.queryByRole("alertdialog", { name: "デバイスを削除しますか？" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("switches to a full-screen five-tab management view and preserves portal state", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<OuchiPortal data={portalData} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "nanopi-r2sを選択" }),
+    );
+    expect(container.querySelector('[data-device-id="2"]')).toHaveClass(
+      "ouchi-device-card--selected",
+    );
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    expect(view).toHaveClass("ouchi-manage-view");
+    expect(
+      screen.queryByRole("dialog", { name: "ポータルを管理" }),
+    ).not.toBeInTheDocument();
+
+    const tabs = within(view).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "ネットワーク (3)",
+      "デバイス (4)",
+      "サービス (2)",
+      "関係",
+      "共通設定",
+    ]);
+    expect(
+      within(view).getByRole("tab", { name: /ネットワーク/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    await user.click(within(view).getByRole("tab", { name: /デバイス/ }));
+    expect(
+      within(view).getByRole("tab", { name: /デバイス/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(view).getByRole("columnheader", { name: "ホスト名" }),
+    ).toBeVisible();
+    const deviceTable = within(view).getByRole("table");
+    expect(
+      within(deviceTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["名前", "ホスト名", "IP", "カテゴリ", "操作"]);
+    expect(
+      within(deviceTable).queryByRole("columnheader", { name: "サービス" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(deviceTable).queryByRole("columnheader", { name: "関係" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(within(view).getByRole("tab", { name: "関係" }));
+    const relationNameTable = within(view).getAllByRole("table")[0];
+    expect(
+      within(relationNameTable).getByRole("columnheader", {
+        name: "使用数",
+      }),
+    ).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: "ポータルに戻る" }),
+    );
+    expect(container.querySelector('[data-device-id="2"]')).toHaveClass(
+      "ouchi-device-card--selected",
+    );
+  });
+
+  it("uses the shared table structure and opens entity edits in a native dialog", async () => {
+    const user = userEvent.setup();
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    expect(within(view).getAllByRole("table")).toHaveLength(1);
+    expect(view.querySelector("article, .ouchi-manage-row")).toBeNull();
+
+    await user.click(
+      within(view).getByRole("button", { name: "ネットワークを追加" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "ネットワークを追加" });
+    expect(dialog.tagName).toBe("DIALOG");
+    expect(dialog).toHaveAttribute("open");
+    await user.click(
+      within(dialog).getByRole("button", { name: "キャンセル" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "ネットワークを追加" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows petname as the management device title and keeps the hostname beside it", async () => {
@@ -858,13 +1609,87 @@ describe("OuchiPortal", () => {
     render(<OuchiPortal data={namedData} />);
 
     await user.click(screen.getByRole("button", { name: "管理" }));
-    const drawer = screen.getByRole("dialog", { name: "ポータルを管理" });
-    await user.click(within(drawer).getByRole("tab", { name: /デバイス/ }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: /デバイス/ }));
 
-    const row = within(drawer)
+    const row = within(view)
       .getByText("門番", { exact: true })
-      .closest(".ouchi-manage-row") as HTMLElement;
+      .closest("tr") as HTMLElement;
     expect(within(row).getByText("nanopi-r2s", { exact: true })).toBeVisible();
+  });
+
+  it("labels the device display name as name and places it before the hostname", async () => {
+    const user = userEvent.setup();
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: /デバイス/ }));
+    await user.click(
+      within(view).getByRole("button", { name: "nanopi-r2sを編集" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "デバイスを編集" });
+    const nameInput = within(dialog).getByRole("textbox", { name: "名前" });
+    const hostnameInput = within(dialog).getByRole("textbox", {
+      name: "ホスト名",
+    });
+
+    expect(nameInput).toHaveAccessibleDescription(
+      "未入力ならホスト名を表示します。",
+    );
+    expect(
+      nameInput.compareDocumentPosition(hostnameInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("uses plain service tables and keeps icon selection in the dialog", async () => {
+    const user = userEvent.setup();
+    render(<OuchiPortal data={portalData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    const view = screen.getByRole("region", { name: "ポータルを管理" });
+    await user.click(within(view).getByRole("tab", { name: /デバイス/ }));
+    expect(
+      view.querySelector(".ouchi-manage-device-mark, .ouchi-manage-vm-mark"),
+    ).toBeNull();
+
+    await user.click(within(view).getByRole("tab", { name: /サービス/ }));
+    const giteaRow = within(view)
+      .getByText("おうちGit", { exact: true })
+      .closest("tr") as HTMLElement;
+    const giteaCells = within(giteaRow).getAllByRole("cell");
+    expect(giteaCells[1]).toHaveTextContent(/^gitea$/);
+    expect(giteaCells[2]).toHaveTextContent(/^nanopi-r2s$/);
+    expect(giteaCells[2]).not.toHaveTextContent("192.168.0.19");
+    expect(giteaCells[3]).toHaveTextContent("http://192.168.0.19:3000/");
+
+    const serviceRow = within(view)
+      .getByText("Notion", { exact: true })
+      .closest("tr") as HTMLElement;
+    expect(serviceRow.querySelector(".ouchi-service-mark")).toBeNull();
+
+    await user.click(
+      within(view).getByRole("button", { name: "Notionのアイコン" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Notionのアイコン" });
+    expect(
+      dialog.querySelector(
+        ".ouchi-icon-picker-current .ouchi-service-mark--generic-globe",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps management styling to plain tables, borders, and native dialogs", () => {
+    const manageStyles = readFileSync(
+      resolve(process.cwd(), "src/portal/styles/manage-simple.css"),
+      "utf8",
+    );
+    expect(manageStyles).toContain("font-family: system-ui");
+    expect(manageStyles).toMatch(/\.ouchi-manage-table \{/);
+    expect(manageStyles).toMatch(/\.ouchi-manage-dialog::backdrop/);
+    expect(manageStyles).not.toMatch(/linear-gradient|radial-gradient/);
+    expect(manageStyles).not.toMatch(/box-shadow/);
   });
 
   it("displays settings.title and saves changes through the API", async () => {
@@ -898,6 +1723,7 @@ describe("OuchiPortal", () => {
       }),
     ).toBeVisible();
     await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("tab", { name: "共通設定" }));
     expect(
       screen.getByRole("textbox", { name: "ポータルドメイン" }),
     ).toHaveValue("ouchi.local");
@@ -921,10 +1747,11 @@ describe("OuchiPortal", () => {
       });
     });
     expect(
-      await screen.findByRole("heading", { name: "我が家のポータル" }),
-    ).toBeVisible();
-    expect(
       screen.getByText("ポータルタイトルを保存しました。"),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "ポータルに戻る" }));
+    expect(
+      await screen.findByRole("heading", { name: "我が家のポータル" }),
     ).toBeVisible();
   });
 
@@ -965,6 +1792,7 @@ describe("OuchiPortal", () => {
               networks: 0,
               devices: 0,
               memberships: 0,
+              relationNames: 0,
               relations: 0,
               services: 0,
               sshKeys: 0,
@@ -982,6 +1810,7 @@ describe("OuchiPortal", () => {
     render(<OuchiPortal data={portalData} />);
 
     await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("tab", { name: "共通設定" }));
     await user.click(
       screen.getByRole("button", { name: "YAMLをエクスポート" }),
     );
@@ -1029,21 +1858,26 @@ describe("OuchiPortal", () => {
     ).toBeVisible();
   });
 
-  it("adds a service without a status input", async () => {
+  it("adds a service with basic fields only and no status input", async () => {
     const user = userEvent.setup();
     render(<OuchiPortal data={portalData} />);
 
     await user.click(screen.getByRole("button", { name: "管理" }));
     await user.click(screen.getByRole("tab", { name: /サービス/ }));
-    await user.click(screen.getByRole("button", { name: "追加" }));
+    await user.click(
+      screen.getByRole("button", { name: "サービスを追加" }),
+    );
     const dialog = screen.getByRole("dialog", { name: "サービスを追加" });
 
     expect(
       within(dialog).getByRole("textbox", { name: "サブドメイン" }),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("combobox", { name: "プロトコル" }),
-    ).toBeInTheDocument();
+      within(dialog).queryByRole("combobox", { name: "プロトコル" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("searchbox", { name: "アイコンを検索" }),
+    ).not.toBeInTheDocument();
     expect(
       within(dialog).queryByRole("combobox", { name: "初期状態" }),
     ).not.toBeInTheDocument();
@@ -1056,19 +1890,15 @@ describe("OuchiPortal", () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
     render(
-      <EntityDialog
+      <ServiceIconDialog
         data={portalData}
-        kind="service"
         onClose={() => undefined}
         onSave={onSave}
+        service={portalData.services[0]}
       />,
     );
-    const dialog = screen.getByRole("dialog", { name: "サービスを追加" });
+    const dialog = screen.getByRole("dialog", { name: "おうちGitのアイコン" });
 
-    await user.type(
-      within(dialog).getByRole("textbox", { name: "サブドメイン" }),
-      "metrics",
-    );
     await user.type(
       within(dialog).getByRole("searchbox", { name: "アイコンを検索" }),
       "grafana",
@@ -1095,15 +1925,11 @@ describe("OuchiPortal", () => {
       within(dialog).getByText("選択中: Grafana"),
     ).toBeVisible();
     await user.click(
-      within(dialog).getByRole("button", { name: "追加する" }),
+      within(dialog).getByRole("button", { name: "保存" }),
     );
     expect(onSave).toHaveBeenCalledWith(
-      "service",
-      expect.objectContaining({
-        subdomain: "metrics",
-        iconKey:
-          "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg",
-      }),
+      portalData.services[0].id,
+      "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg",
     );
   });
 
@@ -1111,14 +1937,14 @@ describe("OuchiPortal", () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
     render(
-      <EntityDialog
+      <ServiceIconDialog
         data={portalData}
-        kind="service"
         onClose={() => undefined}
         onSave={onSave}
+        service={portalData.services[0]}
       />,
     );
-    const dialog = screen.getByRole("dialog", { name: "サービスを追加" });
+    const dialog = screen.getByRole("dialog", { name: "おうちGitのアイコン" });
 
     await user.click(
       within(dialog).getByRole("button", {
@@ -1131,18 +1957,12 @@ describe("OuchiPortal", () => {
       within(dialog).getByRole("textbox", { name: "アイコン画像URL" }),
       "https://icons.example/service.svg",
     );
-    await user.type(
-      within(dialog).getByRole("textbox", { name: "サブドメイン" }),
-      "custom-icon",
-    );
     await user.click(
-      within(dialog).getByRole("button", { name: "追加する" }),
+      within(dialog).getByRole("button", { name: "保存" }),
     );
     expect(onSave).toHaveBeenCalledWith(
-      "service",
-      expect.objectContaining({
-        iconKey: "url:https://icons.example/service.svg",
-      }),
+      portalData.services[0].id,
+      "url:https://icons.example/service.svg",
     );
   });
 
@@ -1199,7 +2019,7 @@ describe("OuchiPortal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps SSH metadata editable without exposing meter controls", async () => {
+  it("omits SSH and meter controls from the device dialog and places category under hostname", async () => {
     const user = userEvent.setup();
     render(<OuchiPortal data={portalData} />);
 
@@ -1210,16 +2030,171 @@ describe("OuchiPortal", () => {
     );
     const dialog = screen.getByRole("dialog", { name: "デバイスを編集" });
 
-    expect(within(dialog).getByText("SSH接続情報")).toBeInTheDocument();
+    expect(within(dialog).queryByText("SSH接続情報")).not.toBeInTheDocument();
     expect(
-      within(dialog).getByRole("textbox", { name: "ペットネーム" }),
-    ).toHaveValue("");
-    expect(
-      within(dialog).getByRole("textbox", { name: "SSHユーザー" }),
-    ).toHaveValue("monitor");
+      within(dialog).queryByRole("textbox", { name: "SSHユーザー" }),
+    ).not.toBeInTheDocument();
     expect(
       within(dialog).queryByText(/メモリ|ディスク|使用率|SSHリソース収集/),
     ).not.toBeInTheDocument();
+
+    const hostnameInput = within(dialog).getByRole("textbox", {
+      name: "ホスト名",
+    });
+    const categorySelect = within(dialog).getByRole("combobox", {
+      name: "デバイスカテゴリー",
+    });
+    expect(
+      hostnameInput.compareDocumentPosition(categorySelect) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const membershipHeading = within(dialog).getByText("ネットワーク所属IP");
+    expect(
+      categorySelect.compareDocumentPosition(membershipHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("loads every device property in the memo dialog and sends the complete map on save", async () => {
+    const user = userEvent.setup();
+    const propertyData: PortalDataV2 = {
+      ...portalData,
+      devices: portalData.devices.map((device) =>
+        device.id === "2"
+          ? {
+              ...device,
+              properties: {
+                vault_path: "sops/devices/nanopi",
+                note: "HDD SMART怪しい",
+              },
+            }
+          : device,
+      ),
+    };
+    const fetchMock = vi.fn(
+      (input: string | URL | Request, _init?: RequestInit) =>
+        String(input).endsWith("/api/portal")
+          ? jsonResponse(apiData)
+          : jsonResponse({ ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal data={propertyData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("tab", { name: /デバイス/ }));
+    await user.click(
+      screen.getByRole("button", { name: "nanopi-r2sのメモ" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "nanopi-r2sのメモ" });
+    expect(
+      within(dialog).getByRole("textbox", { name: "プロパティキー 1" }),
+    ).toHaveValue("vault_path");
+    expect(
+      within(dialog).getByRole("textbox", { name: "プロパティ値 1" }),
+    ).toHaveValue("sops/devices/nanopi");
+    expect(
+      within(dialog).getByText(
+        /平文の秘密情報は入力しないこと。必要な場合は SOPS などで暗号化した文字列を入れること/,
+      ),
+    ).toBeVisible();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "プロパティを追加" }),
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "プロパティキー 3" }),
+      "maintenance_owner",
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "プロパティ値 3" }),
+      "kyle",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      const updateCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).endsWith("/api/devices/2") &&
+          init?.method === "PUT",
+      );
+      expect(updateCall).toBeDefined();
+      expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+        properties: {
+          vault_path: "sops/devices/nanopi",
+          note: "HDD SMART怪しい",
+          maintenance_owner: "kyle",
+        },
+      });
+    });
+  });
+
+  it("loads every service property in the memo dialog and sends the complete map on save", async () => {
+    const user = userEvent.setup();
+    const propertyData: PortalDataV2 = {
+      ...portalData,
+      services: portalData.services.map((item) =>
+        item.id === "1"
+          ? {
+              ...item,
+              properties: {
+                sops_key: "services/gitea",
+                ai_note: "共有Git",
+              },
+            }
+          : item,
+      ),
+    };
+    const fetchMock = vi.fn(
+      (input: string | URL | Request, _init?: RequestInit) =>
+        String(input).endsWith("/api/portal")
+          ? jsonResponse(apiData)
+          : jsonResponse({ ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal data={propertyData} />);
+
+    await user.click(screen.getByRole("button", { name: "管理" }));
+    await user.click(screen.getByRole("tab", { name: /サービス/ }));
+    await user.click(
+      screen.getByRole("button", { name: "おうちGitのメモ" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "おうちGitのメモ" });
+    expect(
+      within(dialog).getByRole("textbox", { name: "プロパティキー 1" }),
+    ).toHaveValue("sops_key");
+    expect(
+      within(dialog).getByRole("textbox", { name: "プロパティ値 2" }),
+    ).toHaveValue("共有Git");
+    await user.click(
+      within(dialog).getByRole("button", { name: "プロパティ 1を削除" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "プロパティを追加" }),
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "プロパティキー 2" }),
+      "owner",
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "プロパティ値 2" }),
+      "kyle",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      const updateCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).endsWith("/api/services/1") &&
+          init?.method === "PUT",
+      );
+      expect(updateCall).toBeDefined();
+      expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+        properties: {
+          ai_note: "共有Git",
+          owner: "kyle",
+        },
+      });
+    });
   });
 
   it("sends a network create request and reloads the API snapshot", async () => {
@@ -1259,7 +2234,9 @@ describe("OuchiPortal", () => {
     await screen.findByText("nanopi-r2s");
 
     await user.click(screen.getByRole("button", { name: "管理" }));
-    await user.click(screen.getByRole("button", { name: "追加" }));
+    await user.click(
+      screen.getByRole("button", { name: "ネットワークを追加" }),
+    );
     await user.type(
       screen.getByRole("textbox", { name: "ネットワーク名" }),
       "ゲストWi-Fi",

@@ -5,8 +5,9 @@
 -- carried over from v0.3 unchanged:
 -- IPs live on device_networks (memberships); services hang off a
 -- membership, so the same device can serve different IPs per network.
--- Relations use the generic model: target + tag + colour. A tag has one
--- canonical colour across all of its relations.
+-- Relations reference reusable relation-name definitions. A definition
+-- owns the colour and directional labels; relation rows own only the name
+-- reference and both devices.
 -- The omv -> nanopi-r2s "バックアップ先" relation is a sample carried
 -- over from the design discussion; the ホストOS ones are real.
 INSERT INTO settings (id, domain, title) VALUES (1, 'ouchi.local', 'あなたのホームラボ');
@@ -58,12 +59,19 @@ INSERT INTO device_networks (id, device_id, network_id, ip) VALUES
   (16, 15, 1, NULL),
   (17, 16, 1, NULL);
 
-INSERT INTO relations (from_device_id, to_device_id, tag, color) VALUES
-  (4, 2, 'ホストOS', 'yellow'),
-  (5, 2, 'ホストOS', 'yellow'),
-  (6, 3, 'ホストOS', 'yellow'),
-  (7, 3, 'ホストOS', 'yellow'),
-  (4, 1, 'バックアップ先', 'blue');
+INSERT INTO relation_names (id, name, color, from_label, to_label) VALUES
+  (1, 'ホストOS', '#d5a22b', NULL, NULL),
+  (2, 'バックアップ先', '#3b82f6', NULL, NULL);
+
+INSERT INTO relations
+  (from_device_id, to_device_id, relation_name_id,
+   from_placeholder, to_placeholder)
+VALUES
+  (4, 2, 1, '', ''),
+  (5, 2, 1, '', ''),
+  (6, 3, 1, '', ''),
+  (7, 3, 1, '', ''),
+  (4, 1, 2, '', '');
 
 -- Services hang off memberships. Proxmox VE's UI is https on 8006
 -- (the v0.2 draft left this unseeded pending confirmation; seeded as

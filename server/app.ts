@@ -4,6 +4,7 @@ import type {
   PortalMembershipInput,
   PortalNetworkInput,
   PortalRelationInput,
+  PortalRelationNameInput,
   PortalServiceInput,
   ValidationIssue,
 } from "../src/portal/types";
@@ -13,6 +14,7 @@ import {
   validateMembershipPayload,
   validateNetworkPayload,
   validateRelationPayload,
+  validateRelationNamePayload,
   validateServicePayload,
   validateSettingsPayload,
 } from "../src/portal/validation";
@@ -82,7 +84,7 @@ export function createApp(
     context.json({
       ok: true,
       service: "ouchi.local",
-      database: "sqlite-v0.4",
+      database: "sqlite-v0.6",
     }),
   );
 
@@ -199,6 +201,17 @@ export function createApp(
     context.json(database.listDevices()),
   );
 
+  app.get("/api/devices/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const device = database.getDevice(id);
+    return device
+      ? context.json(device)
+      : context.json({ error: "デバイスが見つかりません" }, 404);
+  });
+
   app.post("/api/devices", async (context) => {
     const input = await jsonBody(context);
     const issues = validateDevicePayload(input);
@@ -260,16 +273,6 @@ export function createApp(
     const id = parseId(context.req.param("id"));
     if (!id) {
       return context.json({ error: "IDが不正です" }, 400);
-    }
-    const blockers = database.deviceDeletionBlockers(id);
-    if (blockers.services > 0 || blockers.relations > 0) {
-      const failure = conflict(
-        blockers.services > 0
-          ? "紐づくサービスが残っているためデバイスを削除できません"
-          : "紐づく関係が残っているためデバイスを削除できません",
-        { blockers },
-      );
-      return context.json(failure.body, failure.status);
     }
     return database.deleteDevice(id)
       ? context.json({ ok: true })
@@ -389,6 +392,17 @@ export function createApp(
     context.json(database.listServices()),
   );
 
+  app.get("/api/services/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const service = database.getService(id);
+    return service
+      ? context.json(service)
+      : context.json({ error: "サービスが見つかりません" }, 404);
+  });
+
   const serviceIssues = (
     input: unknown,
     existingId?: number,
@@ -467,7 +481,118 @@ export function createApp(
     context.json(database.listRelations()),
   );
 
-  const relationIssues = (input: unknown): ValidationIssue[] => {
+  app.get("/api/relation-names", (context) =>
+    context.json(database.listRelationNames()),
+  );
+
+  app.get("/api/relation-names/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const relationName = database.getRelationName(id);
+    return relationName
+      ? context.json(relationName)
+      : context.json({ error: "関係名が見つかりません" }, 404);
+  });
+
+  const relationNameIssues = (
+    input: unknown,
+    editingId?: number,
+  ): ValidationIssue[] => {
+    const issues = validateRelationNamePayload(input);
+    if (
+      issues.length > 0 ||
+      typeof input !== "object" ||
+      input === null
+    ) {
+      return issues;
+    }
+    const value = input as PortalRelationNameInput;
+    const duplicate = database
+      .listRelationNames()
+      .find(
+        (relationName) =>
+          relationName.id !== editingId &&
+          relationName.name === value.name.trim(),
+      );
+    if (duplicate) {
+      issues.push({ path: "name", message: "同じ関係名が登録されています" });
+    }
+    if (editingId && !database.getRelationName(editingId)) {
+      issues.push({ path: "id", message: "関係名が見つかりません" });
+    }
+    return issues;
+  };
+
+  app.post("/api/relation-names", async (context) => {
+    const input = await jsonBody(context);
+    const issues = relationNameIssues(input);
+    if (issues.length > 0) {
+      const failure = invalid(issues);
+      return context.json(failure.body, failure.status);
+    }
+    try {
+      return context.json(
+        database.createRelationName(input as PortalRelationNameInput),
+        201,
+      );
+    } catch (error) {
+      const failure = databaseConflict(error);
+      return context.json(failure.body, failure.status);
+    }
+  });
+
+  app.put("/api/relation-names/:id", async (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const input = await jsonBody(context);
+    const issues = relationNameIssues(input, id);
+    if (issues.length > 0) {
+      const failure = invalid(issues);
+      return context.json(failure.body, failure.status);
+    }
+    try {
+      const relationName = database.updateRelationName(
+        id,
+        input as PortalRelationNameInput,
+      );
+      return relationName
+        ? context.json(relationName)
+        : context.json({ error: "関係名が見つかりません" }, 404);
+    } catch (error) {
+      const failure = databaseConflict(error);
+      return context.json(failure.body, failure.status);
+    }
+  });
+
+  app.delete("/api/relation-names/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    if (!database.getRelationName(id)) {
+      return context.json({ error: "関係名が見つかりません" }, 404);
+    }
+    const blockers = database.relationNameDeletionBlocker(id);
+    if (blockers.relationCount > 0) {
+      const failure = conflict(
+        "使用中の関係名は削除できません",
+        { blockers },
+      );
+      return context.json(failure.body, failure.status);
+    }
+    return database.deleteRelationName(id)
+      ? context.json({ ok: true })
+      : context.json({ error: "関係名が見つかりません" }, 404);
+  });
+
+  const relationIssues = (
+    input: unknown,
+    editingId?: number,
+  ): ValidationIssue[] => {
     const issues = validateRelationPayload(input);
     if (issues.length > 0 || typeof input !== "object" || input === null) {
       return issues;
@@ -485,13 +610,26 @@ export function createApp(
         message: "関係先デバイスが存在しません",
       });
     }
-    const canonicalColor = database.canonicalTagColor(value.tag);
-    if (canonicalColor && canonicalColor !== value.color.trim()) {
+    const relationName = database.findRelationName(value.relationName);
+    if (!relationName) {
       issues.push({
-        path: "color",
+        path: "relationName",
+        message: "関係名が存在しません",
+      });
+    } else if (
+      database.relationDuplicate(
+        relationName.id,
+        value.fromDeviceId,
+        value.toDeviceId,
+        value.fromPlaceholder?.trim() ?? "",
+        value.toPlaceholder?.trim() ?? "",
+        editingId,
+      )
+    ) {
+      issues.push({
+        path: "relationName",
         message:
-          `タグ「${value.tag.trim()}」の色は` +
-          `「${canonicalColor}」に固定されています`,
+          "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
       });
     }
     return issues;
@@ -515,39 +653,15 @@ export function createApp(
     }
   });
 
-  app.put("/api/relations/tags/:tag/color", async (context) => {
-    const tag = context.req.param("tag").trim();
-    if (!tag) {
-      return context.json(
-        { issues: [{ path: "tag", message: "タグ名は必須です" }] },
-        400,
-      );
+  app.get("/api/relations/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
     }
-    const input = await jsonBody(context);
-    if (
-      typeof input !== "object" ||
-      input === null ||
-      !("color" in input) ||
-      typeof input.color !== "string" ||
-      input.color.trim() === "" ||
-      [...input.color.trim()].length > 100
-    ) {
-      return context.json(
-        {
-          issues: [
-            {
-              path: "color",
-              message: "関係色は1〜100文字で入力してください",
-            },
-          ],
-        },
-        400,
-      );
-    }
-    const updated = database.recolorTag(tag, input.color);
-    return updated.updated > 0
-      ? context.json(updated)
-      : context.json({ error: "タグを持つ関係が見つかりません" }, 404);
+    const relation = database.getRelation(id);
+    return relation
+      ? context.json(relation)
+      : context.json({ error: "関係が見つかりません" }, 404);
   });
 
   app.put("/api/relations/:id", async (context) => {
@@ -556,18 +670,23 @@ export function createApp(
       return context.json({ error: "IDが不正です" }, 400);
     }
     const input = await jsonBody(context);
-    const issues = relationIssues(input);
+    const issues = relationIssues(input, id);
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
     }
-    const relation = database.updateRelation(
-      id,
-      input as PortalRelationInput,
-    );
-    return relation
-      ? context.json(relation)
-      : context.json({ error: "関係が見つかりません" }, 404);
+    try {
+      const relation = database.updateRelation(
+        id,
+        input as PortalRelationInput,
+      );
+      return relation
+        ? context.json(relation)
+        : context.json({ error: "関係が見つかりません" }, 404);
+    } catch (error) {
+      const failure = databaseConflict(error);
+      return context.json(failure.body, failure.status);
+    }
   });
 
   app.delete("/api/relations/:id", (context) => {

@@ -19,20 +19,19 @@ export default function App() {
             </p>
             {yamlDemo && (
               <span className="demo-mode-badge">
-                架空サンプルデータ / 読み取り専用
+                架空サンプルデータ / 保存無効
               </span>
             )}
           </div>
         </div>
       </header>
       <OuchiPortal
-        readOnly={yamlDemo}
         showTitle={false}
         yamlUrl={yamlDemo ? yamlUrl : undefined}
       />
       <p className="demo-note">
         {yamlDemo
-          ? "架空のサンプルデータを使用したGitHub Pages向け表示専用デモです。編集・保存はできません。"
+          ? "架空のサンプルデータを使用したGitHub Pages向けデモです。管理画面を試せますが、保存はできません。"
           : "Reactコンポーネント・デモ / SQLite台帳をHono API経由で表示します"}
       </p>
     </main>

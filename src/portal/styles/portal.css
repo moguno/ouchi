@@ -1,0 +1,100 @@
+/* Portal data v2 / design update */
+.ouchi-portal {
+  max-width: 1500px;
+  padding: 30px 34px 24px;
+  border-color: #e8ebf0;
+  box-shadow:
+    0 24px 70px rgba(37, 48, 61, 0.1),
+    0 2px 8px rgba(37, 48, 61, 0.035);
+}
+
+.ouchi-title-block {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ouchi-home-mark {
+  display: inline-grid;
+  width: 41px;
+  height: 41px;
+  flex: 0 0 41px;
+  place-items: center;
+  color: #fff;
+  background: #6259d8;
+  border-radius: 12px;
+  font-size: 19px;
+  font-weight: 800;
+  box-shadow: 0 7px 18px rgba(98, 89, 216, 0.22);
+}
+
+.ouchi-title-block h1,
+.ouchi-title-block h2 {
+  font-size: clamp(27px, 2.8vw, 35px);
+}
+
+.ouchi-portal-header--actions-only {
+  justify-content: flex-end;
+}
+
+.ouchi-user-title {
+  min-width: 0;
+}
+
+.ouchi-user-title h2 {
+  overflow: hidden;
+  margin: 0;
+  color: #27313a;
+  font-size: clamp(24px, 2.3vw, 31px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ouchi-summary {
+  margin-top: 1px;
+  color: #7b818a;
+  font-size: 11px;
+}
+
+.ouchi-segmented {
+  border-color: #d9dee6;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.ouchi-segmented button {
+  min-height: 38px;
+  border-radius: 999px;
+}
+
+.ouchi-segmented button.is-active {
+  color: #fff;
+  background: #6259d8;
+}
+
+.ouchi-manage-button {
+  min-height: 38px;
+  padding-right: 8px;
+  background: #fff;
+  border-color: #d9dee6;
+  border-radius: 999px;
+}
+
+.ouchi-canvas {
+  min-height: 540px;
+  padding: 16px 2px 12px;
+  position: relative;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.ouchi-network-stack,
+.ouchi-list-stack {
+  position: relative;
+  z-index: 1;
+}
+

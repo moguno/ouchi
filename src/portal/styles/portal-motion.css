@@ -1,0 +1,156 @@
+@keyframes ouchi-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ouchi-slide-in {
+  from {
+    transform: translateX(26px);
+    opacity: 0.7;
+  }
+}
+
+@keyframes ouchi-pop-in {
+  from {
+    transform: translateY(8px) scale(0.985);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .ouchi-portal {
+    padding: 20px 15px 17px;
+    border-radius: 19px;
+  }
+
+  .ouchi-portal-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 13px;
+  }
+
+  .ouchi-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .ouchi-segmented button {
+    padding: 0 12px;
+  }
+
+  .ouchi-canvas {
+    min-height: 410px;
+    padding: 12px;
+  }
+
+  .ouchi-network-card {
+    padding: 17px 13px 14px;
+  }
+
+  .ouchi-node-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ouchi-service-grid {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  }
+
+  .ouchi-list-node-summary,
+  .ouchi-list-vm {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .ouchi-manage-drawer {
+    width: 100%;
+  }
+
+  .ouchi-drawer-header,
+  .ouchi-dialog-header {
+    padding: 18px 17px 13px;
+  }
+
+  .ouchi-drawer-tabs {
+    padding: 0 17px;
+  }
+
+  .ouchi-drawer-body {
+    padding: 14px 17px 20px;
+  }
+
+  .ouchi-drawer-footer {
+    padding: 12px 17px;
+  }
+
+  .ouchi-manage-chip {
+    display: none;
+  }
+
+  .ouchi-entity-form {
+    padding: 2px 17px 19px;
+  }
+}
+
+@media (max-width: 430px) {
+  .ouchi-header-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ouchi-segmented,
+  .ouchi-segmented button,
+  .ouchi-manage-button {
+    width: 100%;
+  }
+
+  .ouchi-segmented button {
+    justify-content: center;
+  }
+
+  .ouchi-network-header {
+    align-items: flex-start;
+  }
+
+  .ouchi-network-header code {
+    max-width: 43%;
+  }
+
+  .ouchi-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ouchi-drawer-tabs button {
+    gap: 3px;
+    font-size: 10px;
+  }
+
+  .ouchi-drawer-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ouchi-ledger-transfer-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ouchi-ledger-transfer-heading button {
+    width: 100%;
+  }
+
+  .ouchi-ledger-preview .ouchi-danger-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ouchi-portal *,
+  .ouchi-overlay *,
+  .ouchi-dialog-backdrop * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+

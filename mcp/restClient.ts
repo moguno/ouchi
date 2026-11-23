@@ -9,6 +9,7 @@ import type {
   PortalMembershipInput,
   PortalNetworkInput,
   PortalRelationInput,
+  PortalRelationNameInput,
   PortalServiceInput,
 } from "../src/portal/types";
 
@@ -221,6 +222,37 @@ export class LedgerRestClient {
 
   deleteRelation(id: number): Promise<{ ok: true }> {
     return this.request(`/api/relations/${id}`, { method: "DELETE" });
+  }
+
+  listRelationNames(): Promise<PortalApiData["relationNames"]> {
+    return this.request<PortalApiData["relationNames"]>(
+      "/api/relation-names",
+    );
+  }
+
+  async getRelationName(
+    id: number,
+  ): Promise<PortalApiData["relationNames"][number] | undefined> {
+    return (await this.listRelationNames()).find(
+      (relationName) => relationName.id === id,
+    );
+  }
+
+  createRelationName(
+    input: PortalRelationNameInput,
+  ): Promise<PortalApiData["relationNames"][number]> {
+    return this.write("POST", "/api/relation-names", input);
+  }
+
+  updateRelationName(
+    id: number,
+    input: PortalRelationNameInput,
+  ): Promise<PortalApiData["relationNames"][number]> {
+    return this.write("PUT", `/api/relation-names/${id}`, input);
+  }
+
+  deleteRelationName(id: number): Promise<{ ok: true }> {
+    return this.request(`/api/relation-names/${id}`, { method: "DELETE" });
   }
 
   traverseDeviceRelations(

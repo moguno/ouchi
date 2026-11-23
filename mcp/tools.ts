@@ -6,6 +6,7 @@ import type {
   PortalMembershipInput,
   PortalNetworkInput,
   PortalRelationInput,
+  PortalRelationNameInput,
   PortalServiceInput,
 } from "../src/portal/types";
 import {
@@ -93,6 +94,13 @@ const nullableStringSchema = {
   type: ["string", "null"],
 };
 
+const propertiesSchema = {
+  type: "object",
+  additionalProperties: { type: "string" },
+  description:
+    "任意の文字列プロパティ。更新時に指定すると全量置換し、省略すると既存値を保持します。",
+};
+
 const networkInputProperties = {
   name: { type: "string" },
   cidr: { type: ["string", "null"] },
@@ -112,6 +120,7 @@ const deviceInputProperties = {
   sshPort: { type: ["integer", "null"] },
   meterEnabled: { type: "boolean" },
   note: { type: ["string", "null"] },
+  properties: propertiesSchema,
 };
 
 const membershipInputProperties = {
@@ -133,20 +142,33 @@ const serviceInputProperties = {
   monitorPath: { type: ["string", "null"] },
   serviceUrl: { type: ["string", "null"] },
   iconKey: { type: ["string", "null"] },
+  properties: propertiesSchema,
   enabled: { type: "boolean" },
 };
 
 const relationInputProperties = {
   fromDeviceId: idSchema,
   toDeviceId: idSchema,
-  tag: { type: "string" },
+  relationName: { type: "string" },
+  fromPlaceholder: { type: "string" },
+  toPlaceholder: { type: "string" },
+};
+
+const relationNameInputProperties = {
+  name: { type: "string" },
+  color: { type: "string" },
   fromLabel: { type: ["string", "null"] },
   toLabel: { type: ["string", "null"] },
-  color: { type: "string" },
 };
 
 function collectionTool(
-  resource: "networks" | "devices" | "memberships" | "services" | "relations",
+  resource:
+    | "networks"
+    | "devices"
+    | "memberships"
+    | "services"
+    | "relation_names"
+    | "relations",
   singular: string,
 ): McpToolDefinition {
   return {
@@ -199,7 +221,7 @@ function updateTool(
     title: `${singular}更新`,
     description:
       `REST API の PUT で${singular}を更新します。` +
-      "完全置換なので既存値を含めて指定してください。",
+      "通常項目は完全置換ですが、properties は省略すると既存値を保持します。",
     inputSchema: objectSchema({ id: idSchema, ...properties }, [
       "id",
       ...required,
@@ -211,13 +233,15 @@ function updateTool(
 function deleteTool(
   resource: string,
   singular: string,
+  description?: string,
 ): McpToolDefinition {
   return {
     name: `delete_${resource}`,
     title: `${singular}削除`,
     description:
-      `REST API から${singular}を削除します。` +
-      "参照中データがある場合の 409 も REST の結果をそのまま返します。",
+      description ??
+      (`REST API から${singular}を削除します。` +
+        "参照中データがある場合の 409 も REST の結果をそのまま返します。"),
     inputSchema: objectSchema({ id: idSchema }, ["id"]),
     annotations: withAnnotations(`${singular}削除`, deleteAnnotations),
   };
@@ -228,7 +252,8 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     name: "get_network_map",
     title: "ネットワーク地図",
     description:
-      "ネットワーク→デバイス→サービスの階層、方向ラベル・タグ・色を含む" +
+      "ネットワーク→デバイス→サービスの階層、置換済み方向ラベル・" +
+      "関係名・色を含む" +
       "関係一覧を構造化テキストで返します。deviceId を指定すると、その" +
       "デバイスから depth 段の関係トラバースと近傍ビューも含めます。",
     inputSchema: objectSchema({
@@ -247,7 +272,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     title: "デバイス近傍",
     description:
       "指定デバイスを起点に、関係を双方向へ depth 段たどり、" +
-      "関連デバイス・サービス・関係ラベル・タグ・色を返します。",
+      "関連デバイス・サービス・置換済み関係ラベル・関係名・色を返します。",
     inputSchema: objectSchema(
       {
         deviceId: idSchema,
@@ -262,7 +287,8 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     title: "デバイス検索",
     description:
       "ホスト名・ペットネーム・カテゴリ・メモ・IP・所属ラベル・" +
-      "ネットワーク名・関係タグを対象にデバイスを検索します。",
+      "ネットワーク名・関係タグ・プロパティのキーと値を対象に" +
+      "デバイスを検索します。",
     inputSchema: objectSchema(
       {
         query: { type: "string" },
@@ -277,7 +303,8 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     title: "サービス検索",
     description:
       "サブドメイン・ペットネーム・説明・URL・アイコン・所有デバイス・" +
-      "ネットワーク・関係タグを対象にサービスを検索します。",
+      "ネットワーク・関係タグ・プロパティのキーと値を対象に" +
+      "サービスを検索します。",
     inputSchema: objectSchema(
       {
         query: { type: "string" },
@@ -340,7 +367,13 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
       "note",
     ],
   ),
-  deleteTool("device", "デバイス"),
+  deleteTool(
+    "device",
+    "デバイス",
+    "REST API からデバイスを削除します。デバイスを端点とする関係、" +
+      "デバイスに属するサービスとネットワーク所属も同一トランザクションで" +
+      "一緒に削除されます。",
+  ),
   collectionTool("memberships", "ネットワーク所属"),
   getTool("membership", "ネットワーク所属"),
   createTool(
@@ -391,6 +424,21 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     ],
   ),
   deleteTool("service", "サービス"),
+  collectionTool("relation_names", "関係名"),
+  getTool("relation_name", "関係名"),
+  createTool(
+    "relation_name",
+    "関係名",
+    relationNameInputProperties,
+    ["name", "color"],
+  ),
+  updateTool(
+    "relation_name",
+    "関係名",
+    relationNameInputProperties,
+    ["name", "color", "fromLabel", "toLabel"],
+  ),
+  deleteTool("relation_name", "関係名"),
   collectionTool("relations", "関係"),
   getTool("relation", "関係"),
   {
@@ -398,7 +446,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     title: "デバイス関係トラバース",
     description:
       "REST API の関係トラバースを使い、指定デバイスに直接つながる" +
-      "方向・ラベル・タグ・色・関連デバイスを返します。",
+      "関係名・方向ラベル・色・関連デバイスを返します。",
     inputSchema: objectSchema(
       {
         deviceId: idSchema,
@@ -415,7 +463,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "relation",
     "関係",
     relationInputProperties,
-    ["fromDeviceId", "toDeviceId", "tag", "color"],
+    ["fromDeviceId", "toDeviceId", "relationName"],
   ),
   updateTool(
     "relation",
@@ -424,10 +472,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     [
       "fromDeviceId",
       "toDeviceId",
-      "tag",
-      "fromLabel",
-      "toLabel",
-      "color",
+      "relationName",
     ],
   ),
   deleteTool("relation", "関係"),
@@ -435,7 +480,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     name: "export_ledger_yaml",
     title: "YAMLエクスポート",
     description:
-      "REST API から台帳全体の ouchi-ledger/1 YAML を取得します。",
+      "REST API から台帳全体の ouchi-ledger/2 YAML を取得します。",
     inputSchema: objectSchema({}),
     annotations: withAnnotations("YAMLエクスポート", readAnnotations),
   },
@@ -444,7 +489,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     title: "YAMLインポート",
     description:
       "REST API の置き換え型インポートへ YAML を送ります。" +
-      "全件の形式・参照・自然キー・タグ色を REST 側で検証します。",
+      "全件の形式・参照・自然キー・関係名を REST 側で検証します。",
     inputSchema: objectSchema({ yaml: { type: "string" } }, ["yaml"]),
     annotations: withAnnotations("YAMLインポート", {
       readOnlyHint: false,
@@ -555,6 +600,7 @@ function searchDeviceResults(
           membership.label ?? "",
           networkNameById.get(membership.networkId) ?? "",
         ]),
+        ...Object.entries(device.properties ?? {}).flat(),
         ...tags,
       ]
         .join("\n")
@@ -576,6 +622,7 @@ function searchDeviceResults(
           String(membership.networkId),
       })),
       relationTags: tags,
+      relationNames: tags,
     }));
 }
 
@@ -623,6 +670,7 @@ function searchServiceResults(
         owner.device?.petname ?? "",
         owner.networkName ?? "",
         owner.membership?.label ?? "",
+        ...Object.entries(service.properties ?? {}).flat(),
         ...tags,
       ]
         .join("\n")
@@ -649,6 +697,7 @@ function searchServiceResults(
       membership: owner.membership ?? null,
       networkName: owner.networkName ?? null,
       relationTags: tags,
+      relationNames: tags,
     }));
 }
 
@@ -672,6 +721,12 @@ function deviceBody(args: ToolArguments): PortalDeviceInput {
     sshPort: args.sshPort as number | null | undefined,
     meterEnabled: args.meterEnabled as boolean,
     note: args.note as string | null | undefined,
+    ...(Object.hasOwn(args, "properties")
+      ? {
+          properties:
+            args.properties as PortalDeviceInput["properties"],
+        }
+      : {}),
   };
 }
 
@@ -698,6 +753,12 @@ function serviceBody(args: ToolArguments): PortalServiceInput {
     serviceUrl: args.serviceUrl as string | null | undefined,
     iconKey:
       args.iconKey as PortalServiceInput["iconKey"],
+    ...(Object.hasOwn(args, "properties")
+      ? {
+          properties:
+            args.properties as PortalServiceInput["properties"],
+        }
+      : {}),
     enabled: args.enabled as boolean,
   };
 }
@@ -706,10 +767,20 @@ function relationBody(args: ToolArguments): PortalRelationInput {
   return {
     fromDeviceId: numberArgument(args, "fromDeviceId"),
     toDeviceId: numberArgument(args, "toDeviceId"),
-    tag: stringArgument(args, "tag"),
+    relationName: stringArgument(args, "relationName"),
+    fromPlaceholder:
+      args.fromPlaceholder as string | undefined,
+    toPlaceholder:
+      args.toPlaceholder as string | undefined,
+  };
+}
+
+function relationNameBody(args: ToolArguments): PortalRelationNameInput {
+  return {
+    name: stringArgument(args, "name"),
+    color: stringArgument(args, "color"),
     fromLabel: args.fromLabel as string | null | undefined,
     toLabel: args.toLabel as string | null | undefined,
-    color: stringArgument(args, "color"),
   };
 }
 
@@ -736,6 +807,7 @@ export async function callTool(
           networks: data.networks.length,
           devices: data.devices.length,
           services: data.services.length,
+          relationNames: data.relationNames.length,
           relations: data.relations.length,
         },
       };
@@ -868,6 +940,30 @@ export async function callTool(
     }
     case "delete_service":
       return jsonResult(await client.deleteService(numberArgument(args, "id")));
+    case "list_relation_names":
+      return jsonResult(await client.listRelationNames());
+    case "get_relation_name": {
+      const id = numberArgument(args, "id");
+      const relationName = await client.getRelationName(id);
+      if (!relationName) {
+        throw missingEntity("relation-names", id);
+      }
+      return jsonResult(relationName);
+    }
+    case "create_relation_name":
+      return jsonResult(
+        await client.createRelationName(relationNameBody(args)),
+      );
+    case "update_relation_name": {
+      const id = numberArgument(args, "id");
+      return jsonResult(
+        await client.updateRelationName(id, relationNameBody(args)),
+      );
+    }
+    case "delete_relation_name":
+      return jsonResult(
+        await client.deleteRelationName(numberArgument(args, "id")),
+      );
     case "list_relations":
       return jsonResult(await client.listRelations());
     case "get_relation": {

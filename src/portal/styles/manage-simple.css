@@ -1,0 +1,627 @@
+:root {
+  --ouchi-manage-accent: #1a5fb4;
+}
+
+.ouchi-manage-view {
+  box-sizing: border-box;
+  min-height: 100vh;
+  color: #222;
+  background: #fff;
+  font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ouchi-manage-view *,
+.ouchi-manage-view *::before,
+.ouchi-manage-view *::after,
+.ouchi-manage-dialog *,
+.ouchi-manage-dialog *::before,
+.ouchi-manage-dialog *::after {
+  box-sizing: border-box;
+}
+
+.ouchi-manage-view-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #ccc;
+}
+
+.ouchi-manage-view-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ouchi-manage-view-domain {
+  margin-left: auto;
+  color: #666;
+  font-size: 12px;
+}
+
+.ouchi-manage-back {
+  padding: 0;
+  color: var(--ouchi-manage-accent);
+  background: transparent;
+  border: 0;
+}
+
+.ouchi-manage-notice {
+  margin: 0;
+  padding: 8px 16px;
+  color: #555;
+  background: #f4f4f4;
+  border-bottom: 1px solid #ccc;
+}
+
+.ouchi-manage-demo-notice {
+  padding: 8px 16px;
+  color: #5b4300;
+  background: #fff7d6;
+  border-bottom: 1px solid #dfc66a;
+}
+
+.ouchi-manage-notice--error {
+  color: #8a1f1f;
+}
+
+.ouchi-manage-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  border-bottom: 1px solid #ccc;
+}
+
+.ouchi-manage-tabs button {
+  padding: 8px 12px;
+  color: #555;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.ouchi-manage-tabs button.is-active {
+  color: #222;
+  border-bottom-color: var(--ouchi-manage-accent);
+  font-weight: 600;
+}
+
+.ouchi-manage-view-body {
+  max-width: 960px;
+  min-height: calc(100vh - 118px);
+  padding: 16px;
+}
+
+.ouchi-manage-section + .ouchi-manage-section {
+  margin-top: 24px;
+}
+
+.ouchi-manage-section h2,
+.ouchi-manage-view-body > h2 {
+  margin: 20px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ouchi-manage-section h2:first-child,
+.ouchi-manage-view-body > h2:first-child {
+  margin-top: 0;
+}
+
+.ouchi-manage-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.ouchi-manage-view button,
+.ouchi-manage-dialog button,
+.ouchi-manage-view input,
+.ouchi-manage-view select,
+.ouchi-manage-view textarea,
+.ouchi-manage-dialog input,
+.ouchi-manage-dialog select,
+.ouchi-manage-dialog textarea {
+  font: inherit;
+}
+
+.ouchi-manage-view button,
+.ouchi-manage-dialog button {
+  padding: 4px 10px;
+  color: #222;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ouchi-manage-view button.primary,
+.ouchi-manage-dialog button.primary {
+  color: #fff;
+  background: var(--ouchi-manage-accent);
+  border-color: var(--ouchi-manage-accent);
+}
+
+.ouchi-manage-view button.ouchi-manage-danger,
+.ouchi-manage-dialog button.ouchi-manage-danger {
+  color: #b00020;
+  border-color: #b00020;
+}
+
+.ouchi-manage-view button:disabled,
+.ouchi-manage-dialog button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.ouchi-manage-inline-hint,
+.ouchi-manage-note {
+  margin: 6px 0;
+  color: #666;
+  font-size: 12px;
+}
+
+.ouchi-manage-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ouchi-manage-table th,
+.ouchi-manage-table td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+  border: 1px solid #ccc;
+}
+
+.ouchi-manage-table th {
+  background: #f4f4f4;
+  font-weight: 600;
+}
+
+.ouchi-manage-table-number {
+  text-align: right !important;
+}
+
+.ouchi-manage-table-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ouchi-manage-table-empty {
+  color: #666;
+  text-align: center !important;
+}
+
+.ouchi-manage-color-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  background: #d5a22b;
+  border: 1px solid #999;
+}
+
+.ouchi-manage-view-footer {
+  padding: 8px 16px;
+  color: #666;
+  border-top: 1px solid #ccc;
+  font-size: 12px;
+}
+
+.ouchi-manage-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  color: #222;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 6px;
+  font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+  font-size: 14px;
+}
+
+.ouchi-manage-dialog--wide {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.ouchi-manage-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.ouchi-manage-dialog-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #ccc;
+}
+
+.ouchi-manage-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.ouchi-manage-form,
+.ouchi-manage-dialog > form,
+.ouchi-manage-dialog .ouchi-entity-form {
+  display: block;
+  margin: 0;
+  padding: 16px;
+}
+
+.ouchi-manage-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ouchi-manage-field > span,
+.ouchi-manage-dialog .ouchi-field > span {
+  color: #555;
+  font-size: 12px;
+}
+
+.ouchi-manage-view input,
+.ouchi-manage-view select,
+.ouchi-manage-view textarea,
+.ouchi-manage-dialog input,
+.ouchi-manage-dialog select,
+.ouchi-manage-dialog textarea,
+.ouchi-manage-dialog .ouchi-field input,
+.ouchi-manage-dialog .ouchi-field select,
+.ouchi-manage-dialog .ouchi-field textarea {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  color: #222;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 4px;
+}
+
+.ouchi-manage-dialog input[type="color"] {
+  width: 44px;
+  min-width: 44px;
+  padding: 2px;
+}
+
+.ouchi-manage-dialog input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+}
+
+.ouchi-manage-dialog textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.ouchi-manage-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ouchi-manage-form-grid > .ouchi-manage-field {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+
+.ouchi-manage-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ouchi-manage-form-actions,
+.ouchi-manage-dialog .ouchi-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.ouchi-manage-dialog .ouchi-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.ouchi-manage-dialog .ouchi-field small,
+.ouchi-manage-dialog .ouchi-manage-note {
+  color: #666;
+  font-size: 12px;
+}
+
+.ouchi-manage-dialog .ouchi-field-error {
+  color: #b00020;
+  font-size: 12px;
+}
+
+.ouchi-manage-dialog .ouchi-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ouchi-manage-dialog .ouchi-form-grid > .ouchi-field {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+
+.ouchi-manage-dialog .ouchi-form-section,
+.ouchi-manage-dialog .ouchi-relation-row {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #ccc;
+}
+
+.ouchi-manage-dialog .ouchi-form-section > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ouchi-manage-dialog .ouchi-form-section > header > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-manage-dialog .ouchi-editor-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ouchi-manage-dialog .ouchi-editor-row,
+.ouchi-manage-dialog .ouchi-property-row {
+  padding: 8px;
+  border: 1px solid #ccc;
+}
+
+.ouchi-manage-dialog .ouchi-editor-row-foot,
+.ouchi-manage-dialog .ouchi-relation-row-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ouchi-manage-dialog .ouchi-property-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
+.ouchi-manage-dialog .ouchi-properties-warning,
+.ouchi-manage-dialog .ouchi-inline-hint {
+  color: #555;
+  font-size: 12px;
+}
+
+.ouchi-manage-dialog .ouchi-form-error-summary,
+.ouchi-manage-dialog .ouchi-form-notice {
+  margin-bottom: 12px;
+  padding: 8px;
+  color: #8a1f1f;
+  border: 1px solid #b00020;
+}
+
+.ouchi-manage-dialog .ouchi-form-error-summary ul,
+.ouchi-manage-dialog .ouchi-form-notice ul {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+.ouchi-manage-dialog .ouchi-checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ouchi-manage-dialog .ouchi-checkbox-field > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-manage-dialog .ouchi-url-preview {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 8px;
+  padding: 8px;
+  border: 1px solid #ccc;
+}
+
+.ouchi-manage-dialog code,
+.ouchi-manage-view code,
+.ouchi-manage-view pre {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #ccc;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-heading,
+.ouchi-manage-dialog .ouchi-icon-picker-current,
+.ouchi-manage-dialog .ouchi-icon-reference-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-heading {
+  justify-content: space-between;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-current,
+.ouchi-manage-dialog .ouchi-icon-option-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #ddd;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-current > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-manage-dialog .ouchi-icon-option-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ouchi-manage-dialog .ouchi-icon-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  color: #222;
+  background: #fff;
+  border-color: #ddd;
+  text-align: left;
+}
+
+.ouchi-manage-dialog .ouchi-icon-option[aria-selected="true"] {
+  border-color: var(--ouchi-manage-accent);
+}
+
+.ouchi-manage-dialog .ouchi-icon-option > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-manage-dialog .ouchi-icon-option small {
+  color: #666;
+}
+
+.ouchi-manage-dialog .ouchi-icon-search {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.ouchi-settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ouchi-settings-grid section {
+  padding-top: 16px;
+  border-top: 1px solid #ccc;
+}
+
+.ouchi-settings-grid section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ouchi-settings-grid h2,
+.ouchi-settings-grid h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.ouchi-settings-grid p {
+  margin: 0 0 8px;
+}
+
+.ouchi-setting-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ouchi-setting-fields label {
+  display: flex;
+  min-width: 200px;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ouchi-ledger-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ouchi-ledger-file-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ouchi-ledger-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ouchi-ledger-preview > div {
+  display: flex;
+  gap: 8px;
+}
+
+.ouchi-ledger-preview pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid #ccc;
+  white-space: pre-wrap;
+}
+
+.ouchi-ledger-warning,
+.ouchi-ledger-transfer-error {
+  color: #8a1f1f;
+}
+
+.ouchi-ledger-transfer-notice {
+  color: #355e3b;
+}
+
+@media (max-width: 640px) {
+  .ouchi-manage-view-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ouchi-manage-view-domain {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .ouchi-manage-tabs {
+    overflow-x: auto;
+  }
+
+  .ouchi-manage-view-body {
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .ouchi-manage-table {
+    min-width: 640px;
+  }
+
+  .ouchi-manage-dialog .ouchi-property-row {
+    grid-template-columns: 1fr;
+  }
+}

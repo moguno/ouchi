@@ -9,7 +9,10 @@ import {
   type PortalDeviceCategory,
   type PortalDeviceNetwork,
   type PortalNetwork,
+  type PortalProperties,
   type PortalRelation,
+  type PortalRelationName,
+  type PortalRelationNameInput,
   type PortalService,
   type PortalServiceProtocol,
   type PortalServiceScheme,
@@ -23,6 +26,11 @@ import { isIconReference } from "./iconCatalog";
 
 export const DEFAULT_PORTAL_TITLE = "あなたのホームラボ";
 export const MAX_PORTAL_TITLE_LENGTH = 100;
+export const MAX_RELATION_PLACEHOLDER_LENGTH = 100;
+export const MAX_PROPERTY_KEY_LENGTH = 128;
+export const MAX_PROPERTY_VALUE_BYTES = 64 * 1024;
+export const PLAINTEXT_SECRET_WARNING =
+  "平文の秘密情報は入力しないこと。必要な場合は SOPS などで暗号化した文字列を入れること";
 
 interface Ipv4Parts {
   octets: [number, number, number, number];
@@ -39,6 +47,90 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+/**
+ * Shared validation for device/service property maps. The REST boundary,
+ * YAML import and GUI all use this function so their limits stay aligned.
+ */
+export function validatePropertiesPayload(
+  value: unknown,
+  path = "properties",
+): ValidationIssue[] {
+  if (!isRecord(value)) {
+    return [{ path, message: "プロパティは文字列マップで指定してください" }];
+  }
+  return validatePropertyEntries(Object.entries(value), path);
+}
+
+export function validatePropertyEntries(
+  entries: Iterable<readonly [string, unknown]>,
+  path = "properties",
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const normalizedKeys = new Map<string, string>();
+  for (const [rawKey, propertyValue] of entries) {
+    const key = rawKey.trim();
+    if (!key) {
+      issues.push({
+        path: `${path}.${rawKey}`,
+        message: "プロパティキーは空白除去後に必須です",
+      });
+    } else if ([...key].length > MAX_PROPERTY_KEY_LENGTH) {
+      issues.push({
+        path: `${path}.${rawKey}`,
+        message:
+          `プロパティキーは${MAX_PROPERTY_KEY_LENGTH}文字以内で入力してください`,
+      });
+    }
+
+    const previousKey = normalizedKeys.get(key);
+    if (key && previousKey !== undefined) {
+      issues.push({
+        path: `${path}.${rawKey}`,
+        message:
+          `プロパティキー「${key}」が重複しています` +
+          `（前後の空白を除去すると同じキー: ${previousKey}）`,
+      });
+    } else if (key) {
+      normalizedKeys.set(key, rawKey);
+    }
+
+    if (typeof propertyValue !== "string") {
+      issues.push({
+        path: `${path}.${rawKey}`,
+        message: "プロパティ値は文字列で入力してください",
+      });
+    } else if (utf8ByteLength(propertyValue) > MAX_PROPERTY_VALUE_BYTES) {
+      issues.push({
+        path: `${path}.${rawKey}`,
+        message: "プロパティ値は64KiB以内で入力してください",
+      });
+    }
+  }
+  return issues;
+}
+
+/**
+ * Return a detached, key-trimmed string map. Validation must run before using
+ * this function; invalid/non-string entries are ignored defensively here.
+ */
+export function normalizeProperties(value: unknown): PortalProperties {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const entries: Array<[string, string]> = [];
+  for (const [rawKey, propertyValue] of Object.entries(value)) {
+    const key = rawKey.trim();
+    if (key && typeof propertyValue === "string") {
+      entries.push([key, propertyValue]);
+    }
+  }
+  return Object.fromEntries(entries);
 }
 
 export function validateSettingsTitle(title: string): ValidationIssue[] {
@@ -171,6 +263,49 @@ export function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value.trim());
 }
 
+function relationColorIssue(
+  value: unknown,
+  path: string,
+): ValidationIssue | undefined {
+  if (!isNonEmptyString(value)) {
+    return { path, message: "関係色は必須です" };
+  }
+  if ([...value.trim()].length > 100) {
+    return { path, message: "関係色は100文字以内で入力してください" };
+  }
+  return undefined;
+}
+
+function relationPlaceholderIssues(
+  input: Record<string, unknown>,
+  path = "",
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const field of ["fromPlaceholder", "toPlaceholder"] as const) {
+    const value = input[field];
+    if (value === undefined) {
+      continue;
+    }
+    if (typeof value !== "string") {
+      issues.push({
+        path: `${path}${field}`,
+        message:
+          field === "fromPlaceholder"
+            ? "始点プレースホルダーが不正です"
+            : "終点プレースホルダーが不正です",
+      });
+    } else if ([...value.trim()].length > MAX_RELATION_PLACEHOLDER_LENGTH) {
+      issues.push({
+        path: `${path}${field}`,
+        message:
+          `プレースホルダーは${MAX_RELATION_PLACEHOLDER_LENGTH}文字以内で` +
+          "入力してください",
+      });
+    }
+  }
+  return issues;
+}
+
 export function isAccent(value: unknown): value is AccentTone {
   return typeof value === "string" && ACCENT_TONES.includes(value as AccentTone);
 }
@@ -272,7 +407,7 @@ function validateDevice(
     input.petname !== null &&
     typeof input.petname !== "string"
   ) {
-    issues.push({ path: `${path}.petname`, message: "ペットネームが不正です" });
+    issues.push({ path: `${path}.petname`, message: "名前が不正です" });
   }
   if (typeof input.isVm !== "boolean") {
     issues.push({ path: `${path}.isVm`, message: "VMフラグが不正です" });
@@ -318,6 +453,11 @@ function validateDevice(
         message: "ディスク使用率は0〜100で指定してください",
       });
     }
+  }
+  if (input.properties !== undefined) {
+    issues.push(
+      ...validatePropertiesPayload(input.properties, `${path}.properties`),
+    );
   }
   return issues;
 }
@@ -381,17 +521,64 @@ function validateRelation(
       message: "関係先デバイスIDは必須です",
     });
   }
-  if (!isNonEmptyString(input.tag)) {
-    issues.push({ path: `${path}.tag`, message: "タグ名は必須です" });
+  if (!isNonEmptyString(input.relationName)) {
+    issues.push({
+      path: `${path}.relationName`,
+      message: "関係名は必須です",
+    });
   }
-  if (!isOptionalString(input.fromLabel)) {
-    issues.push({ path: `${path}.fromLabel`, message: "from側ラベルが不正です" });
+  if (typeof input.fromLabel !== "string") {
+    issues.push({ path: `${path}.fromLabel`, message: "始点ラベルが不正です" });
   }
-  if (!isOptionalString(input.toLabel)) {
-    issues.push({ path: `${path}.toLabel`, message: "to側ラベルが不正です" });
+  if (typeof input.toLabel !== "string") {
+    issues.push({ path: `${path}.toLabel`, message: "終点ラベルが不正です" });
   }
-  if (!isNonEmptyString(input.color)) {
-    issues.push({ path: `${path}.color`, message: "関係色は必須です" });
+  issues.push(
+    ...relationPlaceholderIssues(input, `${path}.`),
+  );
+  const colorIssue = relationColorIssue(input.color, `${path}.color`);
+  if (colorIssue) {
+    issues.push(colorIssue);
+  }
+  return issues;
+}
+
+function validateRelationName(
+  input: unknown,
+  index: number,
+): ValidationIssue[] {
+  const path = `relationNames[${index}]`;
+  if (!isRecord(input)) {
+    return [{ path, message: "関係名の形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isNonEmptyString(input.id)) {
+    issues.push({ path: `${path}.id`, message: "IDは必須です" });
+  }
+  if (!isNonEmptyString(input.name)) {
+    issues.push({ path: `${path}.name`, message: "関係名は必須です" });
+  }
+  const colorIssue = relationColorIssue(input.color, `${path}.color`);
+  if (colorIssue) {
+    issues.push(colorIssue);
+  }
+  for (const field of ["fromLabel", "toLabel"] as const) {
+    if (!isOptionalString(input[field])) {
+      issues.push({
+        path: `${path}.${field}`,
+        message: field === "fromLabel" ? "始点ラベルが不正です" : "終点ラベルが不正です",
+      });
+    }
+  }
+  if (
+    typeof input.relationCount !== "number" ||
+    !Number.isInteger(input.relationCount) ||
+    input.relationCount < 0
+  ) {
+    issues.push({
+      path: `${path}.relationCount`,
+      message: "使用件数が不正です",
+    });
   }
   return issues;
 }
@@ -422,7 +609,7 @@ function validateService(
     });
   }
   if (input.petname !== undefined && input.petname !== null && typeof input.petname !== "string") {
-    issues.push({ path: `${path}.petname`, message: "ペットネームが不正です" });
+    issues.push({ path: `${path}.petname`, message: "名前が不正です" });
   }
   if (
     input.description !== undefined &&
@@ -474,6 +661,11 @@ function validateService(
   if (typeof input.enabled !== "boolean") {
     issues.push({ path: `${path}.enabled`, message: "有効フラグが不正です" });
   }
+  if (input.properties !== undefined) {
+    issues.push(
+      ...validatePropertiesPayload(input.properties, `${path}.properties`),
+    );
+  }
   return issues;
 }
 
@@ -514,6 +706,7 @@ export function validatePortalData(
     "networks",
     "devices",
     "deviceNetworks",
+    "relationNames",
     "relations",
     "services",
   ]) {
@@ -557,6 +750,7 @@ export function validatePortalData(
   const networks = input.networks as unknown[];
   const devices = input.devices as unknown[];
   const deviceNetworks = input.deviceNetworks as unknown[];
+  const relationNames = input.relationNames as unknown[];
   const relations = input.relations as unknown[];
   const services = input.services as unknown[];
 
@@ -568,6 +762,9 @@ export function validatePortalData(
   );
   deviceNetworks.forEach((deviceNetwork, index) =>
     issues.push(...validateDeviceNetwork(deviceNetwork, index)),
+  );
+  relationNames.forEach((relationName, index) =>
+    issues.push(...validateRelationName(relationName, index)),
   );
   relations.forEach((relation, index) =>
     issues.push(...validateRelation(relation, index)),
@@ -585,6 +782,7 @@ export function validatePortalData(
     networks: networks as PortalNetwork[],
     devices: devices as PortalDevice[],
     deviceNetworks: deviceNetworks as PortalDeviceNetwork[],
+    relationNames: relationNames as PortalRelationName[],
     relations: relations as PortalRelation[],
     services: services as PortalService[],
     ...(input.settings !== undefined
@@ -594,6 +792,7 @@ export function validatePortalData(
   issues.push(...duplicateIssues(data.networks, "networks"));
   issues.push(...duplicateIssues(data.devices, "devices"));
   issues.push(...duplicateIssues(data.deviceNetworks, "deviceNetworks"));
+  issues.push(...duplicateIssues(data.relationNames, "relationNames"));
   issues.push(...duplicateIssues(data.relations, "relations"));
   issues.push(...duplicateIssues(data.services, "services"));
 
@@ -664,20 +863,46 @@ export function validatePortalData(
     }
   }
 
-  const relationColors = new Map<string, { color: string; id: string }>();
-  for (const relation of data.relations) {
-    const tag = relation.tag.trim();
-    const color = relation.color.trim();
-    const canonical = relationColors.get(tag);
-    if (canonical && canonical.color !== color) {
+  const relationNameIds = new Set<string>();
+  const relationNameNames = new Set<string>();
+  for (const relationName of data.relationNames) {
+    if (relationNameNames.has(relationName.name)) {
       issues.push({
-        path: `relations.${relation.id}.color`,
-        message:
-          `タグ「${tag}」の色は「${canonical.color}」に統一してください` +
-          `（最初の定義: ${canonical.id}）`,
+        path: `relationNames.${relationName.id}.name`,
+        message: `関係名「${relationName.name}」が重複しています`,
       });
-    } else if (!canonical) {
-      relationColors.set(tag, { color, id: relation.id });
+    }
+    relationNameIds.add(relationName.id);
+    relationNameNames.add(relationName.name);
+  }
+  const relationKeys = new Set<string>();
+  for (const relation of data.relations) {
+    if (!relationNameIds.has(relation.relationNameId)) {
+      issues.push({
+        path: `relations.${relation.id}.relationName`,
+        message: `関係名「${relation.relationName}」が存在しません`,
+      });
+    } else if (!relationNameNames.has(relation.relationName)) {
+      issues.push({
+        path: `relations.${relation.id}.relationName`,
+        message: "関係名の参照と名前が一致しません",
+      });
+    }
+    const key = [
+      relation.relationNameId,
+      relation.fromDeviceId,
+      relation.toDeviceId,
+      (relation.fromPlaceholder ?? "").trim(),
+      (relation.toPlaceholder ?? "").trim(),
+    ].join("\u0000");
+    if (relationKeys.has(key)) {
+      issues.push({
+        path: `relations.${relation.id}`,
+        message:
+          "同じ関係名・始点・終点・プレースホルダーの関係が重複しています",
+      });
+    } else {
+      relationKeys.add(key);
     }
 
     if (!deviceById.has(relation.fromDeviceId)) {
@@ -765,6 +990,7 @@ export function validateDeviceInput(
     | "ssh"
     | "resources"
     | "meterEnabled"
+    | "properties"
   >,
   editingId: string | undefined,
   data: PortalDataV2,
@@ -848,14 +1074,14 @@ export function validateDeviceNetworkInput(
 export function validateRelationInput(
   input: Pick<
     PortalRelation,
+    | "relationName"
     | "fromDeviceId"
     | "toDeviceId"
-    | "tag"
-    | "fromLabel"
-    | "toLabel"
-    | "color"
+    | "fromPlaceholder"
+    | "toPlaceholder"
   >,
   data: PortalDataV2,
+  editingId?: string,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (!data.devices.some((device) => device.id === input.fromDeviceId)) {
@@ -876,29 +1102,62 @@ export function validateRelationInput(
       message: "同じデバイス自身へ関係は定義できません",
     });
   }
-  if (!input.tag.trim()) {
+  if (!input.relationName.trim()) {
     issues.push({
-      path: "tag",
-      message: "タグ名を入力してください",
+      path: "relationName",
+      message: "関係名を選択してください",
     });
   }
-  if (!input.color.trim()) {
-    issues.push({
-      path: "color",
-      message: "関係色を入力してください",
-    });
-  }
-  const canonical = data.relations.find(
-    (relation) => relation.tag.trim() === input.tag.trim(),
+  const relationName = data.relationNames.find(
+    (candidate) => candidate.name === input.relationName.trim(),
   );
-  if (canonical && canonical.color.trim() !== input.color.trim()) {
+  if (input.relationName.trim() && !relationName) {
     issues.push({
-      path: "color",
-      message:
-        `タグ「${input.tag.trim()}」の色は` +
-        `「${canonical.color.trim()}」に固定されています`,
+      path: "relationName",
+      message: "選択した関係名が存在しません",
     });
   }
+  issues.push(...relationPlaceholderIssues(input));
+  const fromPlaceholder = (input.fromPlaceholder ?? "").trim();
+  const toPlaceholder = (input.toPlaceholder ?? "").trim();
+  const duplicate = data.relations.find(
+    (relation) =>
+      relation.id !== editingId &&
+      relation.relationNameId === relationName?.id &&
+      relation.fromDeviceId === input.fromDeviceId &&
+      relation.toDeviceId === input.toDeviceId &&
+      (relation.fromPlaceholder ?? "").trim() === fromPlaceholder &&
+      (relation.toPlaceholder ?? "").trim() === toPlaceholder,
+  );
+  if (duplicate) {
+    issues.push({
+      path: "relationName",
+      message:
+        "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
+    });
+  }
+  return issues;
+}
+
+export function validateRelationNameInput(
+  input: Pick<PortalRelationNameInput, "name" | "color">,
+  data: PortalDataV2,
+  editingId?: string,
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const name = input.name.trim();
+  if (!name) {
+    issues.push({ path: "name", message: "関係名を入力してください" });
+  } else if (
+    data.relationNames.some(
+      (relationName) =>
+        relationName.id !== editingId && relationName.name === name,
+    )
+  ) {
+    issues.push({ path: "name", message: "同じ関係名が登録されています" });
+  }
+  const colorIssue = relationColorIssue(input.color, "color");
+  if (colorIssue) issues.push(colorIssue);
   return issues;
 }
 
@@ -917,6 +1176,7 @@ export function validateServiceInput(
     | "serviceUrl"
     | "iconKey"
     | "enabled"
+    | "properties"
   >,
   data: PortalDataV2,
 ): ValidationIssue[] {
@@ -982,6 +1242,9 @@ export function validateServiceInput(
   if (typeof input.enabled !== "boolean") {
     issues.push({ path: "enabled", message: "有効状態が不正です" });
   }
+  if (input.properties !== undefined) {
+    issues.push(...validatePropertiesPayload(input.properties));
+  }
   return issues;
 }
 
@@ -1027,7 +1290,7 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
     issues.push({ path: "hostname", message: "ホスト名は必須です" });
   }
   if (input.petname !== undefined && !isNullableString(input.petname)) {
-    issues.push({ path: "petname", message: "ペットネームが不正です" });
+    issues.push({ path: "petname", message: "名前が不正です" });
   }
   if (!isDeviceCategory(input.category)) {
     issues.push({ path: "category", message: "デバイスカテゴリーが不正です" });
@@ -1067,6 +1330,9 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
       path: "category",
       message: "サービスカテゴリーはVM・メーターを有効にできません",
     });
+  }
+  if (Object.hasOwn(input, "properties")) {
+    issues.push(...validatePropertiesPayload(input.properties));
   }
   return issues;
 }
@@ -1116,20 +1382,33 @@ export function validateRelationPayload(input: unknown): ValidationIssue[] {
       message: "同じデバイス自身へ関係は定義できません",
     });
   }
-  if (!isNonEmptyString(input.tag)) {
-    issues.push({ path: "tag", message: "タグ名は必須です" });
+  if (!isNonEmptyString(input.relationName)) {
+    issues.push({ path: "relationName", message: "関係名は必須です" });
   }
-  if (!isNonEmptyString(input.color)) {
-    issues.push({ path: "color", message: "関係色は必須です" });
-  } else if ([...(input.color as string).trim()].length > 100) {
-    issues.push({
-      path: "color",
-      message: "関係色は100文字以内で入力してください",
-    });
+  issues.push(...relationPlaceholderIssues(input));
+  return issues;
+}
+
+export function validateRelationNamePayload(
+  input: unknown,
+): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "関係名の形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isNonEmptyString(input.name)) {
+    issues.push({ path: "name", message: "関係名は必須です" });
+  }
+  const colorIssue = relationColorIssue(input.color, "color");
+  if (colorIssue) {
+    issues.push(colorIssue);
   }
   for (const field of ["fromLabel", "toLabel"] as const) {
     if (input[field] !== undefined && !isNullableString(input[field])) {
-      issues.push({ path: field, message: `${field}が不正です` });
+      issues.push({
+        path: field,
+        message: field === "fromLabel" ? "始点ラベルが不正です" : "終点ラベルが不正です",
+      });
     }
   }
   return issues;
@@ -1197,6 +1476,9 @@ export function validateServicePayload(input: unknown): ValidationIssue[] {
   }
   if (typeof input.enabled !== "boolean") {
     issues.push({ path: "enabled", message: "有効フラグが不正です" });
+  }
+  if (Object.hasOwn(input, "properties")) {
+    issues.push(...validatePropertiesPayload(input.properties));
   }
   return issues;
 }

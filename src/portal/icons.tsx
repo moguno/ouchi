@@ -101,60 +101,6 @@ export function LockIcon(props: IconProps) {
   );
 }
 
-export function PlusIcon(props: IconProps) {
-  return (
-    <SvgBase {...props}>
-      <path
-        d="M12 5v14M5 12h14"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="2.2"
-      />
-    </SvgBase>
-  );
-}
-
-export function EditIcon(props: IconProps) {
-  return (
-    <SvgBase {...props}>
-      <path
-        d="m5 16-.8 3.8L8 19l10.2-10.2a2.2 2.2 0 0 0-3.1-3.1L5 16Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path d="m13.5 7.5 3 3" stroke="currentColor" strokeWidth="1.8" />
-    </SvgBase>
-  );
-}
-
-export function TrashIcon(props: IconProps) {
-  return (
-    <SvgBase {...props}>
-      <path
-        d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </SvgBase>
-  );
-}
-
-export function CloseIcon(props: IconProps) {
-  return (
-    <SvgBase {...props}>
-      <path
-        d="m6 6 12 12M18 6 6 18"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="2"
-      />
-    </SvgBase>
-  );
-}
-
 export function ResetIcon(props: IconProps) {
   return (
     <SvgBase {...props}>

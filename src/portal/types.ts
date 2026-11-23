@@ -6,6 +6,8 @@ export type PortalServiceScheme = "http" | "https";
 
 export type PortalServiceProtocol = "tcp" | "udp";
 
+export type PortalProperties = Record<string, string>;
+
 export type PortalDeviceCategory =
   | "network"
   | "physical"
@@ -84,6 +86,7 @@ export interface PortalDevice {
   id: string;
   name: string;
   petname?: string;
+  properties?: PortalProperties;
   category: PortalDeviceCategory;
   isVm: boolean;
   meterEnabled?: boolean;
@@ -100,13 +103,25 @@ export interface PortalDeviceNetwork {
   label?: string;
 }
 
-export interface PortalRelation {
+export interface PortalRelationName {
   id: string;
-  fromDeviceId: string;
-  toDeviceId: string;
-  tag: string;
+  name: string;
+  color: string;
   fromLabel?: string;
   toLabel?: string;
+  relationCount: number;
+}
+
+export interface PortalRelation {
+  id: string;
+  relationNameId: string;
+  relationName: string;
+  fromDeviceId: string;
+  toDeviceId: string;
+  fromPlaceholder?: string;
+  toPlaceholder?: string;
+  fromLabel: string;
+  toLabel: string;
   color: string;
 }
 
@@ -116,6 +131,7 @@ export interface PortalService {
   subdomain: string;
   petname?: string;
   description?: string;
+  properties?: PortalProperties;
   scheme: PortalServiceScheme;
   port: number;
   protocol: PortalServiceProtocol;
@@ -139,6 +155,7 @@ export interface PortalDataV2 {
   networks: PortalNetwork[];
   devices: PortalDevice[];
   deviceNetworks: PortalDeviceNetwork[];
+  relationNames: PortalRelationName[];
   relations: PortalRelation[];
   services: PortalService[];
   settings?: PortalSettings;
@@ -149,10 +166,11 @@ export interface OuchiPortalProps {
   apiBaseUrl?: string;
   /**
    * Enables the static YAML data source. When set, the portal loads this file
-   * instead of the REST API and automatically becomes read-only.
+   * instead of the REST API. Management screens remain available for demo,
+   * but mutations are disabled.
    */
   yamlUrl?: string;
-  /** Hide all management UI. Defaults to true when `yamlUrl` is set. */
+  /** Hide all management UI. YAML demo mode still exposes save-disabled UI. */
   readOnly?: boolean;
   showTitle?: boolean;
   initialSelectedDeviceId?: string;
@@ -194,6 +212,7 @@ export interface PortalApiDevice {
   id: number;
   hostname: string;
   petname: string | null;
+  properties: PortalProperties;
   category: PortalDeviceCategory;
   isVm: boolean;
   sshUser: string | null;
@@ -203,13 +222,25 @@ export interface PortalApiDevice {
   memberships: PortalApiMembership[];
 }
 
-export interface PortalApiRelation {
+export interface PortalApiRelationName {
   id: number;
-  fromDeviceId: number;
-  toDeviceId: number;
-  tag: string;
+  name: string;
+  color: string;
   fromLabel: string | null;
   toLabel: string | null;
+  relationCount: number;
+}
+
+export interface PortalApiRelation {
+  id: number;
+  relationNameId: number;
+  relationName: string;
+  fromDeviceId: number;
+  toDeviceId: number;
+  fromPlaceholder: string;
+  toPlaceholder: string;
+  fromLabel: string;
+  toLabel: string;
   color: string;
 }
 
@@ -219,6 +250,7 @@ export interface PortalApiService {
   subdomain: string;
   petname: string | null;
   description: string | null;
+  properties: PortalProperties;
   port: number;
   protocol: PortalServiceProtocol;
   scheme: PortalServiceScheme;
@@ -237,6 +269,7 @@ export interface PortalApiData {
   networks: PortalApiNetwork[];
   devices: PortalApiDevice[];
   services: PortalApiService[];
+  relationNames: PortalApiRelationName[];
   relations: PortalApiRelation[];
   settings: PortalSettings;
 }
@@ -255,6 +288,7 @@ export interface PortalNetworkInput {
 export interface PortalDeviceInput {
   hostname: string;
   petname?: string | null;
+  properties?: PortalProperties;
   category: PortalDeviceCategory;
   isVm: boolean;
   sshUser?: string | null;
@@ -271,12 +305,18 @@ export interface PortalMembershipInput {
 }
 
 export interface PortalRelationInput {
+  relationName: string;
   fromDeviceId: number;
   toDeviceId: number;
-  tag: string;
+  fromPlaceholder?: string;
+  toPlaceholder?: string;
+}
+
+export interface PortalRelationNameInput {
+  name: string;
+  color: string;
   fromLabel?: string | null;
   toLabel?: string | null;
-  color: string;
 }
 
 export interface PortalServiceInput {
@@ -284,6 +324,7 @@ export interface PortalServiceInput {
   subdomain: string;
   petname?: string | null;
   description?: string | null;
+  properties?: PortalProperties;
   port: number;
   protocol: PortalServiceProtocol;
   scheme: PortalServiceScheme;

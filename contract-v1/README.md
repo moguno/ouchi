@@ -1,5 +1,25 @@
 # ouchi.local v1 実装ブリーフ（2026-11-21）— カイルから Codex へ
 
+## 現在の優先仕様: ADDENDUM-24 補足1
+
+本書の旧 v0.4・関係タグ記述より、`ADDENDUM-24.md`、
+`ADDENDUM-24-SUPPLEMENT-1.md`、`schema.sql` v0.6 を優先する。
+
+- 関係名 `relation_names(id, name, color, from_label, to_label)` が定義を持つ
+- 始点／終点ラベルは `{}` をプレースホルダーとするテンプレート。全 `{}` を
+  関係側の値で置換し、空値なら `?`、空テンプレートなら関係名へフォールバックする
+- 関係 `relations(id, relation_name_id, from_device_id, to_device_id,
+  from_placeholder, to_placeholder)` は（関係名、始点、終点、始点値、終点値）を
+  一意とする
+- 使用中の関係名削除は409。同じデバイスペアに異なる関係名を併存できる
+- YAML は `format: ouchi-ledger/2` と `relationNames` を使い、旧形式は
+  タグによる1段変換で取り込む。関係の `fromPlaceholder` / `toPlaceholder` は
+  空なら省略でき、旧形式は未入力として扱う
+- REST は `/api/relation-names` の CRUD と、関係名を名前で指定する関係 CRUD
+  を使う。旧 `PUT /api/relations/tags/:tag/color` は廃止
+- 起動時移行004が旧関係をタグでグルーピングし、最初の関係から色・ラベルを
+  引き継ぐ。移行005が2列追加と5列一意キーへの再構成を行う
+
 ## 0. これは何か
 
 GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定＋RDB＋薄いバックエンド** を作る。

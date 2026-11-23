@@ -50,6 +50,16 @@ describe("REST API v1", () => {
       17,
     );
     expect(data.relations).toHaveLength(5);
+    expect(data.relationNames).toHaveLength(2);
+    expect(
+      data.relationNames.map((relationName) => ({
+        name: relationName.name,
+        relationCount: relationName.relationCount,
+      })),
+    ).toEqual([
+      { name: "ホストOS", relationCount: 4 },
+      { name: "バックアップ先", relationCount: 1 },
+    ]);
     expect(data.services).toHaveLength(9);
     expect(
       data.devices.find((device) => device.hostname === "nanopi-r2s")?.petname,
@@ -69,6 +79,236 @@ describe("REST API v1", () => {
     expect(
       data.devices.find((device) => device.hostname === "notion")?.category,
     ).toBe("service");
+  });
+
+  it("migrates pre-properties databases without changing existing rows", async () => {
+    database.close();
+    const legacyFilename = join(directory, "legacy-ledger.sqlite");
+    const legacyDatabase = new DatabaseSync(legacyFilename);
+    const legacySchema = readFileSync(
+      resolve(process.cwd(), "contract-v1/schema.sql"),
+      "utf8",
+    ).replaceAll("  properties TEXT NOT NULL DEFAULT '{}',\n", "");
+    expect(legacySchema).not.toContain("properties TEXT");
+    legacyDatabase.exec(legacySchema);
+    legacyDatabase.exec(`
+      INSERT INTO networks (id, name, cidr, accent, note)
+      VALUES (1, '既存LAN', '192.168.77.0/24', 'blue', 'legacy');
+      INSERT INTO devices
+        (id, hostname, petname, category, is_vm, meter_enabled, note)
+      VALUES (1, 'legacy-host', '旧ホスト', 'physical', 0, 0, 'preserve me');
+      INSERT INTO device_networks
+        (id, device_id, network_id, ip, label)
+      VALUES (1, 1, 1, '192.168.77.10', 'legacy');
+      INSERT INTO services
+        (id, device_network_id, subdomain, port, protocol, scheme, enabled)
+      VALUES (1, 1, 'legacy-service', 8080, 'tcp', 'http', 1);
+    `);
+    legacyDatabase.close();
+
+    database = new PortalDatabase({ filename: legacyFilename });
+    app = createApp(database);
+    const migrated = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(migrated.networks).toEqual([
+      expect.objectContaining({ name: "既存LAN", note: "legacy" }),
+    ]);
+    expect(migrated.devices).toEqual([
+      expect.objectContaining({
+        hostname: "legacy-host",
+        petname: "旧ホスト",
+        note: "preserve me",
+        properties: {},
+      }),
+    ]);
+    expect(migrated.services).toEqual([
+      expect.objectContaining({
+        subdomain: "legacy-service",
+        properties: {},
+      }),
+    ]);
+
+    const deviceColumns = database.database
+      .prepare("PRAGMA table_info(devices)")
+      .all() as Array<{ name: string }>;
+    const serviceColumns = database.database
+      .prepare("PRAGMA table_info(services)")
+      .all() as Array<{ name: string }>;
+    expect(deviceColumns.map((column) => column.name)).toContain("properties");
+    expect(serviceColumns.map((column) => column.name)).toContain("properties");
+
+    const update = await app.request("/api/devices/1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hostname: "legacy-host",
+        petname: "旧ホスト",
+        category: "physical",
+        isVm: false,
+        sshUser: null,
+        sshPort: null,
+        meterEnabled: false,
+        note: "preserve me",
+        properties: { migrated: "yes" },
+      }),
+    });
+    expect(update.status).toBe(200);
+    expect(
+      (await json<PortalApiDevice>(update)).properties,
+    ).toEqual({ migrated: "yes" });
+  });
+
+  it("migrates five tagged relations from the legacy schema into two relation names", async () => {
+    database.close();
+    const legacyFilename = join(directory, "legacy-relations.sqlite");
+    const legacyDatabase = new DatabaseSync(legacyFilename);
+    const currentSchema = readFileSync(
+      resolve(process.cwd(), "contract-v1/schema.sql"),
+      "utf8",
+    );
+    const legacySchema = currentSchema
+      .replace(
+        /CREATE TABLE IF NOT EXISTS relation_names \([\s\S]*?\n\);\n/,
+        "",
+      )
+      .replace(
+        /CREATE TABLE IF NOT EXISTS relations \([\s\S]*?\n\);\n/,
+        `CREATE TABLE IF NOT EXISTS relations (
+          id INTEGER PRIMARY KEY,
+          from_device_id INTEGER NOT NULL REFERENCES devices(id),
+          to_device_id INTEGER NOT NULL REFERENCES devices(id),
+          tag TEXT,
+          from_label TEXT,
+          to_label TEXT,
+          color TEXT NOT NULL,
+          CHECK (from_device_id <> to_device_id)
+        );\n`,
+      );
+    legacyDatabase.exec(legacySchema);
+    legacyDatabase.exec(`
+      INSERT INTO networks (id, name, accent)
+      VALUES (1, '旧LAN', 'blue');
+      INSERT INTO devices (id, hostname, category, is_vm)
+      VALUES
+        (1, 'legacy-host-a', 'physical', 0),
+        (2, 'legacy-host-b', 'physical', 0),
+        (3, 'legacy-host-c', 'physical', 0),
+        (4, 'legacy-vm-a', 'vm', 1),
+        (5, 'legacy-vm-b', 'vm', 1),
+        (6, 'legacy-vm-c', 'vm', 1);
+      INSERT INTO relations
+        (from_device_id, to_device_id, tag, from_label, to_label, color)
+      VALUES
+        (4, 1, 'ホストOS', '親ホスト', 'VM', 'yellow'),
+        (4, 2, 'ホストOS', '別ラベル', '別VM', 'green'),
+        (5, 2, 'ホストOS', NULL, NULL, 'yellow'),
+        (6, 3, 'ホストOS', NULL, NULL, 'yellow'),
+        (1, 2, 'バックアップ先', 'バックアップ元', '保存先', 'blue');
+    `);
+    legacyDatabase.close();
+
+    database = new PortalDatabase({ filename: legacyFilename });
+    app = createApp(database);
+    const migrated = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(migrated.devices).toHaveLength(6);
+    expect(migrated.relationNames).toEqual([
+      expect.objectContaining({
+        name: "ホストOS",
+        color: "yellow",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+        relationCount: 4,
+      }),
+      expect.objectContaining({
+        name: "バックアップ先",
+        color: "blue",
+        fromLabel: "バックアップ元",
+        toLabel: "保存先",
+        relationCount: 1,
+      }),
+    ]);
+    expect(migrated.relations).toHaveLength(5);
+    const relationColumns = database.database
+      .prepare("PRAGMA table_info(relations)")
+      .all() as Array<{ name: string }>;
+    expect(relationColumns.map((column) => column.name)).toEqual([
+      "id",
+      "relation_name_id",
+      "from_device_id",
+      "to_device_id",
+      "from_placeholder",
+      "to_placeholder",
+    ]);
+  });
+
+  it("migrates a v0.5 relation table with empty placeholder values", async () => {
+    database.close();
+    const legacyFilename = join(directory, "legacy-placeholders.sqlite");
+    const legacyDatabase = new DatabaseSync(legacyFilename);
+    const currentSchema = readFileSync(
+      resolve(process.cwd(), "contract-v1/schema.sql"),
+      "utf8",
+    );
+    const prePlaceholderSchema = currentSchema.replace(
+      /CREATE TABLE IF NOT EXISTS relations \([\s\S]*?\n\);\n/,
+      `CREATE TABLE IF NOT EXISTS relations (
+        id INTEGER PRIMARY KEY,
+        relation_name_id INTEGER NOT NULL REFERENCES relation_names(id),
+        from_device_id INTEGER NOT NULL REFERENCES devices(id),
+        to_device_id INTEGER NOT NULL REFERENCES devices(id),
+        CHECK (from_device_id <> to_device_id),
+        UNIQUE (relation_name_id, from_device_id, to_device_id)
+      );\n`,
+    );
+    legacyDatabase.exec(prePlaceholderSchema);
+    legacyDatabase.exec(`
+      INSERT INTO networks (id, name, accent)
+      VALUES (1, '既存LAN', 'blue');
+      INSERT INTO devices (id, hostname, category, is_vm)
+      VALUES
+        (1, 'legacy-a', 'physical', 0),
+        (2, 'legacy-b', 'physical', 0);
+      INSERT INTO relation_names (id, name, color, from_label, to_label)
+      VALUES (1, '既存関係', '#123456', '始点{}', '終点{}');
+      INSERT INTO relations
+        (id, relation_name_id, from_device_id, to_device_id)
+      VALUES (7, 1, 1, 2);
+    `);
+    legacyDatabase.close();
+
+    database = new PortalDatabase({ filename: legacyFilename });
+    app = createApp(database);
+    const migrated = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    const columns = database.database
+      .prepare("PRAGMA table_info(relations)")
+      .all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["from_placeholder", "to_placeholder"]),
+    );
+    expect(migrated.relations).toEqual([
+      expect.objectContaining({
+        id: 7,
+        fromPlaceholder: "",
+        toPlaceholder: "",
+        fromLabel: "始点-",
+        toLabel: "終点-",
+      }),
+    ]);
+    expect(() =>
+      database.database
+        .prepare(
+          `INSERT INTO relations
+            (relation_name_id, from_device_id, to_device_id,
+             from_placeholder, to_placeholder)
+           VALUES (1, 1, 2, '', '')`,
+        )
+        .run(),
+    ).toThrow();
   });
 
   it("assembles all redirect and monitor URLs like verify.py", async () => {
@@ -161,112 +401,346 @@ describe("REST API v1", () => {
     );
   });
 
-  it("rejects relation create and update with a conflicting tag colour", async () => {
-    const newTagResponse = await app.request("/api/relations", {
+  it("supports relation-name CRUD and resolved relation edges", async () => {
+    const duplicateName = await app.request("/api/relation-names", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fromDeviceId: 3,
-        toDeviceId: 1,
-        tag: "検証タグ",
-        fromLabel: null,
-        toLabel: null,
-        color: "teal",
+        name: "ホストOS",
+        color: "#123456",
       }),
     });
-    expect(newTagResponse.status).toBe(201);
-    expect((await json<{ color: string }>(newTagResponse)).color).toBe("teal");
+    expect(duplicateName.status).toBe(400);
 
-    const create = await app.request("/api/relations", {
+    const createName = await app.request("/api/relation-names", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        name: "監視",
+        color: "#22c55e",
+        fromLabel: "監視元",
+        toLabel: "監視先",
+      }),
+    });
+    expect(createName.status).toBe(201);
+    const relationName = await json<{
+      id: number;
+      relationCount: number;
+    }>(createName);
+    expect(relationName.relationCount).toBe(0);
+
+    const first = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "監視",
         fromDeviceId: 3,
         toDeviceId: 1,
-        tag: "ホストOS",
-        fromLabel: null,
-        toLabel: null,
-        color: "green",
       }),
     });
-    expect(create.status).toBe(400);
-    expect(
-      (await json<{ issues: Array<{ path: string; message: string }> }>(
-        create,
-      )).issues,
-    ).toContainEqual({
-      path: "color",
-      message: "タグ「ホストOS」の色は「yellow」に固定されています",
-    });
-
-    const update = await app.request("/api/relations/1", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fromDeviceId: 4,
-        toDeviceId: 2,
-        tag: "ホストOS",
-        fromLabel: null,
-        toLabel: null,
-        color: "green",
-      }),
-    });
-    expect(update.status).toBe(400);
-    expect(
-      database.listRelations().find((relation) => relation.id === 1)?.color,
-    ).toBe("yellow");
-
-    const validUpdate = await app.request("/api/relations/1", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fromDeviceId: 4,
-        toDeviceId: 2,
-        tag: "ホストOS",
-        fromLabel: "VM",
-        toLabel: "親ホスト",
-        color: "yellow",
-      }),
-    });
-    expect(validUpdate.status).toBe(200);
-    expect(await json(validUpdate)).toEqual(
+    expect(first.status).toBe(201);
+    const createdRelation = await json<{ id: number }>(first);
+    expect(createdRelation).toEqual(
       expect.objectContaining({
-        id: 1,
-        fromLabel: "VM",
-        toLabel: "親ホスト",
-        color: "yellow",
+        relationNameId: relationName.id,
+        relationName: "監視",
+        fromLabel: "監視元",
+        toLabel: "監視先",
+        color: "#22c55e",
       }),
     );
-  });
 
-  it("recolours every relation with the same tag in one operation", async () => {
-    const response = await app.request(
-      `/api/relations/tags/${encodeURIComponent("ホストOS")}/color`,
+    const second = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ホストOS",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+      }),
+    });
+    expect(second.status).toBe(201);
+    expect((await json<{ relationName: string }>(second)).relationName).toBe(
+      "ホストOS",
+    );
+
+    const duplicate = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "監視",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+      }),
+    });
+    expect(duplicate.status).toBe(400);
+    expect(
+      (await json<{ issues: Array<{ path: string }> }>(duplicate)).issues,
+    ).toContainEqual(
+      expect.objectContaining({ path: "relationName" }),
+    );
+
+    const updateName = await app.request(
+      `/api/relation-names/${relationName.id}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color: "orange" }),
+        body: JSON.stringify({
+          name: "監視",
+          color: "#ef4444",
+          fromLabel: "確認元",
+          toLabel: "確認先",
+        }),
       },
     );
-    expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({
-      tag: "ホストOS",
-      color: "orange",
-      updated: 4,
-    });
-
+    expect(updateName.status).toBe(200);
     const portal = await json<PortalApiData>(
       await app.request("/api/portal"),
     );
     expect(
-      portal.relations
-        .filter((relation) => relation.tag === "ホストOS")
-        .map((relation) => relation.color),
-    ).toEqual(["orange", "orange", "orange", "orange"]);
+      portal.relationNames.find((item) => item.id === relationName.id),
+    ).toEqual(
+      expect.objectContaining({
+        relationCount: 1,
+        color: "#ef4444",
+      }),
+    );
     expect(
-      portal.relations.find((relation) => relation.tag === "バックアップ先")
-        ?.color,
-    ).toBe("blue");
+      portal.relations.find(
+        (relation) => relation.relationName === "監視",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        color: "#ef4444",
+        fromLabel: "確認元",
+        toLabel: "確認先",
+      }),
+    );
+
+    const blockedDelete = await app.request(
+      `/api/relation-names/${relationName.id}`,
+      { method: "DELETE" },
+    );
+    expect(blockedDelete.status).toBe(409);
+
+    expect(
+      (
+        await app.request(
+          `/api/relations/${createdRelation.id}`,
+          { method: "DELETE" },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(
+          `/api/relation-names/${relationName.id}`,
+          { method: "DELETE" },
+        )
+      ).status,
+    ).toBe(200);
+
+    const retiredEndpoint = await app.request(
+      `/api/relations/tags/${encodeURIComponent("ホストOS")}/color`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ color: "#ffffff" }),
+      },
+    );
+    expect(retiredEndpoint.status).toBe(404);
+  });
+
+  it("resolves relation templates and allows placeholders in the unique key", async () => {
+    const createName = await app.request("/api/relation-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "ポート接続",
+        color: "#0ea5e9",
+        fromLabel: "始点{}",
+        toLabel: "ポート{}",
+      }),
+    });
+    expect(createName.status).toBe(201);
+
+    const first = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ポート接続",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+        fromPlaceholder: "LAN",
+        toPlaceholder: "8",
+      }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ポート接続",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+        fromPlaceholder: "LAN",
+        toPlaceholder: "9",
+      }),
+    });
+    expect(second.status).toBe(201);
+
+    const duplicate = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ポート接続",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+        fromPlaceholder: "LAN",
+        toPlaceholder: "8",
+      }),
+    });
+    expect(duplicate.status).toBe(400);
+
+    const emptyPlaceholder = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ポート接続",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+      }),
+    });
+    expect(emptyPlaceholder.status).toBe(201);
+
+    const portal = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    const labels = portal.relations
+      .filter((relation) => relation.relationName === "ポート接続")
+      .map((relation) => ({
+        from: relation.fromPlaceholder,
+        to: relation.toPlaceholder,
+        fromLabel: relation.fromLabel,
+        toLabel: relation.toLabel,
+      }));
+    expect(labels).toEqual([
+      {
+        from: "LAN",
+        to: "8",
+        fromLabel: "始点LAN",
+        toLabel: "ポート8",
+      },
+      {
+        from: "LAN",
+        to: "9",
+        fromLabel: "始点LAN",
+        toLabel: "ポート9",
+      },
+      {
+        from: "",
+        to: "",
+        fromLabel: "始点-",
+        toLabel: "ポート-",
+      },
+    ]);
+
+    const indexes = database.database
+      .prepare("PRAGMA index_list(relations)")
+      .all() as Array<{ name: string; unique: number }>;
+    const uniqueIndex = indexes.find((index) => index.unique === 1);
+    expect(uniqueIndex).toBeDefined();
+    const indexColumns = database.database
+      .prepare(`PRAGMA index_info("${uniqueIndex!.name}")`)
+      .all() as Array<{ name: string }>;
+    expect(indexColumns.map((column) => column.name)).toEqual([
+      "relation_name_id",
+      "from_device_id",
+      "to_device_id",
+      "from_placeholder",
+      "to_placeholder",
+    ]);
+  });
+
+  it("round-trips relation placeholders through YAML", async () => {
+    await app.request("/api/relation-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "ポート{}",
+        color: "#0ea5e9",
+        fromLabel: "始点{}",
+        toLabel: "ポート{}",
+      }),
+    });
+    await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ポート{}",
+        fromDeviceId: 3,
+        toDeviceId: 1,
+        fromPlaceholder: "lan",
+        toPlaceholder: "8",
+      }),
+    });
+
+    const exported = await app.request("/api/export");
+    expect(exported.status).toBe(200);
+    const yaml = await exported.text();
+    const document = parseYaml(yaml) as {
+      relations: Array<Record<string, unknown>>;
+    };
+    expect(document.relations).toContainEqual(
+      expect.objectContaining({
+        relationName: "ポート{}",
+        fromPlaceholder: "lan",
+        toPlaceholder: "8",
+      }),
+    );
+
+    const importedFilename = join(directory, "placeholder-import.sqlite");
+    const importedDatabase = new PortalDatabase({
+      filename: importedFilename,
+    });
+    try {
+      importedDatabase.database.exec(`
+        DELETE FROM device_keys;
+        DELETE FROM ssh_keys;
+        DELETE FROM services;
+        DELETE FROM relations;
+        DELETE FROM relation_names;
+        DELETE FROM device_networks;
+        DELETE FROM devices;
+        DELETE FROM networks;
+        DELETE FROM settings;
+      `);
+      const importedApp = createApp(importedDatabase);
+      const response = await importedApp.request("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/yaml" },
+        body: yaml,
+      });
+      expect(response.status).toBe(200);
+      const portal = await json<PortalApiData>(
+        await importedApp.request("/api/portal"),
+      );
+      expect(
+        portal.relations.find(
+          (relation) => relation.relationName === "ポート{}",
+        ),
+      ).toEqual(
+        expect.objectContaining({
+          fromPlaceholder: "lan",
+          toPlaceholder: "8",
+          fromLabel: "始点lan",
+          toLabel: "ポート8",
+        }),
+      );
+    } finally {
+      importedDatabase.close();
+    }
   });
 
   it("returns null meters until the SSH collector is configured", async () => {
@@ -334,6 +808,181 @@ describe("REST API v1", () => {
       );
     }
     expect(await json(await app.request("/api/settings"))).toEqual(before);
+  });
+
+  it("cascades device relations, services, and memberships atomically", async () => {
+    const deviceResponse = await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hostname: "delete-cascade-device",
+        petname: "削除回帰機",
+        category: "physical",
+        isVm: false,
+        sshUser: null,
+        sshPort: null,
+        meterEnabled: false,
+        note: null,
+      }),
+    });
+    expect(deviceResponse.status).toBe(201);
+    const device = await json<PortalApiDevice>(deviceResponse);
+
+    const membershipResponse = await app.request("/api/memberships", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.id,
+        networkId: 1,
+        ip: "192.168.0.250",
+        label: "delete-regression",
+      }),
+    });
+    expect(membershipResponse.status).toBe(201);
+    const membership = await json<{ id: number }>(membershipResponse);
+
+    const relationResponse = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "ホストOS",
+        fromDeviceId: device.id,
+        toDeviceId: 1,
+      }),
+    });
+    expect(relationResponse.status).toBe(201);
+    const relation = await json<{ id: number }>(relationResponse);
+    const inboundRelationResponse = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "バックアップ先",
+        fromDeviceId: 1,
+        toDeviceId: device.id,
+      }),
+    });
+    expect(inboundRelationResponse.status).toBe(201);
+    const inboundRelation = await json<{ id: number }>(
+      inboundRelationResponse,
+    );
+
+    const serviceResponse = await app.request("/api/services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceNetworkId: membership.id,
+        subdomain: "delete-cascade-service",
+        petname: "削除回帰サービス",
+        description: null,
+        port: 8080,
+        protocol: "tcp",
+        scheme: "http",
+        topPath: "/",
+        monitorPath: "/",
+        serviceUrl: null,
+        iconKey: "generic:monitor",
+        enabled: true,
+      }),
+    });
+    expect(serviceResponse.status).toBe(201);
+    const service = await json<PortalApiService>(serviceResponse);
+    database.database.exec(`
+      INSERT INTO ssh_keys
+        (owner, purpose, key_type, public_key)
+      VALUES
+        ('delete-cascade-device', 'test', 'ed25519', 'ssh-ed25519 test');
+      INSERT INTO device_keys (device_id, key_id)
+      VALUES (${device.id}, last_insert_rowid());
+    `);
+
+    expect(database.deviceCascadeCounts(device.id)).toEqual({
+      memberships: 1,
+      services: 1,
+      relations: 2,
+    });
+
+    database.database.exec(`
+      CREATE TRIGGER fail_device_cascade
+      BEFORE DELETE ON services
+      BEGIN
+        SELECT RAISE(ABORT, 'forced service cascade failure');
+      END;
+    `);
+    expect(() => database.deleteDevice(device.id)).toThrow(
+      /forced service cascade failure/,
+    );
+    expect(database.getDevice(device.id)).toBeDefined();
+    expect(database.getRelation(relation.id)).toBeDefined();
+    expect(database.getRelation(inboundRelation.id)).toBeDefined();
+    expect(database.getService(service.id)).toBeDefined();
+    expect(database.getMembership(membership.id)).toBeDefined();
+    expect(
+      database.database
+        .prepare("SELECT COUNT(*) AS count FROM device_keys WHERE device_id = ?")
+        .get(device.id),
+    ).toEqual({ count: 1 });
+    database.database.exec("DROP TRIGGER fail_device_cascade");
+
+    const deleted = await app.request(`/api/devices/${device.id}`, {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+    expect(await json(deleted)).toEqual({ ok: true });
+    expect(
+      (await app.request(`/api/devices/${device.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/relations/${relation.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/relations/${inboundRelation.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/services/${service.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/memberships/${membership.id}`)).status,
+    ).toBe(404);
+    expect(
+      database.database
+        .prepare("SELECT COUNT(*) AS count FROM device_keys WHERE device_id = ?")
+        .get(device.id),
+    ).toEqual({ count: 0 });
+    const relationNames = await json<
+      Array<{ name: string; relationCount: number }>
+    >(await app.request("/api/relation-names"));
+    expect(
+      relationNames.find((relationName) => relationName.name === "ホストOS"),
+    ).toMatchObject({ relationCount: 4 });
+    expect(
+      relationNames.find(
+        (relationName) => relationName.name === "バックアップ先",
+      ),
+    ).toMatchObject({ relationCount: 1 });
+
+    const childlessResponse = await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hostname: "delete-childless-device",
+        petname: "子要素なし",
+        category: "physical",
+        isVm: false,
+        sshUser: null,
+        sshPort: null,
+        meterEnabled: false,
+        note: null,
+      }),
+    });
+    expect(childlessResponse.status).toBe(201);
+    const childlessDevice = await json<PortalApiDevice>(childlessResponse);
+    expect(
+      (
+        await app.request(`/api/devices/${childlessDevice.id}`, {
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(200);
   });
 
   it("supports create, read, update, and guarded deletes", async () => {
@@ -470,33 +1119,248 @@ describe("REST API v1", () => {
 
     expect(
       (
-        await app.request(`/api/devices/${device.id}`, {
+        await app.request(`/api/networks/${network.id}`, {
           method: "DELETE",
         })
       ).status,
     ).toBe(409);
     expect(
       (
-        await app.request(`/api/networks/${network.id}`, {
+        await app.request(`/api/devices/${device.id}`, {
           method: "DELETE",
         })
       ).status,
-    ).toBe(409);
+    ).toBe(200);
 
     expect(
-      (
-        await app.request(`/api/services/${createdService.id}`, {
-          method: "DELETE",
-        })
-      ).status,
-    ).toBe(200);
+      (await app.request(`/api/services/${createdService.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/memberships/${membership.id}`)).status,
+    ).toBe(404);
     expect(
       (
-        await app.request(`/api/memberships/${membership.id}`, {
+        await app.request(`/api/networks/${network.id}`, {
           method: "DELETE",
         })
       ).status,
     ).toBe(200);
+  });
+
+  it("reads and writes property maps while preserving omitted updates", async () => {
+    const deviceInput = {
+      hostname: "properties-device",
+      petname: "プロパティ検証機",
+      category: "physical",
+      isVm: false,
+      sshUser: null,
+      sshPort: null,
+      meterEnabled: false,
+      note: null,
+    };
+    const createDeviceResponse = await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...deviceInput,
+        properties: {
+          " vault_path ": " sops/devices/properties-device ",
+          "hdd_note": "SMARTを確認中",
+        },
+      }),
+    });
+    expect(createDeviceResponse.status).toBe(201);
+    const createdDevice = await json<PortalApiDevice>(createDeviceResponse);
+    expect(createdDevice.properties).toEqual({
+      vault_path: " sops/devices/properties-device ",
+      hdd_note: "SMARTを確認中",
+    });
+
+    expect(
+      await json<PortalApiDevice>(
+        await app.request(`/api/devices/${createdDevice.id}`),
+      ),
+    ).toMatchObject({
+      id: createdDevice.id,
+      properties: createdDevice.properties,
+    });
+    expect(
+      (await json<PortalApiDevice[]>(await app.request("/api/devices")))
+        .find((device) => device.id === createdDevice.id)?.properties,
+    ).toEqual(createdDevice.properties);
+    expect(
+      (await json<PortalApiData>(await app.request("/api/portal")))
+        .devices.find((device) => device.id === createdDevice.id)?.properties,
+    ).toEqual(createdDevice.properties);
+
+    const replaceDeviceResponse = await app.request(
+      `/api/devices/${createdDevice.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...deviceInput,
+          properties: { replacement: "only" },
+        }),
+      },
+    );
+    expect(replaceDeviceResponse.status).toBe(200);
+    expect(
+      (await json<PortalApiDevice>(replaceDeviceResponse)).properties,
+    ).toEqual({ replacement: "only" });
+
+    const omittedDeviceResponse = await app.request(
+      `/api/devices/${createdDevice.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...deviceInput,
+          petname: "プロパティ保持確認",
+        }),
+      },
+    );
+    expect(omittedDeviceResponse.status).toBe(200);
+    expect(
+      (await json<PortalApiDevice>(omittedDeviceResponse)).properties,
+    ).toEqual({ replacement: "only" });
+
+    const serviceInput = {
+      deviceNetworkId: 1,
+      subdomain: "properties-service",
+      petname: "Properties Service",
+      description: null,
+      port: 8080,
+      protocol: "tcp",
+      scheme: "http",
+      topPath: "/",
+      monitorPath: "/",
+      serviceUrl: null,
+      iconKey: "generic:monitor",
+      enabled: true,
+    };
+    const createServiceResponse = await app.request("/api/services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...serviceInput,
+        properties: {
+          " sops_key ": "service/ciphertext",
+          owner_note: "AI向け注釈",
+        },
+      }),
+    });
+    expect(createServiceResponse.status).toBe(201);
+    const createdService = await json<PortalApiService>(
+      createServiceResponse,
+    );
+    expect(createdService.properties).toEqual({
+      sops_key: "service/ciphertext",
+      owner_note: "AI向け注釈",
+    });
+    expect(
+      await json<PortalApiService>(
+        await app.request(`/api/services/${createdService.id}`),
+      ),
+    ).toMatchObject({
+      id: createdService.id,
+      properties: createdService.properties,
+    });
+    expect(
+      (await json<PortalApiService[]>(await app.request("/api/services")))
+        .find((service) => service.id === createdService.id)?.properties,
+    ).toEqual(createdService.properties);
+
+    const replaceServiceResponse = await app.request(
+      `/api/services/${createdService.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...serviceInput,
+          properties: { retained: "yes" },
+        }),
+      },
+    );
+    expect(replaceServiceResponse.status).toBe(200);
+    expect(
+      (await json<PortalApiService>(replaceServiceResponse)).properties,
+    ).toEqual({ retained: "yes" });
+
+    const omittedServiceResponse = await app.request(
+      `/api/services/${createdService.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...serviceInput,
+          petname: "Properties Service Updated",
+        }),
+      },
+    );
+    expect(omittedServiceResponse.status).toBe(200);
+    expect(
+      (await json<PortalApiService>(omittedServiceResponse)).properties,
+    ).toEqual({ retained: "yes" });
+    expect(
+      await json<PortalApiService>(
+        await app.request(`/api/services/${createdService.id}`),
+      ),
+    ).toMatchObject({
+      properties: { retained: "yes" },
+    });
+  });
+
+  it("rejects invalid property maps and removes them with their entity", async () => {
+    const validDevice = {
+      hostname: "invalid-properties-device",
+      petname: null,
+      category: "physical",
+      isVm: false,
+      sshUser: null,
+      sshPort: null,
+      meterEnabled: false,
+      note: null,
+    };
+    const invalidPropertyCases = [
+      { "   ": "value" },
+      { ["k".repeat(129)]: "value" },
+      { oversized: "x".repeat(64 * 1024 + 1) },
+      { non_string: 42 },
+    ];
+    for (const properties of invalidPropertyCases) {
+      const response = await app.request("/api/devices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...validDevice, properties }),
+      });
+      expect(response.status).toBe(400);
+      expect(
+        (await json<{ issues: Array<{ path: string }> }>(response)).issues,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: expect.stringContaining("properties"),
+          }),
+        ]),
+      );
+    }
+
+    const createResponse = await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...validDevice,
+        hostname: "delete-properties-device",
+        properties: { delete_me: "value" },
+      }),
+    });
+    const device = await json<PortalApiDevice>(createResponse);
+    expect(
+      database.database
+        .prepare("SELECT properties FROM devices WHERE id = ?")
+        .get(device.id),
+    ).toEqual({ properties: JSON.stringify({ delete_me: "value" }) });
     expect(
       (
         await app.request(`/api/devices/${device.id}`, {
@@ -505,12 +1369,47 @@ describe("REST API v1", () => {
       ).status,
     ).toBe(200);
     expect(
+      database.database
+        .prepare("SELECT properties FROM devices WHERE id = ?")
+        .get(device.id),
+    ).toBeUndefined();
+
+    const service = database.listServices()[0];
+    expect(
       (
-        await app.request(`/api/networks/${network.id}`, {
+        await app.request(`/api/services/${service.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceNetworkId: service.deviceNetworkId,
+            subdomain: service.subdomain,
+            petname: service.petname,
+            description: service.description,
+            port: service.port,
+            protocol: service.protocol,
+            scheme: service.scheme,
+            topPath: service.topPath,
+            monitorPath: service.monitorPath,
+            serviceUrl: service.serviceUrl,
+            iconKey: service.iconKey,
+            enabled: service.enabled,
+            properties: { delete_me: "service" },
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(`/api/services/${service.id}`, {
           method: "DELETE",
         })
       ).status,
     ).toBe(200);
+    expect(
+      database.database
+        .prepare("SELECT properties FROM services WHERE id = ?")
+        .get(service.id),
+    ).toBeUndefined();
   });
 
   it("returns ValidationIssue arrays for API input failures", async () => {
@@ -561,14 +1460,21 @@ describe("REST API v1", () => {
         petname: string | null;
         memberships: Array<Record<string, unknown>>;
       }>;
+      relationNames: Array<Record<string, unknown>>;
       relations: Array<Record<string, unknown>>;
       services: Array<Record<string, unknown>>;
       sshKeys: unknown[];
       deviceKeys: unknown[];
     };
 
-    expect(document.format).toBe("ouchi-ledger/1");
-    expect(document).not.toHaveProperty("tags");
+    expect(document.format).toBe("ouchi-ledger/2");
+    expect(document.relationNames).toHaveLength(2);
+    expect(document.relationNames[0]).toEqual(
+      expect.objectContaining({
+        name: "ホストOS",
+        color: "#d5a22b",
+      }),
+    );
     expect(Number.isNaN(Date.parse(document.exportedAt))).toBe(false);
     expect(document.settings).toEqual({
       domain: "ouchi.local",
@@ -589,8 +1495,9 @@ describe("REST API v1", () => {
     expect(document.services[0]).not.toHaveProperty("url");
     expect(document.relations[0]).toHaveProperty("from");
     expect(document.relations[0]).toHaveProperty("to");
-    expect(document.relations[0]).toHaveProperty("tag");
-    expect(document.relations[0]).toHaveProperty("color");
+    expect(document.relations[0]).toHaveProperty("relationName");
+    expect(document.relations[0]).not.toHaveProperty("tag");
+    expect(document.relations[0]).not.toHaveProperty("color");
     expect(document.sshKeys).toEqual([]);
     expect(document.deviceKeys).toEqual([]);
   });
@@ -641,6 +1548,24 @@ describe("REST API v1", () => {
     database.database
       .prepare("UPDATE settings SET title = ? WHERE id = 1")
       .run("移行先ポータル");
+    database.database
+      .prepare("UPDATE devices SET properties = ? WHERE hostname = ?")
+      .run(
+        JSON.stringify({
+          vault_path: "sops/devices/nanopi/monitor",
+          maintenance_note: "HDD SMART怪しい",
+        }),
+        "nanopi-r2s",
+      );
+    database.database
+      .prepare("UPDATE services SET properties = ? WHERE subdomain = ?")
+      .run(
+        JSON.stringify({
+          sops_ciphertext: "ENC[AES256_GCM,data:round-trip]",
+          ai_note: "Gitサーバ",
+        }),
+        "gitea",
+      );
 
     const firstExport = await app.request("/api/export");
     const firstYaml = await firstExport.text();
@@ -662,6 +1587,7 @@ describe("REST API v1", () => {
           networks: 3,
           devices: 16,
           memberships: 17,
+          relationNames: 2,
           relations: 5,
           services: 9,
           sshKeys: 1,
@@ -676,6 +1602,8 @@ describe("REST API v1", () => {
       const second = parseYaml(secondYaml) as Record<string, unknown>;
       expect(first).not.toHaveProperty("tags");
       expect(second).not.toHaveProperty("tags");
+      expect(first).toHaveProperty("relationNames");
+      expect(second).toHaveProperty("relationNames");
       delete first.exportedAt;
       delete second.exportedAt;
       expect(second).toEqual(first);
@@ -688,6 +1616,20 @@ describe("REST API v1", () => {
         importedPortal.devices.find((item) => item.hostname === "nanopi-r2s")
           ?.petname,
       ).toBe("門番");
+      expect(
+        importedPortal.devices.find((item) => item.hostname === "nanopi-r2s")
+          ?.properties,
+      ).toEqual({
+        vault_path: "sops/devices/nanopi/monitor",
+        maintenance_note: "HDD SMART怪しい",
+      });
+      expect(
+        importedPortal.services.find((item) => item.subdomain === "gitea")
+          ?.properties,
+      ).toEqual({
+        sops_ciphertext: "ENC[AES256_GCM,data:round-trip]",
+        ai_note: "Gitサーバ",
+      });
       const omv = importedPortal.devices.find(
         (item) => item.hostname === "omv",
       );
@@ -707,20 +1649,21 @@ describe("REST API v1", () => {
     }
   });
 
-  it("rejects YAML with conflicting colours for the same tag", async () => {
+  it("rejects duplicate relation triples and missing relation names in YAML", async () => {
     const before = await json<PortalApiData>(
       await app.request("/api/portal"),
     );
     const exported = parseYaml(
       await (await app.request("/api/export")).text(),
     ) as {
-      relations: Array<{ tag: string; color: string }>;
+      relationNames: Array<Record<string, unknown>>;
+      relations: Array<{
+        from: string;
+        to: string;
+        relationName: string;
+      }>;
     };
-    const hostRelations = exported.relations.filter(
-      (relation) => relation.tag === "ホストOS",
-    );
-    expect(hostRelations).toHaveLength(4);
-    hostRelations[1].color = "green";
+    exported.relations.push({ ...exported.relations[0] });
 
     const response = await app.request("/api/import", {
       method: "POST",
@@ -734,8 +1677,117 @@ describe("REST API v1", () => {
       )).issues,
     ).toContainEqual(
       expect.objectContaining({
-        path: expect.stringContaining("relations[1].color"),
-        message: expect.stringContaining("統一してください"),
+        path: expect.stringContaining("relations[5]"),
+        message: expect.stringContaining("重複"),
+      }),
+    );
+    expect(
+      await json<PortalApiData>(await app.request("/api/portal")),
+    ).toEqual(before);
+  });
+
+  it("upgrades legacy relation YAML before import", async () => {
+    const exported = parseYaml(
+      await (await app.request("/api/export")).text(),
+    ) as {
+      format: string;
+      relationNames?: unknown;
+      relations: Array<Record<string, unknown>>;
+    };
+    delete exported.relationNames;
+    exported.format = "ouchi-ledger/1";
+    exported.relations = exported.relations.map((relation, index) => ({
+      from: relation.from,
+      to: relation.to,
+      tag: index === 0 ? "旧タグA" : "旧タグB",
+      fromLabel: index === 0 ? "旧始点" : null,
+      toLabel: index === 0 ? "旧終点" : null,
+      color: index === 0 ? "#112233" : "#445566",
+    }));
+
+    const response = await app.request("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: stringifyYaml(exported),
+    });
+    expect(response.status).toBe(200);
+    const portal = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(portal.relationNames).toHaveLength(2);
+    expect(
+      portal.relationNames.find((relationName) => relationName.name === "旧タグA"),
+    ).toEqual(
+      expect.objectContaining({
+        color: "#112233",
+        relationCount: 1,
+      }),
+    );
+    expect(
+      portal.relations.find(
+        (relation) => relation.relationName === "旧タグA",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        fromLabel: "旧始点",
+        toLabel: "旧終点",
+      }),
+    );
+  });
+
+  it("accepts legacy YAML without properties and rejects duplicate property keys", async () => {
+    const exportedYaml = await (await app.request("/api/export")).text();
+    const legacyDocument = parseYaml(exportedYaml) as {
+      devices: Array<Record<string, unknown>>;
+      services: Array<Record<string, unknown>>;
+    };
+    for (const item of [
+      ...legacyDocument.devices,
+      ...legacyDocument.services,
+    ]) {
+      delete item.properties;
+    }
+
+    const legacyImport = await app.request("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: stringifyYaml(legacyDocument),
+    });
+    expect(legacyImport.status).toBe(200);
+    const legacyPortal = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(
+      legacyPortal.devices.every(
+        (device) => Object.keys(device.properties).length === 0,
+      ),
+    ).toBe(true);
+    expect(
+      legacyPortal.services.every(
+        (service) => Object.keys(service.properties).length === 0,
+      ),
+    ).toBe(true);
+
+    const duplicateYaml = exportedYaml.replace(
+      "    properties: {}\n",
+      "    properties:\n      duplicate_key: one\n      duplicate_key: two\n",
+    );
+    expect(duplicateYaml).not.toBe(exportedYaml);
+    const before = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    const duplicateImport = await app.request("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: duplicateYaml,
+    });
+    expect(duplicateImport.status).toBe(400);
+    expect(
+      (await json<{ issues: Array<{ message: string }> }>(duplicateImport))
+        .issues,
+    ).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("Map keys must be unique"),
       }),
     );
     expect(

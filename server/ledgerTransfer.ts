@@ -4,23 +4,28 @@ import type {
   PortalDeviceInput,
   PortalMembershipInput,
   PortalNetworkInput,
+  PortalProperties,
   PortalRelationInput,
+  PortalRelationNameInput,
   PortalServiceInput,
   ValidationIssue,
 } from "../src/portal/types";
 import {
   isCidr,
   isIpWithinCidr,
+  normalizeProperties,
   validateDevicePayload,
   validateMembershipPayload,
   validateNetworkPayload,
   validateRelationPayload,
+  validateRelationNamePayload,
   validateServicePayload,
   validateSettingsPayload,
 } from "../src/portal/validation";
 import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 
-export const LEDGER_FORMAT = "ouchi-ledger/1";
+export const LEDGER_FORMAT = "ouchi-ledger/2";
+export const LEGACY_LEDGER_FORMAT = "ouchi-ledger/1";
 
 export interface LedgerMembership {
   network: string;
@@ -37,6 +42,7 @@ export interface LedgerDevice {
   sshPort: number | null;
   meterEnabled: boolean;
   note: string | null;
+  properties: PortalProperties;
   memberships: LedgerMembership[];
 }
 
@@ -50,10 +56,16 @@ export interface LedgerNetwork {
 export interface LedgerRelation {
   from: string;
   to: string;
-  tag: string;
+  relationName: string;
+  fromPlaceholder?: string;
+  toPlaceholder?: string;
+}
+
+export interface LedgerRelationName {
+  name: string;
+  color: string;
   fromLabel: string | null;
   toLabel: string | null;
-  color: string;
 }
 
 export interface LedgerService {
@@ -69,6 +81,7 @@ export interface LedgerService {
   monitorPath: string | null;
   serviceUrl: string | null;
   iconKey: string | null;
+  properties: PortalProperties;
   enabled: boolean;
 }
 
@@ -97,6 +110,7 @@ export interface LedgerDocument {
   };
   networks: LedgerNetwork[];
   devices: LedgerDevice[];
+  relationNames: LedgerRelationName[];
   relations: LedgerRelation[];
   services: LedgerService[];
   sshKeys: LedgerSshKey[];
@@ -107,6 +121,7 @@ export interface LedgerImportCounts {
   networks: number;
   devices: number;
   memberships: number;
+  relationNames: number;
   relations: number;
   services: number;
   sshKeys: number;
@@ -142,6 +157,7 @@ type DeviceRow = {
   ssh_port: number | null;
   meter_enabled: number;
   note: string | null;
+  properties: string;
 };
 
 type MembershipRow = {
@@ -151,13 +167,19 @@ type MembershipRow = {
   label: string | null;
 };
 
+type RelationNameRow = {
+  name: string;
+  color: string;
+  from_label: string | null;
+  to_label: string | null;
+};
+
 type RelationRow = {
   from_hostname: string;
   to_hostname: string;
-  tag: string;
-  from_label: string | null;
-  to_label: string | null;
-  color: string;
+  relation_name: string;
+  from_placeholder: string;
+  to_placeholder: string;
 };
 
 type ServiceRow = {
@@ -174,6 +196,7 @@ type ServiceRow = {
   service_url: string | null;
   icon_key: string | null;
   favicon_url: string | null;
+  properties: string;
   enabled: number;
 };
 
@@ -215,6 +238,17 @@ function nullableText(value: unknown): string | null {
 function nullablePetname(value: unknown): string | null {
   const normalized = nullableText(value);
   return normalized || null;
+}
+
+function parseStoredProperties(value: string | null): PortalProperties {
+  if (!value) {
+    return {};
+  }
+  try {
+    return normalizeProperties(JSON.parse(value) as unknown);
+  } catch {
+    return {};
+  }
 }
 
 function arrayValue(value: unknown): unknown[] {
@@ -278,6 +312,52 @@ function parseYamlRoot(text: string): RecordValue {
     ]);
   }
   return parsed;
+}
+
+/**
+ * One-step YAML migration from ouchi-ledger/1 to ouchi-ledger/2.
+ *
+ * Legacy rows own their tag/colour/labels. Grouping them by tag yields the
+ * same definitions as DB migration 004, including first-row-wins metadata.
+ */
+export function upgradeLegacyLedgerDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== LEGACY_LEDGER_FORMAT) {
+    return root;
+  }
+  const relationNames: Array<RecordValue> = [];
+  const byName = new Map<string, RecordValue>();
+  const relations = arrayValue(root.relations).map((item) => {
+    if (!isRecord(item)) {
+      return item;
+    }
+    const name =
+      textValue(item.tag) || "未分類";
+    if (!byName.has(name)) {
+      const relationName: RecordValue = {
+        name,
+        color: textValue(item.color),
+        fromLabel: nullableText(item.fromLabel),
+        toLabel: nullableText(item.toLabel),
+      };
+      byName.set(name, relationName);
+      relationNames.push(relationName);
+    }
+    return {
+      from: item.from,
+      to: item.to,
+      relationName: name,
+      fromPlaceholder: nullableText(item.fromPlaceholder),
+      toPlaceholder: nullableText(item.toPlaceholder),
+    };
+  });
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
+    relationNames,
+    relations,
+  };
 }
 
 function validateSshKey(
@@ -350,6 +430,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
   for (const field of [
     "networks",
     "devices",
+    "relationNames",
     "relations",
     "services",
     "sshKeys",
@@ -457,12 +538,35 @@ function validateDocument(root: RecordValue): LedgerDocument {
         typeof item.sshPort === "number" ? item.sshPort : null,
       meterEnabled: item.meterEnabled as boolean,
       note: nullableText(item.note),
+      properties: normalizeProperties(item.properties),
       memberships,
     });
   });
 
+  const relationNames: LedgerRelationName[] = [];
+  arrayValue(root.relationNames).forEach((item, index) => {
+    if (!isRecord(item)) {
+      issues.push({
+        path: `relationNames[${index}]`,
+        message: "関係名の形式が不正です",
+      });
+      return;
+    }
+    issues.push(
+      ...validateRelationNamePayload(item).map((issue) => ({
+        ...issue,
+        path: `relationNames[${index}].${issue.path}`,
+      })),
+    );
+    relationNames.push({
+      name: textValue(item.name),
+      color: textValue(item.color),
+      fromLabel: nullableText(item.fromLabel),
+      toLabel: nullableText(item.toLabel),
+    });
+  });
+
   const relations: LedgerRelation[] = [];
-  const relationTagColors = new Map<string, string>();
   arrayValue(root.relations).forEach((item, index) => {
     if (!isRecord(item)) {
       issues.push({
@@ -471,31 +575,18 @@ function validateDocument(root: RecordValue): LedgerDocument {
       });
       return;
     }
-    const tagName = textValue(item.tag);
-    const relationColor = textValue(item.color);
     const synthetic: PortalRelationInput = {
+      relationName: textValue(item.relationName),
       fromDeviceId: index + 1,
       toDeviceId: index + 2,
-      tag: tagName,
-      fromLabel: nullableText(item.fromLabel),
-      toLabel: nullableText(item.toLabel),
-      color: relationColor,
+      fromPlaceholder: textValue(item.fromPlaceholder),
+      toPlaceholder: textValue(item.toPlaceholder),
     };
     issues.push(...validateRelationPayload(synthetic).map((issue) => ({
       ...issue,
       path: `relations[${index}].${issue.path}`,
     })));
-    const canonicalColor = relationTagColors.get(tagName);
-    if (canonicalColor && relationColor !== canonicalColor) {
-      issues.push({
-        path: `relations[${index}].color`,
-        message:
-          `タグ「${tagName}」の色は「${canonicalColor}」に統一してください`,
-      });
-    } else if (tagName && relationColor && !canonicalColor) {
-      relationTagColors.set(tagName, relationColor);
-    }
-    for (const field of ["from", "to"] as const) {
+    for (const field of ["from", "to", "relationName"] as const) {
       if (!textValue(item[field])) {
         issues.push({
           path: `relations[${index}].${field}`,
@@ -506,10 +597,9 @@ function validateDocument(root: RecordValue): LedgerDocument {
     relations.push({
       from: textValue(item.from),
       to: textValue(item.to),
-      tag: tagName,
-      fromLabel: nullableText(item.fromLabel),
-      toLabel: nullableText(item.toLabel),
-      color: relationColor,
+      relationName: textValue(item.relationName),
+      fromPlaceholder: textValue(item.fromPlaceholder),
+      toPlaceholder: textValue(item.toPlaceholder),
     });
   });
 
@@ -525,7 +615,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
     const iconKey = normalizeServiceIconReference(
       item.iconKey,
       item.faviconUrl,
-      "generic:monitor",
+      "favicon",
     );
     const synthetic: PortalServiceInput = {
       deviceNetworkId: index + 1,
@@ -539,6 +629,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
       monitorPath: nullableText(item.monitorPath),
       serviceUrl: nullableText(item.serviceUrl),
       iconKey,
+      properties: normalizeProperties(item.properties),
       enabled: item.enabled as boolean,
     };
     issues.push(...validateServicePayload(synthetic).map((issue) => ({
@@ -576,6 +667,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
       monitorPath: nullableText(item.monitorPath),
       serviceUrl: nullableText(item.serviceUrl),
       iconKey,
+      properties: normalizeProperties(item.properties),
       enabled: item.enabled as boolean,
     });
   });
@@ -653,6 +745,14 @@ function validateDocument(root: RecordValue): LedgerDocument {
     "公開鍵",
     issues,
   );
+  const relationNameByName = uniqueMap(
+    relationNames,
+    (relationName) => relationName.name,
+    (relationName) =>
+      `relationNames.${relationNames.indexOf(relationName)}`,
+    "関係名",
+    issues,
+  );
 
   const cidrs = new Set<string>();
   networks.forEach((network, index) => {
@@ -726,7 +826,14 @@ function validateDocument(root: RecordValue): LedgerDocument {
     });
   });
 
+  const relationKeys = new Set<string>();
   relations.forEach((relation, index) => {
+    if (!relationNameByName.has(relation.relationName)) {
+      issues.push({
+        path: `relations[${index}].relationName`,
+        message: `関係名「${relation.relationName}」が存在しません`,
+      });
+    }
     if (!deviceByName.has(relation.from)) {
       issues.push({
         path: `relations[${index}].from`,
@@ -744,6 +851,22 @@ function validateDocument(root: RecordValue): LedgerDocument {
         path: `relations[${index}].to`,
         message: "同じデバイス自身へ関係は定義できません",
       });
+    }
+    const key = [
+      relation.relationName,
+      relation.from,
+      relation.to,
+      relation.fromPlaceholder ?? "",
+      relation.toPlaceholder ?? "",
+    ].join("\u0000");
+    if (relationKeys.has(key)) {
+      issues.push({
+        path: `relations[${index}]`,
+        message:
+          "同じ関係名・始点・終点・プレースホルダーの関係が重複しています",
+      });
+    } else {
+      relationKeys.add(key);
     }
   });
 
@@ -810,6 +933,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
     },
     networks,
     devices,
+    relationNames,
     relations,
     services,
     sshKeys,
@@ -818,7 +942,7 @@ function validateDocument(root: RecordValue): LedgerDocument {
 }
 
 export function parseLedgerYaml(input: string): LedgerDocument {
-  return validateDocument(parseYamlRoot(input));
+  return validateDocument(upgradeLegacyLedgerDocument(parseYamlRoot(input)));
 }
 
 export function createLedgerDocument(
@@ -836,7 +960,7 @@ export function createLedgerDocument(
   const devices = database
     .prepare(
       `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
-              meter_enabled, note
+              meter_enabled, note, properties
        FROM devices ORDER BY id`,
     )
     .all() as DeviceRow[];
@@ -848,11 +972,19 @@ export function createLedgerDocument(
        ORDER BY dn.id`,
     )
     .all() as MembershipRow[];
+  const relationNames = database
+    .prepare(
+      `SELECT name, color, from_label, to_label
+       FROM relation_names ORDER BY id`,
+    )
+    .all() as RelationNameRow[];
   const relations = database
     .prepare(
       `SELECT fd.hostname AS from_hostname, td.hostname AS to_hostname,
-              r.tag, r.from_label, r.to_label, r.color
+              n.name AS relation_name,
+              r.from_placeholder, r.to_placeholder
        FROM relations r
+       JOIN relation_names n ON n.id = r.relation_name_id
        JOIN devices fd ON fd.id = r.from_device_id
        JOIN devices td ON td.id = r.to_device_id
        ORDER BY r.id`,
@@ -863,7 +995,7 @@ export function createLedgerDocument(
       `SELECT s.subdomain, d.hostname, n.name AS network_name,
               s.petname, s.description, s.port, s.protocol, s.scheme,
               s.top_path, s.monitor_path, s.service_url, s.icon_key,
-              s.favicon_url, s.enabled
+              s.favicon_url, s.properties, s.enabled
        FROM services s
        JOIN device_networks dn ON dn.id = s.device_network_id
        JOIN devices d ON d.id = dn.device_id
@@ -921,15 +1053,25 @@ export function createLedgerDocument(
       sshPort: device.ssh_port,
       meterEnabled: Boolean(device.meter_enabled),
       note: device.note,
+      properties: parseStoredProperties(device.properties),
       memberships: membershipsByDevice.get(device.id) ?? [],
+    })),
+    relationNames: relationNames.map((relationName) => ({
+      name: relationName.name,
+      color: relationName.color,
+      fromLabel: relationName.from_label,
+      toLabel: relationName.to_label,
     })),
     relations: relations.map((relation) => ({
       from: relation.from_hostname,
       to: relation.to_hostname,
-      tag: relation.tag,
-      fromLabel: relation.from_label,
-      toLabel: relation.to_label,
-      color: relation.color,
+      relationName: relation.relation_name,
+      ...(relation.from_placeholder
+        ? { fromPlaceholder: relation.from_placeholder }
+        : {}),
+      ...(relation.to_placeholder
+        ? { toPlaceholder: relation.to_placeholder }
+        : {}),
     })),
     services: services.map((service) => ({
       subdomain: service.subdomain,
@@ -946,8 +1088,9 @@ export function createLedgerDocument(
       iconKey: normalizeServiceIconReference(
         service.icon_key,
         service.favicon_url,
-        "generic:monitor",
+        "favicon",
       ),
+      properties: parseStoredProperties(service.properties),
       enabled: Boolean(service.enabled),
     })),
     sshKeys: sshKeys.map((key) => ({
@@ -1000,6 +1143,7 @@ export function importLedgerYaml(
       (count, device) => count + device.memberships.length,
       0,
     ),
+    relationNames: document.relationNames.length,
     relations: document.relations.length,
     services: document.services.length,
     sshKeys: document.sshKeys.length,
@@ -1013,6 +1157,7 @@ export function importLedgerYaml(
       DELETE FROM ssh_keys;
       DELETE FROM services;
       DELETE FROM relations;
+      DELETE FROM relation_names;
       DELETE FROM device_networks;
       DELETE FROM devices;
       DELETE FROM networks;
@@ -1042,8 +1187,8 @@ export function importLedgerYaml(
     const insertDevice = database.prepare(
       `INSERT INTO devices
         (hostname, petname, category, is_vm, ssh_user, ssh_port,
-         meter_enabled, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         meter_enabled, note, properties)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const device of document.devices) {
       const result = insertDevice.run(
@@ -1055,6 +1200,7 @@ export function importLedgerYaml(
         device.sshPort,
         device.meterEnabled ? 1 : 0,
         device.note,
+        JSON.stringify(device.properties),
       );
       deviceIds.set(device.hostname, asNumber(result.lastInsertRowid));
     }
@@ -1079,19 +1225,37 @@ export function importLedgerYaml(
       }
     }
 
+    const relationNameIds = new Map<string, number>();
+    const insertRelationName = database.prepare(
+      `INSERT INTO relation_names (name, color, from_label, to_label)
+       VALUES (?, ?, ?, ?)`,
+    );
+    for (const relationName of document.relationNames) {
+      const result = insertRelationName.run(
+        relationName.name,
+        relationName.color,
+        relationName.fromLabel,
+        relationName.toLabel,
+      );
+      relationNameIds.set(
+        relationName.name,
+        asNumber(result.lastInsertRowid),
+      );
+    }
+
     const insertRelation = database.prepare(
       `INSERT INTO relations
-        (from_device_id, to_device_id, tag, from_label, to_label, color)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (relation_name_id, from_device_id, to_device_id,
+         from_placeholder, to_placeholder)
+       VALUES (?, ?, ?, ?, ?)`,
     );
     for (const relation of document.relations) {
       insertRelation.run(
+        relationNameIds.get(relation.relationName)!,
         deviceIds.get(relation.from)!,
         deviceIds.get(relation.to)!,
-        relation.tag,
-        relation.fromLabel,
-        relation.toLabel,
-        relation.color,
+        relation.fromPlaceholder ?? "",
+        relation.toPlaceholder ?? "",
       );
     }
 
@@ -1099,8 +1263,8 @@ export function importLedgerYaml(
       `INSERT INTO services
         (device_network_id, subdomain, petname, description, port, protocol,
          scheme, top_path, monitor_path, service_url, icon_key, favicon_url,
-         enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         properties, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const service of document.services) {
       insertService.run(
@@ -1118,6 +1282,7 @@ export function importLedgerYaml(
         service.serviceUrl,
         service.iconKey,
         null,
+        JSON.stringify(service.properties),
         service.enabled ? 1 : 0,
       );
     }

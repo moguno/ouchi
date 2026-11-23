@@ -6,6 +6,8 @@ import {
   isHttpUrl,
   isIpv4,
   isIpWithinCidr,
+  normalizeProperties,
+  validatePropertiesPayload,
   validateDeviceInput,
   validateDevicePayload,
   validateDeviceNetworkInput,
@@ -13,6 +15,8 @@ import {
   validateNetworkInput,
   validatePortalData,
   validateRelationInput,
+  validateRelationNameInput,
+  validateRelationNamePayload,
   validateRelationPayload,
   validateServiceInput,
   validateServicePayload,
@@ -106,13 +110,24 @@ const data: PortalDataV2 = {
       ip: "",
     },
   ],
+  relationNames: [
+    {
+      id: "relation-name-1",
+      name: "バックアップ先",
+      color: "#3b82f6",
+      relationCount: 1,
+    },
+  ],
   relations: [
     {
       id: "20",
+      relationNameId: "relation-name-1",
+      relationName: "バックアップ先",
       fromDeviceId: "3",
       toDeviceId: "2",
-      tag: "バックアップ先",
-      color: "blue",
+      fromLabel: "バックアップ先",
+      toLabel: "バックアップ先",
+      color: "#3b82f6",
     },
   ],
   services: [
@@ -214,23 +229,38 @@ describe("shared REST validation", () => {
     ).toEqual([]);
   });
 
-  it("treats relation colors and tags as free strings", () => {
+  it("validates relation edges and relation-name definitions separately", () => {
     expect(
       validateRelationPayload({
+        relationName: "夜間バックアップ",
         fromDeviceId: 3,
         toDeviceId: 2,
-        tag: "夜間バックアップ",
-        color: "blue",
       }),
     ).toEqual([]);
     expect(
       validateRelationPayload({
+        relationName: "",
         fromDeviceId: 3,
         toDeviceId: 2,
-        tag: "tag",
+      }),
+    ).toContainEqual({ path: "relationName", message: "関係名は必須です" });
+    expect(
+      validateRelationNamePayload({
+        name: "ホストOS",
+        color: "#d5a22b",
+        fromLabel: "親ホスト",
+        toLabel: "VM",
+      }),
+    ).toEqual([]);
+    expect(
+      validateRelationNamePayload({
+        name: "ホストOS",
         color: "",
       }),
-    ).toContainEqual({ path: "color", message: "関係色は必須です" });
+    ).toContainEqual({
+      path: "color",
+      message: "関係色は必須です",
+    });
   });
 
   it("does not accept service status as an input field", () => {
@@ -286,56 +316,190 @@ describe("shared REST validation", () => {
       validateDevicePayload({ ...device, petname: 18 }),
     ).toContainEqual({
       path: "petname",
-      message: "ペットネームが不正です",
+      message: "名前が不正です",
     });
   });
 
-  it("validates free-tag relations using the label fallback", () => {
+  it("validates and normalizes shared entity properties", () => {
+    expect(
+      validatePropertiesPayload({
+        " vault_path ": "sops/devices/omv",
+        note: "HDD SMART怪しい",
+      }),
+    ).toEqual([]);
+    expect(
+      normalizeProperties({
+        " vault_path ": "sops/devices/omv",
+        note: "HDD SMART怪しい",
+      }),
+    ).toEqual({
+      vault_path: "sops/devices/omv",
+      note: "HDD SMART怪しい",
+    });
+
+    expect(validatePropertiesPayload({ "   ": "value" })).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("空白除去後に必須"),
+      }),
+    );
+    expect(
+      validatePropertiesPayload({ ["k".repeat(129)]: "value" }),
+    ).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("128文字以内"),
+      }),
+    );
+    expect(
+      validatePropertiesPayload({ value: "x".repeat(64 * 1024 + 1) }),
+    ).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("64KiB以内"),
+      }),
+    );
+    expect(
+      validatePropertiesPayload({ value: "x".repeat(64 * 1024) }),
+    ).toEqual([]);
+    expect(
+      validatePropertiesPayload({ value: "あ".repeat(21_846) }),
+    ).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("64KiB以内"),
+      }),
+    );
+    expect(validatePropertiesPayload({ value: 42 })).toContainEqual(
+      expect.objectContaining({
+        message: "プロパティ値は文字列で入力してください",
+      }),
+    );
+    expect(
+      validatePropertiesPayload({ " same ": "one", same: "two" }),
+    ).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining("が重複しています"),
+      }),
+    );
+  });
+
+  it("validates relation-name selection and duplicate triples", () => {
     expect(
       validateRelationInput(
         {
+          relationName: "バックアップ先",
           fromDeviceId: "3",
           toDeviceId: "2",
-          tag: "バックアップ",
-          color: "blue",
         },
         data,
+        "20",
       ),
     ).toEqual([]);
+    expect(
+      validateRelationInput(
+        {
+          relationName: "バックアップ先",
+          fromDeviceId: "3",
+          toDeviceId: "2",
+          fromPlaceholder: "host",
+          toPlaceholder: "8",
+        },
+        data,
+        "99",
+      ),
+    ).toEqual([]);
+    expect(
+      validateRelationInput(
+        {
+          relationName: "バックアップ先",
+          fromDeviceId: "3",
+          toDeviceId: "2",
+        },
+        data,
+        "99",
+      ),
+    ).toContainEqual({
+      path: "relationName",
+      message:
+        "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
+    });
   });
 
-  it("requires one colour for every tag across relations", () => {
+  it("allows multiple relation names for one pair but rejects duplicate triples", () => {
     const invalid = structuredClone(data);
+    invalid.relationNames.push({
+      id: "relation-name-2",
+      name: "監視",
+      color: "#22c55e",
+      fromLabel: "監視元",
+      toLabel: "監視先",
+      relationCount: 1,
+    });
     invalid.relations.push({
       id: "21",
+      relationNameId: "relation-name-2",
+      relationName: "監視",
       fromDeviceId: "4",
       toDeviceId: "2",
-      tag: " バックアップ先 ",
-      color: "green",
+      fromLabel: "監視元",
+      toLabel: "監視先",
+      color: "#22c55e",
     });
+    expect(validatePortalData(invalid).issues).toEqual([]);
 
+    invalid.relations.push({
+      id: "22",
+      relationNameId: "relation-name-1",
+      relationName: "バックアップ先",
+      fromDeviceId: "3",
+      toDeviceId: "2",
+      fromLabel: "バックアップ先",
+      toLabel: "バックアップ先",
+      color: "#3b82f6",
+    });
     expect(validatePortalData(invalid).issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: "relations.21.color",
-          message: expect.stringContaining("統一してください"),
+          path: "relations.22",
+          message: expect.stringContaining("重複"),
         }),
       ]),
     );
     expect(
-      validateRelationInput(
+      validateRelationNameInput(
         {
-          fromDeviceId: "3",
-          toDeviceId: "2",
-          tag: "バックアップ先",
-          color: "green",
+          name: "バックアップ先",
+          color: "#3b82f6",
         },
         data,
       ),
     ).toContainEqual({
-      path: "color",
-      message: "タグ「バックアップ先」の色は「blue」に固定されています",
+      path: "name",
+      message: "同じ関係名が登録されています",
     });
+  });
+
+  it("allows placeholder variants and rejects only an exact five-part duplicate", () => {
+    const templated = structuredClone(data);
+    templated.relations[0].fromPlaceholder = "8";
+    templated.relations[0].toPlaceholder = "443";
+    templated.relations.push({
+      ...structuredClone(templated.relations[0]),
+      id: "21",
+      fromPlaceholder: "9",
+      toPlaceholder: "443",
+    });
+    expect(validatePortalData(templated).issues).toEqual([]);
+
+    templated.relations.push({
+      ...structuredClone(templated.relations[1]),
+      id: "22",
+    });
+    expect(validatePortalData(templated).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "relations.22",
+          message: expect.stringContaining("プレースホルダー"),
+        }),
+      ]),
+    );
   });
 
   it("validates the v0.4 service form", () => {
