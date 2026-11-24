@@ -46,7 +46,7 @@ describe("REST API v1", () => {
     expect(data.settings.title).toBe("あなたのホームラボ");
     expect(data.networks).toHaveLength(3);
     expect(data.devices).toHaveLength(16);
-    expect(data.devices.flatMap((device) => device.memberships)).toHaveLength(
+    expect(data.devices.flatMap((device) => device.interfaces)).toHaveLength(
       17,
     );
     expect(data.relations).toHaveLength(5);
@@ -97,11 +97,11 @@ describe("REST API v1", () => {
       INSERT INTO devices
         (id, hostname, petname, category, is_vm, meter_enabled, note)
       VALUES (1, 'legacy-host', '旧ホスト', 'physical', 0, 0, 'preserve me');
-      INSERT INTO device_networks
-        (id, device_id, network_id, ip, label)
-      VALUES (1, 1, 1, '192.168.77.10', 'legacy');
+      INSERT INTO interfaces
+        (id, device_id, name, network_id, ip, mac)
+      VALUES (1, 1, 'eth0', 1, '192.168.77.10', NULL);
       INSERT INTO services
-        (id, device_network_id, subdomain, port, protocol, scheme, enabled)
+        (id, interface_id, subdomain, port, protocol, scheme, enabled)
       VALUES (1, 1, 'legacy-service', 8080, 'tcp', 'http', 1);
     `);
     legacyDatabase.close();
@@ -169,6 +169,14 @@ describe("REST API v1", () => {
     );
     const legacySchema = currentSchema
       .replace(
+        /CREATE TABLE IF NOT EXISTS interfaces \([\s\S]*?\n\);\n/,
+        "CREATE TABLE IF NOT EXISTS device_networks (\n  id INTEGER PRIMARY KEY,\n  device_id INTEGER NOT NULL REFERENCES devices(id),\n  network_id INTEGER NOT NULL REFERENCES networks(id),\n  ip TEXT,\n  label TEXT,\n  UNIQUE (device_id, network_id)\n);\n",
+      )
+      .replace(
+        "  interface_id INTEGER NOT NULL REFERENCES interfaces(id),\n",
+        "  device_network_id INTEGER NOT NULL REFERENCES device_networks(id),\n",
+      )
+      .replace(
         /CREATE TABLE IF NOT EXISTS relation_names \([\s\S]*?\n\);\n/,
         "",
       )
@@ -218,33 +226,32 @@ describe("REST API v1", () => {
       expect.objectContaining({
         name: "ホストOS",
         color: "yellow",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
         relationCount: 4,
       }),
       expect.objectContaining({
         name: "バックアップ先",
         color: "blue",
-        fromLabel: "バックアップ元",
-        toLabel: "保存先",
         relationCount: 1,
       }),
     ]);
     expect(migrated.relations).toHaveLength(5);
+    expect(migrated.relations[0]).toEqual(
+      expect.objectContaining({ fromLabel: "親ホスト", toLabel: "VM" }),
+    );
     const relationColumns = database.database
       .prepare("PRAGMA table_info(relations)")
       .all() as Array<{ name: string }>;
     expect(relationColumns.map((column) => column.name)).toEqual([
       "id",
       "relation_name_id",
-      "from_device_id",
-      "to_device_id",
-      "from_placeholder",
-      "to_placeholder",
+      "from_interface_id",
+      "to_interface_id",
+      "from_label",
+      "to_label",
     ]);
   });
 
-  it("migrates a v0.5 relation table with empty placeholder values", async () => {
+  it("migrates a v0.5 relation table by expanding label templates", async () => {
     database.close();
     const legacyFilename = join(directory, "legacy-placeholders.sqlite");
     const legacyDatabase = new DatabaseSync(legacyFilename);
@@ -252,9 +259,28 @@ describe("REST API v1", () => {
       resolve(process.cwd(), "contract-v1/schema.sql"),
       "utf8",
     );
-    const prePlaceholderSchema = currentSchema.replace(
-      /CREATE TABLE IF NOT EXISTS relations \([\s\S]*?\n\);\n/,
-      `CREATE TABLE IF NOT EXISTS relations (
+    const prePlaceholderSchema = currentSchema
+      .replace(
+        /CREATE TABLE IF NOT EXISTS interfaces \([\s\S]*?\n\);\n/,
+        "CREATE TABLE IF NOT EXISTS device_networks (\n  id INTEGER PRIMARY KEY,\n  device_id INTEGER NOT NULL REFERENCES devices(id),\n  network_id INTEGER NOT NULL REFERENCES networks(id),\n  ip TEXT,\n  label TEXT,\n  UNIQUE (device_id, network_id)\n);\n",
+      )
+      .replace(
+        "  interface_id INTEGER NOT NULL REFERENCES interfaces(id),\n",
+        "  device_network_id INTEGER NOT NULL REFERENCES device_networks(id),\n",
+      )
+      .replace(
+        /CREATE TABLE IF NOT EXISTS relation_names \([\s\S]*?\n\);\n/,
+        `CREATE TABLE IF NOT EXISTS relation_names (
+        id INTEGER PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        color TEXT NOT NULL,
+        from_label TEXT,
+        to_label TEXT
+      );\n`,
+      )
+      .replace(
+        /CREATE TABLE IF NOT EXISTS relations \([\s\S]*?\n\);\n/,
+        `CREATE TABLE IF NOT EXISTS relations (
         id INTEGER PRIMARY KEY,
         relation_name_id INTEGER NOT NULL REFERENCES relation_names(id),
         from_device_id INTEGER NOT NULL REFERENCES devices(id),
@@ -262,7 +288,7 @@ describe("REST API v1", () => {
         CHECK (from_device_id <> to_device_id),
         UNIQUE (relation_name_id, from_device_id, to_device_id)
       );\n`,
-    );
+      );
     legacyDatabase.exec(prePlaceholderSchema);
     legacyDatabase.exec(`
       INSERT INTO networks (id, name, accent)
@@ -288,13 +314,20 @@ describe("REST API v1", () => {
       .prepare("PRAGMA table_info(relations)")
       .all() as Array<{ name: string }>;
     expect(columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["from_placeholder", "to_placeholder"]),
+      expect.arrayContaining(["from_label", "to_label"]),
     );
+    expect(
+      columns.map((column) => column.name),
+    ).not.toContain("from_placeholder");
+    const relationNameColumns = database.database
+      .prepare("PRAGMA table_info(relation_names)")
+      .all() as Array<{ name: string }>;
+    expect(
+      relationNameColumns.map((column) => column.name),
+    ).toEqual(["id", "name", "color"]);
     expect(migrated.relations).toEqual([
       expect.objectContaining({
         id: 7,
-        fromPlaceholder: "",
-        toPlaceholder: "",
         fromLabel: "始点-",
         toLabel: "終点-",
       }),
@@ -303,9 +336,9 @@ describe("REST API v1", () => {
       database.database
         .prepare(
           `INSERT INTO relations
-            (relation_name_id, from_device_id, to_device_id,
-             from_placeholder, to_placeholder)
-           VALUES (1, 1, 2, '', '')`,
+            (relation_name_id, from_interface_id, to_interface_id,
+             from_label, to_label)
+           VALUES (1, 1, 2, '始点-', '終点-')`,
         )
         .run(),
     ).toThrow();
@@ -401,7 +434,7 @@ describe("REST API v1", () => {
     );
   });
 
-  it("supports relation-name CRUD and resolved relation edges", async () => {
+  it("supports relation-name CRUD and relation edges with their own labels", async () => {
     const duplicateName = await app.request("/api/relation-names", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -418,8 +451,6 @@ describe("REST API v1", () => {
       body: JSON.stringify({
         name: "監視",
         color: "#22c55e",
-        fromLabel: "監視元",
-        toLabel: "監視先",
       }),
     });
     expect(createName.status).toBe(201);
@@ -434,8 +465,10 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "監視",
-        fromDeviceId: 3,
-        toDeviceId: 1,
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
+        fromLabel: "監視元",
+        toLabel: "監視先",
       }),
     });
     expect(first.status).toBe(201);
@@ -455,8 +488,8 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "ホストOS",
-        fromDeviceId: 3,
-        toDeviceId: 1,
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
       }),
     });
     expect(second.status).toBe(201);
@@ -469,8 +502,10 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "監視",
-        fromDeviceId: 3,
-        toDeviceId: 1,
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
+        fromLabel: "監視元",
+        toLabel: "監視先",
       }),
     });
     expect(duplicate.status).toBe(400);
@@ -488,8 +523,6 @@ describe("REST API v1", () => {
         body: JSON.stringify({
           name: "監視",
           color: "#ef4444",
-          fromLabel: "確認元",
-          toLabel: "確認先",
         }),
       },
     );
@@ -512,8 +545,8 @@ describe("REST API v1", () => {
     ).toEqual(
       expect.objectContaining({
         color: "#ef4444",
-        fromLabel: "確認元",
-        toLabel: "確認先",
+        fromLabel: "監視元",
+        toLabel: "監視先",
       }),
     );
 
@@ -551,15 +584,13 @@ describe("REST API v1", () => {
     expect(retiredEndpoint.status).toBe(404);
   });
 
-  it("resolves relation templates and allows placeholders in the unique key", async () => {
+  it("stores free-text labels on relations and allows labels in the unique key", async () => {
     const createName = await app.request("/api/relation-names", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "ポート接続",
         color: "#0ea5e9",
-        fromLabel: "始点{}",
-        toLabel: "ポート{}",
       }),
     });
     expect(createName.status).toBe(201);
@@ -569,10 +600,10 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "ポート接続",
-        fromDeviceId: 3,
-        toDeviceId: 1,
-        fromPlaceholder: "LAN",
-        toPlaceholder: "8",
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
+        fromLabel: "始点LAN",
+        toLabel: "ポート8",
       }),
     });
     expect(first.status).toBe(201);
@@ -582,10 +613,10 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "ポート接続",
-        fromDeviceId: 3,
-        toDeviceId: 1,
-        fromPlaceholder: "LAN",
-        toPlaceholder: "9",
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
+        fromLabel: "始点LAN",
+        toLabel: "ポート9",
       }),
     });
     expect(second.status).toBe(201);
@@ -595,24 +626,24 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "ポート接続",
-        fromDeviceId: 3,
-        toDeviceId: 1,
-        fromPlaceholder: "LAN",
-        toPlaceholder: "8",
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
+        fromLabel: "始点LAN",
+        toLabel: "ポート8",
       }),
     });
     expect(duplicate.status).toBe(400);
 
-    const emptyPlaceholder = await app.request("/api/relations", {
+    const emptyLabel = await app.request("/api/relations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "ポート接続",
-        fromDeviceId: 3,
-        toDeviceId: 1,
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
       }),
     });
-    expect(emptyPlaceholder.status).toBe(201);
+    expect(emptyLabel.status).toBe(201);
 
     const portal = await json<PortalApiData>(
       await app.request("/api/portal"),
@@ -620,30 +651,13 @@ describe("REST API v1", () => {
     const labels = portal.relations
       .filter((relation) => relation.relationName === "ポート接続")
       .map((relation) => ({
-        from: relation.fromPlaceholder,
-        to: relation.toPlaceholder,
         fromLabel: relation.fromLabel,
         toLabel: relation.toLabel,
       }));
     expect(labels).toEqual([
-      {
-        from: "LAN",
-        to: "8",
-        fromLabel: "始点LAN",
-        toLabel: "ポート8",
-      },
-      {
-        from: "LAN",
-        to: "9",
-        fromLabel: "始点LAN",
-        toLabel: "ポート9",
-      },
-      {
-        from: "",
-        to: "",
-        fromLabel: "始点-",
-        toLabel: "ポート-",
-      },
+      { fromLabel: "始点LAN", toLabel: "ポート8" },
+      { fromLabel: "始点LAN", toLabel: "ポート9" },
+      { fromLabel: "", toLabel: "" },
     ]);
 
     const indexes = database.database
@@ -656,33 +670,31 @@ describe("REST API v1", () => {
       .all() as Array<{ name: string }>;
     expect(indexColumns.map((column) => column.name)).toEqual([
       "relation_name_id",
-      "from_device_id",
-      "to_device_id",
-      "from_placeholder",
-      "to_placeholder",
+      "from_interface_id",
+      "to_interface_id",
+      "from_label",
+      "to_label",
     ]);
   });
 
-  it("round-trips relation placeholders through YAML", async () => {
+  it("round-trips relation labels through YAML", async () => {
     await app.request("/api/relation-names", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "ポート{}",
+        name: "ポート接続",
         color: "#0ea5e9",
-        fromLabel: "始点{}",
-        toLabel: "ポート{}",
       }),
     });
     await app.request("/api/relations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        relationName: "ポート{}",
-        fromDeviceId: 3,
-        toDeviceId: 1,
-        fromPlaceholder: "lan",
-        toPlaceholder: "8",
+        relationName: "ポート接続",
+        fromInterfaceId: 3,
+        toInterfaceId: 1,
+        fromLabel: "始点lan",
+        toLabel: "ポート8",
       }),
     });
 
@@ -690,17 +702,19 @@ describe("REST API v1", () => {
     expect(exported.status).toBe(200);
     const yaml = await exported.text();
     const document = parseYaml(yaml) as {
+      format: string;
       relations: Array<Record<string, unknown>>;
     };
+    expect(document.format).toBe("ouchi-ledger/7");
     expect(document.relations).toContainEqual(
       expect.objectContaining({
-        relationName: "ポート{}",
-        fromPlaceholder: "lan",
-        toPlaceholder: "8",
+        relationName: "ポート接続",
+        fromLabel: "始点lan",
+        toLabel: "ポート8",
       }),
     );
 
-    const importedFilename = join(directory, "placeholder-import.sqlite");
+    const importedFilename = join(directory, "label-import.sqlite");
     const importedDatabase = new PortalDatabase({
       filename: importedFilename,
     });
@@ -711,7 +725,7 @@ describe("REST API v1", () => {
         DELETE FROM services;
         DELETE FROM relations;
         DELETE FROM relation_names;
-        DELETE FROM device_networks;
+        DELETE FROM interfaces;
         DELETE FROM devices;
         DELETE FROM networks;
         DELETE FROM settings;
@@ -728,12 +742,10 @@ describe("REST API v1", () => {
       );
       expect(
         portal.relations.find(
-          (relation) => relation.relationName === "ポート{}",
+          (relation) => relation.relationName === "ポート接続",
         ),
       ).toEqual(
         expect.objectContaining({
-          fromPlaceholder: "lan",
-          toPlaceholder: "8",
           fromLabel: "始点lan",
           toLabel: "ポート8",
         }),
@@ -810,7 +822,7 @@ describe("REST API v1", () => {
     expect(await json(await app.request("/api/settings"))).toEqual(before);
   });
 
-  it("cascades device relations, services, and memberships atomically", async () => {
+  it("cascades device relations, services, and interfaces atomically", async () => {
     const deviceResponse = await app.request("/api/devices", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -828,26 +840,33 @@ describe("REST API v1", () => {
     expect(deviceResponse.status).toBe(201);
     const device = await json<PortalApiDevice>(deviceResponse);
 
-    const membershipResponse = await app.request("/api/memberships", {
+    const interfaceResponse = await app.request("/api/interfaces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         deviceId: device.id,
+        name: "eth0",
         networkId: 1,
         ip: "192.168.0.250",
-        label: "delete-regression",
+        mac: "02:00:00:00:00:01",
       }),
     });
-    expect(membershipResponse.status).toBe(201);
-    const membership = await json<{ id: number }>(membershipResponse);
+    expect(interfaceResponse.status).toBe(201);
+    const iface = await json<{ id: number }>(interfaceResponse);
+    const interfaceList = await json<
+      Array<{ id: number; mac: string | null }>
+    >(await app.request("/api/interfaces"));
+    expect(interfaceList.find((item) => item.id === iface.id)?.mac).toBe(
+      "02:00:00:00:00:01",
+    );
 
     const relationResponse = await app.request("/api/relations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "ホストOS",
-        fromDeviceId: device.id,
-        toDeviceId: 1,
+        fromInterfaceId: iface.id,
+        toInterfaceId: 1,
       }),
     });
     expect(relationResponse.status).toBe(201);
@@ -857,8 +876,8 @@ describe("REST API v1", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         relationName: "バックアップ先",
-        fromDeviceId: 1,
-        toDeviceId: device.id,
+        fromInterfaceId: 1,
+        toInterfaceId: iface.id,
       }),
     });
     expect(inboundRelationResponse.status).toBe(201);
@@ -870,7 +889,7 @@ describe("REST API v1", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        deviceNetworkId: membership.id,
+        interfaceId: iface.id,
         subdomain: "delete-cascade-service",
         petname: "削除回帰サービス",
         description: null,
@@ -896,7 +915,7 @@ describe("REST API v1", () => {
     `);
 
     expect(database.deviceCascadeCounts(device.id)).toEqual({
-      memberships: 1,
+      interfaces: 1,
       services: 1,
       relations: 2,
     });
@@ -915,7 +934,7 @@ describe("REST API v1", () => {
     expect(database.getRelation(relation.id)).toBeDefined();
     expect(database.getRelation(inboundRelation.id)).toBeDefined();
     expect(database.getService(service.id)).toBeDefined();
-    expect(database.getMembership(membership.id)).toBeDefined();
+    expect(database.getInterface(iface.id)).toBeDefined();
     expect(
       database.database
         .prepare("SELECT COUNT(*) AS count FROM device_keys WHERE device_id = ?")
@@ -941,7 +960,7 @@ describe("REST API v1", () => {
       (await app.request(`/api/services/${service.id}`)).status,
     ).toBe(404);
     expect(
-      (await app.request(`/api/memberships/${membership.id}`)).status,
+      (await app.request(`/api/interfaces/${iface.id}`)).status,
     ).toBe(404);
     expect(
       database.database
@@ -1053,24 +1072,25 @@ describe("REST API v1", () => {
     expect(clearPetname.status).toBe(200);
     expect((await json<PortalApiDevice>(clearPetname)).petname).toBeNull();
 
-    const membershipResponse = await app.request("/api/memberships", {
+    const interfaceResponse = await app.request("/api/interfaces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         deviceId: device.id,
+        name: "eth0",
         networkId: network.id,
         ip: "10.44.0.20",
         label: "test",
       }),
     });
-    expect(membershipResponse.status).toBe(201);
-    const membership = await json<{ id: number }>(membershipResponse);
+    expect(interfaceResponse.status).toBe(201);
+    const iface = await json<{ id: number }>(interfaceResponse);
 
     const serviceResponse = await app.request("/api/services", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        deviceNetworkId: membership.id,
+        interfaceId: iface.id,
         subdomain: "api-test",
         petname: "API Test",
         description: "CRUD test",
@@ -1097,7 +1117,7 @@ describe("REST API v1", () => {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deviceNetworkId: membership.id,
+          interfaceId: iface.id,
           subdomain: "api-test",
           petname: "API Test Updated",
           description: "updated",
@@ -1136,7 +1156,7 @@ describe("REST API v1", () => {
       (await app.request(`/api/services/${createdService.id}`)).status,
     ).toBe(404);
     expect(
-      (await app.request(`/api/memberships/${membership.id}`)).status,
+      (await app.request(`/api/interfaces/${iface.id}`)).status,
     ).toBe(404);
     expect(
       (
@@ -1226,7 +1246,7 @@ describe("REST API v1", () => {
     ).toEqual({ replacement: "only" });
 
     const serviceInput = {
-      deviceNetworkId: 1,
+      interfaceId: 1,
       subdomain: "properties-service",
       petname: "Properties Service",
       description: null,
@@ -1381,7 +1401,7 @@ describe("REST API v1", () => {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            deviceNetworkId: service.deviceNetworkId,
+            interfaceId: service.interfaceId,
             subdomain: service.subdomain,
             petname: service.petname,
             description: service.description,
@@ -1417,7 +1437,7 @@ describe("REST API v1", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        deviceNetworkId: 1,
+        interfaceId: 1,
         subdomain: "",
         port: 70_000,
         protocol: "smtp",
@@ -1458,7 +1478,7 @@ describe("REST API v1", () => {
       devices: Array<{
         hostname: string;
         petname: string | null;
-        memberships: Array<Record<string, unknown>>;
+        interfaces: Array<Record<string, unknown>>;
       }>;
       relationNames: Array<Record<string, unknown>>;
       relations: Array<Record<string, unknown>>;
@@ -1467,7 +1487,7 @@ describe("REST API v1", () => {
       deviceKeys: unknown[];
     };
 
-    expect(document.format).toBe("ouchi-ledger/2");
+    expect(document.format).toBe("ouchi-ledger/7");
     expect(document.relationNames).toHaveLength(2);
     expect(document.relationNames[0]).toEqual(
       expect.objectContaining({
@@ -1486,11 +1506,13 @@ describe("REST API v1", () => {
       document.devices.find((device) => device.hostname === "nanopi-r2s")
         ?.petname,
     ).toBe("門番");
-    expect(document.devices[0].memberships[0]).not.toHaveProperty(
+    expect(document.devices[0].interfaces[0]).not.toHaveProperty(
       "networkId",
     );
+    expect(document.devices[0].interfaces[0]).toHaveProperty("name");
     expect(document.services[0]).toHaveProperty("device");
-    expect(document.services[0]).toHaveProperty("network");
+    expect(document.services[0]).toHaveProperty("interface");
+    expect(document.services[0]).not.toHaveProperty("network");
     expect(document.services[0]).not.toHaveProperty("deviceNetworkId");
     expect(document.services[0]).not.toHaveProperty("url");
     expect(document.relations[0]).toHaveProperty("from");
@@ -1508,14 +1530,14 @@ describe("REST API v1", () => {
       BEGIN IMMEDIATE;
       UPDATE networks SET id = id + 100;
       UPDATE devices SET id = id + 100;
-      UPDATE device_networks
+      UPDATE interfaces
       SET id = id + 100, device_id = device_id + 100,
           network_id = network_id + 100;
       UPDATE relations
-      SET id = id + 100, from_device_id = from_device_id + 100,
-          to_device_id = to_device_id + 100;
+      SET id = id + 100, from_interface_id = from_interface_id + 100,
+          to_interface_id = to_interface_id + 100;
       UPDATE services
-      SET id = id + 100, device_network_id = device_network_id + 100;
+      SET id = id + 100, interface_id = interface_id + 100;
       COMMIT;
       PRAGMA foreign_keys = ON;
     `);
@@ -1586,7 +1608,7 @@ describe("REST API v1", () => {
         imported: {
           networks: 3,
           devices: 16,
-          memberships: 17,
+          interfaces: 17,
           relationNames: 2,
           relations: 5,
           services: 9,
@@ -1658,8 +1680,8 @@ describe("REST API v1", () => {
     ) as {
       relationNames: Array<Record<string, unknown>>;
       relations: Array<{
-        from: string;
-        to: string;
+        from: { device: string; interface: string };
+        to: { device: string; interface: string };
         relationName: string;
       }>;
     };
@@ -1696,9 +1718,39 @@ describe("REST API v1", () => {
     };
     delete exported.relationNames;
     exported.format = "ouchi-ledger/1";
+    // Bring the /4 export back to the /1-era shape: memberships on
+    // devices, network names on services, device names on relations.
+    const legacyDoc = exported as unknown as {
+      devices: Array<Record<string, any>>;
+      services: Array<Record<string, any>>;
+    };
+    const networkByInterface = new Map<string, string>();
+    for (const device of legacyDoc.devices) {
+      for (const iface of device.interfaces ?? []) {
+        networkByInterface.set(
+          `${device.hostname} ${iface.name}`,
+          iface.network as string,
+        );
+      }
+    }
+    for (const device of legacyDoc.devices) {
+      device.memberships = (device.interfaces ?? []).map(
+        (iface: Record<string, unknown>) => {
+          const { name, ...rest } = iface;
+          return rest;
+        },
+      );
+      delete device.interfaces;
+    }
+    for (const service of legacyDoc.services) {
+      service.network = networkByInterface.get(
+        `${service.device} ${service.interface}`,
+      );
+      delete service.interface;
+    }
     exported.relations = exported.relations.map((relation, index) => ({
-      from: relation.from,
-      to: relation.to,
+      from: (relation.from as unknown as { device: string }).device,
+      to: (relation.to as unknown as { device: string }).device,
       tag: index === 0 ? "旧タグA" : "旧タグB",
       fromLabel: index === 0 ? "旧始点" : null,
       toLabel: index === 0 ? "旧終点" : null,
@@ -1866,7 +1918,7 @@ describe("REST API v1", () => {
   });
 
   it("stores dashboard and legacy icon references as canonical references", async () => {
-    const membership = database.listMemberships()[0];
+    const iface = database.listInterfaces()[0];
     for (const [subdomain, iconKey, expected] of [
       [
         "dashboard-icon",
@@ -1885,7 +1937,7 @@ describe("REST API v1", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deviceNetworkId: membership.id,
+          interfaceId: iface.id,
           subdomain,
           petname: subdomain,
           description: null,

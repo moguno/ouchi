@@ -3,7 +3,7 @@ import type {
   PortalApiDevice,
   PortalApiService,
   PortalDeviceInput,
-  PortalMembershipInput,
+  PortalInterfaceInput,
   PortalNetworkInput,
   PortalRelationInput,
   PortalRelationNameInput,
@@ -123,15 +123,16 @@ const deviceInputProperties = {
   properties: propertiesSchema,
 };
 
-const membershipInputProperties = {
+const interfaceInputProperties = {
   deviceId: idSchema,
-  networkId: idSchema,
+  name: { type: "string" },
+  networkId: { type: ["integer", "null"] },
   ip: { type: ["string", "null"] },
-  label: { type: ["string", "null"] },
+  mac: { type: ["string", "null"] },
 };
 
 const serviceInputProperties = {
-  deviceNetworkId: idSchema,
+  interfaceId: idSchema,
   subdomain: { type: "string" },
   petname: { type: ["string", "null"] },
   description: { type: ["string", "null"] },
@@ -147,25 +148,23 @@ const serviceInputProperties = {
 };
 
 const relationInputProperties = {
-  fromDeviceId: idSchema,
-  toDeviceId: idSchema,
+  fromInterfaceId: idSchema,
+  toInterfaceId: idSchema,
   relationName: { type: "string" },
-  fromPlaceholder: { type: "string" },
-  toPlaceholder: { type: "string" },
+  fromLabel: { type: "string" },
+  toLabel: { type: "string" },
 };
 
 const relationNameInputProperties = {
   name: { type: "string" },
   color: { type: "string" },
-  fromLabel: { type: ["string", "null"] },
-  toLabel: { type: ["string", "null"] },
 };
 
 function collectionTool(
   resource:
     | "networks"
     | "devices"
-    | "memberships"
+    | "interfaces"
     | "services"
     | "relation_names"
     | "relations",
@@ -371,24 +370,24 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "device",
     "デバイス",
     "REST API からデバイスを削除します。デバイスを端点とする関係、" +
-      "デバイスに属するサービスとネットワーク所属も同一トランザクションで" +
+      "デバイスに属するサービスとインターフェースも同一トランザクションで" +
       "一緒に削除されます。",
   ),
-  collectionTool("memberships", "ネットワーク所属"),
-  getTool("membership", "ネットワーク所属"),
+  collectionTool("interfaces", "インターフェース"),
+  getTool("interface", "インターフェース"),
   createTool(
-    "membership",
-    "ネットワーク所属",
-    membershipInputProperties,
-    ["deviceId", "networkId"],
+    "interface",
+    "インターフェース",
+    interfaceInputProperties,
+    ["deviceId", "name"],
   ),
   updateTool(
-    "membership",
-    "ネットワーク所属",
-    membershipInputProperties,
-    ["deviceId", "networkId"],
+    "interface",
+    "インターフェース",
+    interfaceInputProperties,
+    ["deviceId", "name"],
   ),
-  deleteTool("membership", "ネットワーク所属"),
+  deleteTool("interface", "インターフェース"),
   collectionTool("services", "サービス"),
   getTool("service", "サービス"),
   createTool(
@@ -396,7 +395,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "サービス",
     serviceInputProperties,
     [
-      "deviceNetworkId",
+      "interfaceId",
       "subdomain",
       "port",
       "protocol",
@@ -409,7 +408,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "サービス",
     serviceInputProperties,
     [
-      "deviceNetworkId",
+      "interfaceId",
       "subdomain",
       "petname",
       "description",
@@ -436,7 +435,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "relation_name",
     "関係名",
     relationNameInputProperties,
-    ["name", "color", "fromLabel", "toLabel"],
+    ["name", "color"],
   ),
   deleteTool("relation_name", "関係名"),
   collectionTool("relations", "関係"),
@@ -463,15 +462,15 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "relation",
     "関係",
     relationInputProperties,
-    ["fromDeviceId", "toDeviceId", "relationName"],
+    ["fromInterfaceId", "toInterfaceId", "relationName"],
   ),
   updateTool(
     "relation",
     "関係",
     relationInputProperties,
     [
-      "fromDeviceId",
-      "toDeviceId",
+      "fromInterfaceId",
+      "toInterfaceId",
       "relationName",
     ],
   ),
@@ -480,7 +479,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     name: "export_ledger_yaml",
     title: "YAMLエクスポート",
     description:
-      "REST API から台帳全体の ouchi-ledger/2 YAML を取得します。",
+      "REST API から台帳全体の ouchi-ledger/3 YAML を取得します。",
     inputSchema: objectSchema({}),
     annotations: withAnnotations("YAMLエクスポート", readAnnotations),
   },
@@ -560,18 +559,18 @@ function missingEntity(
   );
 }
 
-function membershipContext(data: PortalApiData): {
-  membershipById: Map<
+function interfaceContext(data: PortalApiData): {
+  interfaceById: Map<
     number,
-    PortalApiData["devices"][number]["memberships"][number]
+    PortalApiData["devices"][number]["interfaces"][number]
   >;
   deviceById: Map<number, PortalApiDevice>;
   networkNameById: Map<number, string>;
 } {
   return {
-    membershipById: new Map(
+    interfaceById: new Map(
       data.devices.flatMap((device) =>
-        device.memberships.map((membership) => [membership.id, membership]),
+        device.interfaces.map((iface) => [iface.id, iface]),
       ),
     ),
     deviceById: new Map(data.devices.map((device) => [device.id, device])),
@@ -586,7 +585,7 @@ function searchDeviceResults(
   query: string,
   limit: number,
 ): Array<Record<string, unknown>> {
-  const { networkNameById } = membershipContext(data);
+  const { networkNameById } = interfaceContext(data);
   return data.devices
     .map((device) => {
       const tags = deviceRelationTags(data.relations, device.id);
@@ -595,10 +594,13 @@ function searchDeviceResults(
         device.petname ?? "",
         device.category,
         device.note ?? "",
-        ...device.memberships.flatMap((membership) => [
-          membership.ip ?? "",
-          membership.label ?? "",
-          networkNameById.get(membership.networkId) ?? "",
+        ...device.interfaces.flatMap((iface) => [
+          iface.name,
+          iface.ip ?? "",
+          iface.mac ?? "",
+          (iface.networkId !== null
+            ? networkNameById.get(iface.networkId)
+            : undefined) ?? "",
         ]),
         ...Object.entries(device.properties ?? {}).flat(),
         ...tags,
@@ -615,11 +617,13 @@ function searchDeviceResults(
     .slice(0, limit)
     .map(({ device, tags }) => ({
       ...device,
-      networkMemberships: device.memberships.map((membership) => ({
-        ...membership,
+      networkInterfaces: device.interfaces.map((iface) => ({
+        ...iface,
         networkName:
-          networkNameById.get(membership.networkId) ??
-          String(membership.networkId),
+          iface.networkId !== null
+            ? (networkNameById.get(iface.networkId) ??
+              String(iface.networkId))
+            : null,
       })),
       relationTags: tags,
       relationNames: tags,
@@ -630,21 +634,22 @@ function serviceOwner(
   service: PortalApiService,
   data: PortalApiData,
 ): {
-  membership?: PortalApiData["devices"][number]["memberships"][number];
+  interface?: PortalApiData["devices"][number]["interfaces"][number];
   device?: PortalApiDevice;
   networkName?: string;
 } {
-  const context = membershipContext(data);
-  const membership = context.membershipById.get(service.deviceNetworkId);
-  const device = membership
-    ? context.deviceById.get(membership.deviceId)
+  const context = interfaceContext(data);
+  const iface = context.interfaceById.get(service.interfaceId);
+  const device = iface
+    ? context.deviceById.get(iface.deviceId)
     : undefined;
   return {
-    membership,
+    interface: iface,
     device,
-    networkName: membership
-      ? context.networkNameById.get(membership.networkId)
-      : undefined,
+    networkName:
+      iface && iface.networkId !== null
+        ? context.networkNameById.get(iface.networkId)
+        : undefined,
   };
 }
 
@@ -669,7 +674,6 @@ function searchServiceResults(
         owner.device?.hostname ?? "",
         owner.device?.petname ?? "",
         owner.networkName ?? "",
-        owner.membership?.label ?? "",
         ...Object.entries(service.properties ?? {}).flat(),
         ...tags,
       ]
@@ -694,7 +698,7 @@ function searchServiceResults(
             category: owner.device.category,
           }
         : null,
-      membership: owner.membership ?? null,
+      interface: owner.interface ?? null,
       networkName: owner.networkName ?? null,
       relationTags: tags,
       relationNames: tags,
@@ -730,18 +734,20 @@ function deviceBody(args: ToolArguments): PortalDeviceInput {
   };
 }
 
-function membershipBody(args: ToolArguments): PortalMembershipInput {
+function interfaceBody(args: ToolArguments): PortalInterfaceInput {
   return {
     deviceId: numberArgument(args, "deviceId"),
-    networkId: numberArgument(args, "networkId"),
+    name: stringArgument(args, "name"),
+    networkId:
+      typeof args.networkId === "number" ? args.networkId : null,
     ip: args.ip as string | null | undefined,
-    label: args.label as string | null | undefined,
+    mac: args.mac as string | null | undefined,
   };
 }
 
 function serviceBody(args: ToolArguments): PortalServiceInput {
   return {
-    deviceNetworkId: numberArgument(args, "deviceNetworkId"),
+    interfaceId: numberArgument(args, "interfaceId"),
     subdomain: stringArgument(args, "subdomain"),
     petname: args.petname as string | null | undefined,
     description: args.description as string | null | undefined,
@@ -765,13 +771,13 @@ function serviceBody(args: ToolArguments): PortalServiceInput {
 
 function relationBody(args: ToolArguments): PortalRelationInput {
   return {
-    fromDeviceId: numberArgument(args, "fromDeviceId"),
-    toDeviceId: numberArgument(args, "toDeviceId"),
+    fromInterfaceId: numberArgument(args, "fromInterfaceId"),
+    toInterfaceId: numberArgument(args, "toInterfaceId"),
     relationName: stringArgument(args, "relationName"),
-    fromPlaceholder:
-      args.fromPlaceholder as string | undefined,
-    toPlaceholder:
-      args.toPlaceholder as string | undefined,
+    fromLabel:
+      args.fromLabel as string | undefined,
+    toLabel:
+      args.toLabel as string | undefined,
   };
 }
 
@@ -779,8 +785,6 @@ function relationNameBody(args: ToolArguments): PortalRelationNameInput {
   return {
     name: stringArgument(args, "name"),
     color: stringArgument(args, "color"),
-    fromLabel: args.fromLabel as string | null | undefined,
-    toLabel: args.toLabel as string | null | undefined,
   };
 }
 
@@ -900,27 +904,27 @@ export async function callTool(
     }
     case "delete_device":
       return jsonResult(await client.deleteDevice(numberArgument(args, "id")));
-    case "list_memberships":
-      return jsonResult(await client.listMemberships());
-    case "get_membership": {
+    case "list_interfaces":
+      return jsonResult(await client.listInterfaces());
+    case "get_interface": {
       const id = numberArgument(args, "id");
-      const membership = await client.getMembership(id);
-      if (!membership) {
-        throw missingEntity("memberships", id);
+      const iface = await client.getInterface(id);
+      if (!iface) {
+        throw missingEntity("interfaces", id);
       }
-      return jsonResult(membership);
+      return jsonResult(iface);
     }
-    case "create_membership":
-      return jsonResult(await client.createMembership(membershipBody(args)));
-    case "update_membership": {
+    case "create_interface":
+      return jsonResult(await client.createInterface(interfaceBody(args)));
+    case "update_interface": {
       const id = numberArgument(args, "id");
       return jsonResult(
-        await client.updateMembership(id, membershipBody(args)),
+        await client.updateInterface(id, interfaceBody(args)),
       );
     }
-    case "delete_membership":
+    case "delete_interface":
       return jsonResult(
-        await client.deleteMembership(numberArgument(args, "id")),
+        await client.deleteInterface(numberArgument(args, "id")),
       );
     case "list_services":
       return jsonResult(await client.listServices());

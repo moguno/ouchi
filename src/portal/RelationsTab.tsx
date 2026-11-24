@@ -20,15 +20,15 @@ interface RelationsTabProps {
 const relationNameColumns: ManageTableColumn[] = [
   { key: "name", label: "名前" },
   { key: "color", label: "色" },
-  { key: "fromLabel", label: "始点の名前" },
-  { key: "toLabel", label: "終点の名前" },
   { key: "count", label: "使用数", numeric: true },
 ];
 
 const relationColumns: ManageTableColumn[] = [
-  { key: "from", label: "始点" },
   { key: "name", label: "関係名" },
+  { key: "from", label: "始点" },
+  { key: "fromLabel", label: "始点ラベル" },
   { key: "to", label: "終点" },
+  { key: "toLabel", label: "終点ラベル" },
 ];
 
 export function RelationsTab({
@@ -61,8 +61,6 @@ export function RelationsTab({
             {relationName.color}
           </>
         ),
-        fromLabel: relationName.fromLabel?.trim() || "（関係名を使用）",
-        toLabel: relationName.toLabel?.trim() || "（関係名を使用）",
         count: relationName.relationCount,
       },
       editLabel: `${relationName.name}を編集`,
@@ -77,21 +75,26 @@ export function RelationsTab({
   });
 
   const relationRows = data.relations.map((relation) => {
-    const from =
-      data.devices.find((device) => device.id === relation.fromDeviceId)
-        ?.name ?? "不明なデバイス";
-    const to =
-      data.devices.find((device) => device.id === relation.toDeviceId)
-        ?.name ?? "不明なデバイス";
+    const endpoint = (deviceId: string, interfaceId: string) => {
+      const deviceName =
+        data.devices.find((device) => device.id === deviceId)?.name ??
+        "不明なデバイス";
+      const interfaceName = data.interfaces.find(
+        (iface) => iface.id === interfaceId,
+      )?.name;
+      return interfaceName ? `${deviceName} / ${interfaceName}` : deviceName;
+    };
+    const from = endpoint(relation.fromDeviceId, relation.fromInterfaceId);
+    const to = endpoint(relation.toDeviceId, relation.toInterfaceId);
     const relationName = relation.relationName.trim() || "関係名なし";
-    const fromLabel = relation.fromLabel.trim() || relationName;
-    const toLabel = relation.toLabel.trim() || relationName;
     return {
       id: relation.id,
       cells: {
-        from: `${from}（${fromLabel}）`,
         name: relationName,
-        to: `${to}（${toLabel}）`,
+        from,
+        fromLabel: relation.fromLabel.trim() || "-",
+        to,
+        toLabel: relation.toLabel.trim() || "-",
       },
       editLabel: `${from}から${to}への関係を編集`,
       deleteLabel: `${from}から${to}への関係を削除`,

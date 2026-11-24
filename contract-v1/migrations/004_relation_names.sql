@@ -7,7 +7,12 @@
 -- the new model requires a non-empty natural key.
 BEGIN IMMEDIATE;
 
-CREATE TABLE IF NOT EXISTS relation_names (
+-- The ledger schema file runs before this migration and may already have
+-- created relation_names in a newer shape; that table is empty and owned
+-- by this migration, so rebuild it in the shape this step defines.
+DROP TABLE IF EXISTS relation_names;
+
+CREATE TABLE relation_names (
   id INTEGER PRIMARY KEY,
   name TEXT UNIQUE NOT NULL,
   color TEXT NOT NULL,

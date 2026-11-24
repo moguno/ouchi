@@ -3,7 +3,6 @@ import {
   useEffect,
   useId,
   useRef,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -11,6 +10,8 @@ import {
 interface ManageDialogProps {
   children: ReactNode;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  // Kept for call-site symmetry: the dialog itself never invokes it.
+  // Only the dialog's own buttons (rendered by the caller) close it.
   onClose: () => void;
   role?: "alertdialog" | "dialog";
   title: string;
@@ -20,7 +21,6 @@ interface ManageDialogProps {
 export function ManageDialog({
   children,
   initialFocusRef,
-  onClose,
   role = "dialog",
   title,
   wide = false,
@@ -60,28 +60,16 @@ export function ManageDialog({
     };
   }, [initialFocusRef]);
 
-  function handleKeyDown(event: KeyboardEvent<HTMLDialogElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    }
-  }
-
   return (
     <dialog
       aria-labelledby={titleId}
       aria-modal="true"
       className={`ouchi-manage-dialog${wide ? " ouchi-manage-dialog--wide" : ""}`}
       onCancel={(event) => {
+        // Only the dialog's own buttons close it: no backdrop click,
+        // no Escape key.
         event.preventDefault();
-        onClose();
       }}
-      onClick={(event) => {
-        if (event.currentTarget === event.target) {
-          onClose();
-        }
-      }}
-      onKeyDown={handleKeyDown}
       ref={dialogRef}
       role={role}
     >

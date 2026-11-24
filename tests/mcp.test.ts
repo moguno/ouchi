@@ -239,24 +239,22 @@ describe("MCP block", () => {
     expect(text).toContain("toLabel=ホストOS");
   });
 
-  it("uses substituted labels in map and neighborhood text", async () => {
+  it("uses relation labels in map and neighborhood text", async () => {
     await callMcpTool("create_relation_name", {
       name: "ポート接続",
       color: "#0ea5e9",
-      fromLabel: "始点{}",
-      toLabel: "ポート{}",
     });
     const created = await callMcpTool("create_relation", {
-      fromDeviceId: 3,
-      toDeviceId: 1,
+      fromInterfaceId: 3,
+      toInterfaceId: 1,
       relationName: "ポート接続",
-      fromPlaceholder: "LAN",
-      toPlaceholder: "8",
+      fromLabel: "始点LAN",
+      toLabel: "ポート8",
     });
     expect(created.isError).toBe(false);
     const empty = await callMcpTool("create_relation", {
-      fromDeviceId: 3,
-      toDeviceId: 1,
+      fromInterfaceId: 3,
+      toInterfaceId: 1,
       relationName: "ポート接続",
     });
     expect(empty.isError).toBe(false);
@@ -269,8 +267,8 @@ describe("MCP block", () => {
     expect(mapText).toContain("relationName=ポート接続");
     expect(mapText).toContain("fromLabel=始点LAN");
     expect(mapText).toContain("toLabel=ポート8");
-    expect(mapText).toContain("fromLabel=始点-");
-    expect(mapText).toContain("toLabel=ポート-");
+    expect(mapText).toContain("fromLabel=ポート接続");
+    expect(mapText).toContain("toLabel=ポート接続");
 
     const neighborhood = await callMcpTool("get_device_neighborhood", {
       deviceId: 3,
@@ -279,8 +277,7 @@ describe("MCP block", () => {
     const neighborhoodText = neighborhood.content?.[0]?.text ?? "";
     expect(neighborhoodText).toContain("label=始点LAN");
     expect(neighborhoodText).toContain("toLabel=ポート8");
-    expect(neighborhoodText).toContain("label=始点-");
-    expect(neighborhoodText).toContain("toLabel=ポート-");
+    expect(neighborhoodText).toContain("label=ポート接続");
   });
 
   it("includes properties in map, neighborhood, and search output", async () => {
@@ -418,7 +415,7 @@ describe("MCP block", () => {
     });
   });
 
-  it("round-trips network, device, membership, service, and relation CRUD", async () => {
+  it("round-trips network, device, interface, service, and relation CRUD", async () => {
     const network = (await callMcpTool("create_network", {
       name: "MCP検証網",
       cidr: "10.44.0.0/24",
@@ -494,23 +491,24 @@ describe("MCP block", () => {
       properties: { source: "mcp-update" },
     });
 
-    const membership = (await callMcpTool("create_membership", {
+    const iface = (await callMcpTool("create_interface", {
       deviceId: device.id,
+      name: "eth0",
       networkId: network.id,
       ip: "10.44.0.20",
       label: "mcp",
     })).structuredContent?.result as { id: number };
     expect(
-      (await callMcpTool("get_membership", { id: membership.id }))
+      (await callMcpTool("get_interface", { id: iface.id }))
         .structuredContent?.result,
     ).toMatchObject({
-      id: membership.id,
+      id: iface.id,
       deviceId: device.id,
       networkId: network.id,
     });
 
     const serviceInput: PortalServiceInput = {
-      deviceNetworkId: membership.id,
+      interfaceId: iface.id,
       subdomain: "mcp-test",
       petname: "MCP Test",
       description: "round trip",
@@ -567,8 +565,6 @@ describe("MCP block", () => {
     const relationName = (await callMcpTool("create_relation_name", {
       name: "MCP検証関係",
       color: "#123456",
-      fromLabel: "検証元",
-      toLabel: "検証先",
     })).structuredContent?.result as { id: number };
     expect(
       (await callMcpTool("get_relation_name", { id: relationName.id }))
@@ -576,9 +572,11 @@ describe("MCP block", () => {
     ).toMatchObject({ name: "MCP検証関係", relationCount: 0 });
 
     const relationInput: PortalRelationInput = {
-      fromDeviceId: device.id,
-      toDeviceId: 1,
+      fromInterfaceId: iface.id,
+      toInterfaceId: 1,
       relationName: "MCP検証関係",
+      fromLabel: "検証元",
+      toLabel: "検証先",
     };
     const relation = (await callMcpTool("create_relation", relationInput))
       .structuredContent?.result as { id: number };
@@ -616,7 +614,7 @@ describe("MCP block", () => {
         .structuredContent?.result,
     ).toEqual({ ok: true });
     expect(
-      (await callMcpTool("delete_membership", { id: membership.id }))
+      (await callMcpTool("delete_interface", { id: iface.id }))
         .structuredContent?.result,
     ).toEqual({ ok: true });
     expect(
@@ -631,7 +629,7 @@ describe("MCP block", () => {
 
   it("returns the same validation issues as REST", async () => {
     const invalidService = {
-      deviceNetworkId: 1,
+      interfaceId: 1,
       subdomain: "",
       port: 70_000,
       protocol: "smtp",
@@ -668,19 +666,20 @@ describe("MCP block", () => {
       meterEnabled: false,
       note: null,
     })).structuredContent?.result as { id: number };
-    const membership = (await callMcpTool("create_membership", {
+    const iface = (await callMcpTool("create_interface", {
       deviceId: device.id,
+      name: "eth0",
       networkId: 1,
       ip: "192.168.0.251",
       label: "mcp-delete-regression",
     })).structuredContent?.result as { id: number };
     const relation = (await callMcpTool("create_relation", {
-      fromDeviceId: device.id,
-      toDeviceId: 1,
+      fromInterfaceId: iface.id,
+      toInterfaceId: 1,
       relationName: "ホストOS",
     })).structuredContent?.result as { id: number };
     const service = (await callMcpTool("create_service", {
-      deviceNetworkId: membership.id,
+      interfaceId: iface.id,
       subdomain: "mcp-delete-cascade-service",
       petname: "MCP削除回帰サービス",
       description: null,
@@ -695,7 +694,7 @@ describe("MCP block", () => {
     })).structuredContent?.result as { id: number };
 
     expect(database.deviceCascadeCounts(device.id)).toEqual({
-      memberships: 1,
+      interfaces: 1,
       services: 1,
       relations: 1,
     });
@@ -705,7 +704,7 @@ describe("MCP block", () => {
       })).structuredContent?.result,
     ).toEqual({ ok: true });
     expect(database.getDevice(device.id)).toBeUndefined();
-    expect(database.getMembership(membership.id)).toBeUndefined();
+    expect(database.getInterface(iface.id)).toBeUndefined();
     expect(database.getRelation(relation.id)).toBeUndefined();
     expect(database.getService(service.id)).toBeUndefined();
   });
@@ -713,14 +712,14 @@ describe("MCP block", () => {
   it("rejects duplicate and unresolved relation edges through REST", async () => {
     const before = database.listRelations().length;
     const createResult = await callMcpTool("create_relation", {
-      fromDeviceId: 3,
-      toDeviceId: 1,
+      fromInterfaceId: 3,
+      toInterfaceId: 1,
       relationName: "ホストOS",
     });
     expect(createResult.isError).toBe(false);
     const duplicateResult = await callMcpTool("create_relation", {
-      fromDeviceId: 3,
-      toDeviceId: 1,
+      fromInterfaceId: 3,
+      toInterfaceId: 1,
       relationName: "ホストOS",
     });
     expect(duplicateResult.isError).toBe(true);
@@ -732,7 +731,7 @@ describe("MCP block", () => {
             {
               path: "relationName",
               message:
-                "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
+                "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
             },
           ],
         },
@@ -741,8 +740,8 @@ describe("MCP block", () => {
 
     const updateResult = await callMcpTool("update_relation", {
       id: (createResult.structuredContent?.result as { id: number }).id,
-      fromDeviceId: 3,
-      toDeviceId: 1,
+      fromInterfaceId: 3,
+      toInterfaceId: 1,
       relationName: "存在しない関係名",
     });
     expect(updateResult.isError).toBe(true);
@@ -787,21 +786,22 @@ describe("MCP block", () => {
       isVm: false,
       meterEnabled: false,
     })).structuredContent?.result as { id: number };
-    const invalidMembership = await callMcpTool("create_membership", {
+    const invalidInterface = await callMcpTool("create_interface", {
       deviceId: serviceDevice.id,
+      name: "eth0",
       networkId: 1,
       ip: "192.168.0.200",
       label: null,
     });
-    expect(invalidMembership.isError).toBe(true);
-    expect(invalidMembership.structuredContent).toMatchObject({
+    expect(invalidInterface.isError).toBe(true);
+    expect(invalidInterface.structuredContent).toMatchObject({
       error: {
         status: 400,
         body: {
           issues: [
             {
               path: "ip",
-              message: "サービスカテゴリーの所属IPはNULLにしてください",
+              message: "サービスカテゴリーのインターフェースIPはNULLにしてください",
             },
           ],
         },
@@ -830,7 +830,7 @@ describe("MCP block", () => {
       imported: {
         networks: 3,
         devices: 16,
-        memberships: 17,
+        interfaces: 17,
         relationNames: 2,
         relations: 5,
         services: 9,

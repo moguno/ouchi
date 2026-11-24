@@ -1,13 +1,28 @@
--- ouchi.local ledger schema v0.6 (2026-11-22)
--- Addendum 24 separates reusable relation definitions from relation edges:
---  * relation_names owns the natural key, colour and directional labels.
+-- ouchi.local ledger schema v0.11 (2026-11-24)
+-- v0.11 turns the network accent into a free CSS color (migration 010):
+-- the five tone names become their palette hex values, and the portal
+-- derives its accent shades from the stored color. v0.10 drops the
+-- interface label (migration 009): it was displayed
+-- nowhere, and endpoint notes belong to relation labels. v0.9 added a
+-- nullable MAC address to interfaces (migration 008), so a switch port
+-- or NIC can carry its L2 address alongside the optional IP.
+-- v0.8 introduces interfaces: the membership (device_networks) is absorbed
+-- into a per-device interface. An interface has a name (eth0, wan1,
+-- ポート1, ...), belongs to at most one network, and carries at most one
+-- IP (nullable: switch ports have no IP). Relations connect interfaces,
+-- not devices, so a link lands on the exact interface it uses; services
+-- hang off an interface and take its IP. Trunk ports are modelled as
+-- logical interfaces (ポート1-1, ポート1-2), one network context each.
+-- Migration 007 converts existing ledgers.
+-- Addendum 24 separates reusable relation definitions from relation edges.
+--  * relation_names is a pure category: natural key + colour only.
 --  * relations stores the relation-name reference, both devices and both
---    placeholder values.
+--    endpoint labels as free text.
 --  * the same device pair may have multiple relation names, while
---    the relation name, devices and both placeholders stay unique together.
--- Addendum 24 supplement 1 makes directional labels templates. Each relation
--- carries optional from_placeholder/to_placeholder values, and uniqueness
--- includes both values so aggregation links to different ports can coexist.
+--    the relation name, devices and both labels stay unique together.
+-- The 2026-11-23 label move retired the supplement-1 templates: labels used
+-- to live on relation_names as {} templates with per-relation placeholder
+-- values; migration 006 expands them into per-relation free-text labels.
 -- From DB_SCHEMA_DRAFT.md v0.4. Changes from v0.3:
 --  * devices.petname stores an optional display nickname. It is trimmed by the
 --    API and an empty value is stored as NULL.
@@ -49,40 +64,39 @@ CREATE TABLE IF NOT EXISTS devices (
   properties TEXT NOT NULL DEFAULT '{}',
   CHECK (is_vm = (category = 'vm'))
 );
-CREATE TABLE IF NOT EXISTS device_networks (
+CREATE TABLE IF NOT EXISTS interfaces (
   id INTEGER PRIMARY KEY,
   device_id INTEGER NOT NULL REFERENCES devices(id),
-  network_id INTEGER NOT NULL REFERENCES networks(id),
+  name TEXT NOT NULL,
+  network_id INTEGER REFERENCES networks(id),
   ip TEXT,
-  label TEXT,
-  UNIQUE (device_id, network_id)
+  mac TEXT,
+  UNIQUE (device_id, name)
 );
 CREATE TABLE IF NOT EXISTS relation_names (
   id INTEGER PRIMARY KEY,
   name TEXT UNIQUE NOT NULL,
-  color TEXT NOT NULL,
-  from_label TEXT,
-  to_label TEXT
+  color TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS relations (
   id INTEGER PRIMARY KEY,
   relation_name_id INTEGER NOT NULL REFERENCES relation_names(id),
-  from_device_id INTEGER NOT NULL REFERENCES devices(id),
-  to_device_id INTEGER NOT NULL REFERENCES devices(id),
-  from_placeholder TEXT NOT NULL DEFAULT '',
-  to_placeholder TEXT NOT NULL DEFAULT '',
-  CHECK (from_device_id <> to_device_id),
+  from_interface_id INTEGER NOT NULL REFERENCES interfaces(id),
+  to_interface_id INTEGER NOT NULL REFERENCES interfaces(id),
+  from_label TEXT NOT NULL DEFAULT '',
+  to_label TEXT NOT NULL DEFAULT '',
+  CHECK (from_interface_id <> to_interface_id),
   UNIQUE (
     relation_name_id,
-    from_device_id,
-    to_device_id,
-    from_placeholder,
-    to_placeholder
+    from_interface_id,
+    to_interface_id,
+    from_label,
+    to_label
   )
 );
 CREATE TABLE IF NOT EXISTS services (
   id INTEGER PRIMARY KEY,
-  device_network_id INTEGER NOT NULL REFERENCES device_networks(id),
+  interface_id INTEGER NOT NULL REFERENCES interfaces(id),
   subdomain TEXT UNIQUE NOT NULL,
   petname TEXT,
   description TEXT,

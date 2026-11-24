@@ -1,6 +1,5 @@
 export type PortalStatus = "up" | "down" | "maintenance";
 
-export type AccentTone = "blue" | "green" | "orange" | "violet" | "slate";
 
 export type PortalServiceScheme = "http" | "https";
 
@@ -68,7 +67,7 @@ export interface PortalNetwork {
   id: string;
   name: string;
   cidr?: string;
-  accent: AccentTone;
+  accent: string;
   note?: string;
 }
 
@@ -95,20 +94,19 @@ export interface PortalDevice {
   resources?: PortalDeviceResources;
 }
 
-export interface PortalDeviceNetwork {
+export interface PortalInterface {
   id: string;
   deviceId: string;
-  networkId: string;
+  name: string;
+  networkId: string | null;
   ip: string;
-  label?: string;
+  mac?: string;
 }
 
 export interface PortalRelationName {
   id: string;
   name: string;
   color: string;
-  fromLabel?: string;
-  toLabel?: string;
   relationCount: number;
 }
 
@@ -118,8 +116,8 @@ export interface PortalRelation {
   relationName: string;
   fromDeviceId: string;
   toDeviceId: string;
-  fromPlaceholder?: string;
-  toPlaceholder?: string;
+  fromInterfaceId: string;
+  toInterfaceId: string;
   fromLabel: string;
   toLabel: string;
   color: string;
@@ -127,7 +125,7 @@ export interface PortalRelation {
 
 export interface PortalService {
   id: string;
-  deviceNetworkId: string;
+  interfaceId: string;
   subdomain: string;
   petname?: string;
   description?: string;
@@ -154,7 +152,7 @@ export interface PortalDataV2 {
   version: 2;
   networks: PortalNetwork[];
   devices: PortalDevice[];
-  deviceNetworks: PortalDeviceNetwork[];
+  interfaces: PortalInterface[];
   relationNames: PortalRelationName[];
   relations: PortalRelation[];
   services: PortalService[];
@@ -200,12 +198,13 @@ export interface PortalApiNetwork {
   note: string | null;
 }
 
-export interface PortalApiMembership {
+export interface PortalApiInterface {
   id: number;
   deviceId: number;
-  networkId: number;
+  name: string;
+  networkId: number | null;
   ip: string | null;
-  label: string | null;
+  mac: string | null;
 }
 
 export interface PortalApiDevice {
@@ -219,15 +218,13 @@ export interface PortalApiDevice {
   sshPort: number | null;
   meterEnabled: boolean;
   note: string | null;
-  memberships: PortalApiMembership[];
+  interfaces: PortalApiInterface[];
 }
 
 export interface PortalApiRelationName {
   id: number;
   name: string;
   color: string;
-  fromLabel: string | null;
-  toLabel: string | null;
   relationCount: number;
 }
 
@@ -237,8 +234,10 @@ export interface PortalApiRelation {
   relationName: string;
   fromDeviceId: number;
   toDeviceId: number;
-  fromPlaceholder: string;
-  toPlaceholder: string;
+  fromInterfaceId: number;
+  toInterfaceId: number;
+  fromInterfaceName: string;
+  toInterfaceName: string;
   fromLabel: string;
   toLabel: string;
   color: string;
@@ -246,7 +245,7 @@ export interface PortalApiRelation {
 
 export interface PortalApiService {
   id: number;
-  deviceNetworkId: number;
+  interfaceId: number;
   subdomain: string;
   petname: string | null;
   description: string | null;
@@ -297,30 +296,29 @@ export interface PortalDeviceInput {
   note?: string | null;
 }
 
-export interface PortalMembershipInput {
+export interface PortalInterfaceInput {
   deviceId: number;
-  networkId: number;
+  name: string;
+  networkId: number | null;
   ip?: string | null;
-  label?: string | null;
+  mac?: string | null;
 }
 
 export interface PortalRelationInput {
   relationName: string;
-  fromDeviceId: number;
-  toDeviceId: number;
-  fromPlaceholder?: string;
-  toPlaceholder?: string;
+  fromInterfaceId: number;
+  toInterfaceId: number;
+  fromLabel?: string;
+  toLabel?: string;
 }
 
 export interface PortalRelationNameInput {
   name: string;
   color: string;
-  fromLabel?: string | null;
-  toLabel?: string | null;
 }
 
 export interface PortalServiceInput {
-  deviceNetworkId: number;
+  interfaceId: number;
   subdomain: string;
   petname?: string | null;
   description?: string | null;
@@ -351,14 +349,6 @@ export const PORTAL_DEVICE_CATEGORIES: PortalDeviceCategory[] = [
   "physical",
   "vm",
   "service",
-];
-
-export const ACCENT_TONES: AccentTone[] = [
-  "blue",
-  "green",
-  "orange",
-  "violet",
-  "slate",
 ];
 
 export const PORTAL_ICON_KEYS: PortalIconKey[] = [
@@ -409,14 +399,6 @@ export const DEVICE_CATEGORY_LABELS: Record<PortalDeviceCategory, string> = {
   physical: "物理マシン",
   vm: "VM",
   service: "サービス",
-};
-
-export const ACCENT_LABELS: Record<AccentTone, string> = {
-  blue: "ブルー",
-  green: "グリーン",
-  orange: "オレンジ",
-  violet: "バイオレット",
-  slate: "スレート",
 };
 
 export const ICON_LABELS: Record<PortalIconKey, string> = {

@@ -199,33 +199,3 @@
   gap: 16px;
 }
 
-.ouchi-accent-scope--blue {
-  --network-color: var(--ouchi-blue);
-  --network-bg: rgba(91, 155, 214, 0.075);
-  --network-line: rgba(91, 155, 214, 0.53);
-}
-
-.ouchi-accent-scope--green {
-  --network-color: var(--ouchi-green);
-  --network-bg: rgba(75, 167, 85, 0.07);
-  --network-line: rgba(75, 167, 85, 0.47);
-}
-
-.ouchi-accent-scope--orange {
-  --network-color: var(--ouchi-orange);
-  --network-bg: rgba(214, 145, 50, 0.075);
-  --network-line: rgba(214, 145, 50, 0.48);
-}
-
-.ouchi-accent-scope--violet {
-  --network-color: var(--ouchi-violet);
-  --network-bg: rgba(116, 103, 168, 0.075);
-  --network-line: rgba(116, 103, 168, 0.48);
-}
-
-.ouchi-accent-scope--slate {
-  --network-color: var(--ouchi-slate);
-  --network-bg: rgba(102, 116, 131, 0.075);
-  --network-line: rgba(102, 116, 131, 0.48);
-}
-

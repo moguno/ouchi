@@ -30,12 +30,12 @@ export function ServiceIconDialog({
     normalizeIconReference(service.iconKey, "favicon"),
   );
 
-  const membership = data.deviceNetworks.find(
-    (item) => item.id === service.deviceNetworkId,
+  const iface = data.interfaces.find(
+    (item) => item.id === service.interfaceId,
   );
   const serviceUrl =
     service.url ??
-    (membership
+    (iface
       ? buildServiceUrl(
           {
             scheme: service.scheme,
@@ -43,7 +43,7 @@ export function ServiceIconDialog({
             topPath: service.topPath,
             serviceUrl: service.serviceUrl,
           },
-          membership,
+          iface,
         )
       : undefined);
 

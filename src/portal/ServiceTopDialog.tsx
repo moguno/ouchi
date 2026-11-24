@@ -51,8 +51,8 @@ export function ServiceTopDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formIssues, setFormIssues] = useState<ValidationIssue[]>([]);
 
-  const membership = data.deviceNetworks.find(
-    (item) => item.id === service.deviceNetworkId,
+  const iface = data.interfaces.find(
+    (item) => item.id === service.interfaceId,
   );
   const candidate = {
     scheme,
@@ -60,8 +60,8 @@ export function ServiceTopDialog({
     topPath,
     serviceUrl: serviceUrl.trim() || undefined,
   };
-  const servicePreview = membership
-    ? buildServiceUrl(candidate, membership)
+  const servicePreview = iface
+    ? buildServiceUrl(candidate, iface)
     : "";
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -74,7 +74,7 @@ export function ServiceTopDialog({
         subdomain: service.subdomain,
         petname: service.petname ?? "",
         description: service.description ?? "",
-        deviceNetworkId: service.deviceNetworkId,
+        interfaceId: service.interfaceId,
         scheme,
         port: Number(port),
         protocol,
@@ -179,7 +179,7 @@ export function ServiceTopDialog({
           <FieldError id="service-url-error">{errors.serviceUrl}</FieldError>
         </label>
 
-        {membership && (
+        {iface && (
           <div className="ouchi-url-preview">
             <span>サービス</span>
             <code>{servicePreview}</code>

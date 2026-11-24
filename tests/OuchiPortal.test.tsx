@@ -50,7 +50,7 @@ const service = (
   overrides: Partial<PortalService> = {},
 ): PortalService => ({
   id: "1",
-  deviceNetworkId: "11",
+  interfaceId: "11",
   subdomain: "gitea",
   petname: "おうちGit",
   description: "Gitサーバ",
@@ -114,29 +114,32 @@ const portalData: PortalDataV2 = {
       meterEnabled: false,
     },
   ],
-  deviceNetworks: [
+  interfaces: [
     {
       id: "10",
       deviceId: "1",
+      name: "lan",
       networkId: "2",
       ip: "192.168.0.1",
-      label: "管理",
     },
     {
       id: "11",
       deviceId: "2",
+      name: "eth0",
       networkId: "2",
       ip: "192.168.0.19",
     },
     {
       id: "12",
       deviceId: "3",
+      name: "eth0",
       networkId: "2",
       ip: "192.168.0.21",
     },
     {
       id: "13",
       deviceId: "4",
+      name: "eth0",
       networkId: "1",
       ip: "",
     },
@@ -146,8 +149,6 @@ const portalData: PortalDataV2 = {
       id: "relation-name-1",
       name: "バックアップ先",
       color: "#3b82f6",
-      fromLabel: "VM",
-      toLabel: "親ホスト",
       relationCount: 1,
     },
   ],
@@ -158,6 +159,8 @@ const portalData: PortalDataV2 = {
       relationName: "バックアップ先",
       fromDeviceId: "3",
       toDeviceId: "2",
+      fromInterfaceId: "12",
+      toInterfaceId: "11",
       fromLabel: "VM",
       toLabel: "親ホスト",
       color: "#3b82f6",
@@ -167,7 +170,7 @@ const portalData: PortalDataV2 = {
     service(),
     service({
       id: "2",
-      deviceNetworkId: "13",
+      interfaceId: "13",
       subdomain: "notion",
       petname: "Notion",
       description: "外部SaaS",
@@ -205,24 +208,20 @@ const apiData: PortalApiData = {
     sshPort: device.ssh?.port ?? null,
     meterEnabled: device.meterEnabled ?? false,
     note: null,
-    memberships: portalData.deviceNetworks
-      .filter((membership) => membership.deviceId === device.id)
-      .map((membership) => ({
-        id: Number(membership.id),
+    interfaces: portalData.interfaces
+      .filter((iface) => iface.deviceId === device.id)
+      .map((iface) => ({
+        id: Number(iface.id),
         deviceId: index + 1,
-        networkId:
-          Number(
-            portalData.networks.find(
-              (network) => network.id === membership.networkId,
-            )?.id ?? 1,
-          ),
-        ip: membership.ip || null,
-        label: membership.label ?? null,
+        name: iface.name,
+        networkId: iface.networkId ? Number(iface.networkId) : null,
+        ip: iface.ip || null,
+        mac: iface.mac ?? null,
       })),
   })),
   services: portalData.services.map((item, index) => ({
     id: index + 1,
-    deviceNetworkId: Number(item.deviceNetworkId),
+    interfaceId: Number(item.interfaceId),
     subdomain: item.subdomain,
     petname: item.petname ?? null,
     description: item.description ?? null,
@@ -242,8 +241,6 @@ const apiData: PortalApiData = {
     id: index + 1,
     name: relationName.name,
     color: relationName.color,
-    fromLabel: relationName.fromLabel ?? null,
-    toLabel: relationName.toLabel ?? null,
     relationCount: relationName.relationCount,
   })),
   relations: portalData.relations.map((relation, index) => ({
@@ -252,8 +249,15 @@ const apiData: PortalApiData = {
     relationName: relation.relationName,
     fromDeviceId: Number(relation.fromDeviceId),
     toDeviceId: Number(relation.toDeviceId),
-    fromPlaceholder: relation.fromPlaceholder ?? "",
-    toPlaceholder: relation.toPlaceholder ?? "",
+    fromInterfaceId: Number(relation.fromInterfaceId),
+    toInterfaceId: Number(relation.toInterfaceId),
+    fromInterfaceName:
+      portalData.interfaces.find(
+        (iface) => iface.id === relation.fromInterfaceId,
+      )?.name ?? "",
+    toInterfaceName:
+      portalData.interfaces.find((iface) => iface.id === relation.toInterfaceId)
+        ?.name ?? "",
     fromLabel: relation.fromLabel,
     toLabel: relation.toLabel,
     color: relation.color,
@@ -512,12 +516,12 @@ describe("OuchiPortal", () => {
 
     await user.click(
       within(view).getAllByRole("button", {
-        name: "cedar-hostからharbor-coreへの関係を編集",
+        name: "cedar-host / eth0からharbor-core / eth0への関係を編集",
       })[0],
     );
     dialog = screen.getByRole("dialog", { name: "関係を編集" });
     expect(
-      within(dialog).getByRole("combobox", { name: "始点デバイス 1" }),
+      within(dialog).getByRole("combobox", { name: "始点インターフェース 1" }),
     ).toBeEnabled();
     expect(
       within(dialog).getByRole("button", { name: "保存" }),
@@ -689,7 +693,7 @@ describe("OuchiPortal", () => {
       1,
     );
     expect(card.querySelector(".ouchi-node-address")?.textContent).toBe(
-      "192.168.0.19 / 物理マシン",
+      "192.168.0.19 / eth0",
     );
   });
 
@@ -705,7 +709,7 @@ describe("OuchiPortal", () => {
 
     expect(within(card).getByText("門番", { exact: true })).toBeVisible();
     expect(card.querySelector(".ouchi-node-address")?.textContent).toBe(
-      "192.168.0.19 / nanopi-r2s / 物理マシン",
+      "192.168.0.19 / nanopi-r2s / eth0",
     );
   });
 
@@ -788,13 +792,9 @@ describe("OuchiPortal", () => {
     ).toHaveClass("ouchi-device-card--neutral");
   });
 
-  it("renders resolved placeholder labels in the portal", async () => {
+  it("renders the relation's own labels in the portal", async () => {
     const user = userEvent.setup();
     const templated = structuredClone(portalData);
-    templated.relationNames[0].fromLabel = "VM{}";
-    templated.relationNames[0].toLabel = "親ホスト{}";
-    templated.relations[0].fromPlaceholder = "host";
-    templated.relations[0].toPlaceholder = "8";
     templated.relations[0].fromLabel = "VMhost";
     templated.relations[0].toLabel = "親ホスト8";
 
@@ -814,7 +814,7 @@ describe("OuchiPortal", () => {
     await user.click(within(view).getByRole("tab", { name: "関係" }));
     await user.click(
       within(view).getByRole("button", {
-        name: "openmediavaultからnanopi-r2sへの関係を編集",
+        name: "openmediavault / eth0からnanopi-r2s / eth0への関係を編集",
       }),
     );
     const dialog = screen.getByRole("dialog", {
@@ -825,7 +825,7 @@ describe("OuchiPortal", () => {
     ).toHaveValue("バックアップ先");
     expect(
       within(dialog).getByText(
-        /色と方向ラベルは関係名「バックアップ先」の定義を使います。/,
+        /色は関係名「バックアップ先」の定義を使います。/,
       ),
     ).toBeVisible();
     expect(
@@ -839,17 +839,13 @@ describe("OuchiPortal", () => {
     expect(route?.textContent).toContain("親ホスト");
   });
 
-  it("shows placeholder inputs only for templates that contain {}", async () => {
+  it("always shows label inputs and keeps labels across relation names", async () => {
     const user = userEvent.setup();
     const templated = structuredClone(portalData);
-    templated.relationNames[0].fromLabel = "親ホスト{}";
-    templated.relationNames[0].toLabel = "VM{}";
     templated.relationNames.push({
       id: "relation-name-2",
       name: "固定ラベル",
       color: "#22c55e",
-      fromLabel: "固定元",
-      toLabel: "固定先",
       relationCount: 0,
     });
     render(<OuchiPortal data={templated} />);
@@ -859,41 +855,41 @@ describe("OuchiPortal", () => {
     await user.click(within(view).getByRole("tab", { name: "関係" }));
     await user.click(
       within(view).getByRole("button", {
-        name: "openmediavaultからnanopi-r2sへの関係を編集",
+        name: "openmediavault / eth0からnanopi-r2s / eth0への関係を編集",
       }),
     );
     const dialog = screen.getByRole("dialog", {
       name: "関係を編集",
     });
     const fromInput = within(dialog).getByRole("textbox", {
-      name: "始点プレースホルダー 1",
+      name: "始点ラベル 1",
     });
     const toInput = within(dialog).getByRole("textbox", {
-      name: "終点プレースホルダー 1",
+      name: "終点ラベル 1",
     });
     expect(fromInput).toBeVisible();
     expect(toInput).toBeVisible();
+    expect(fromInput).toHaveValue("VM");
+    expect(toInput).toHaveValue("親ホスト");
 
+    await user.clear(fromInput);
     await user.type(fromInput, "host");
+    await user.clear(toInput);
     await user.type(toInput, "8");
     expect(
       dialog.querySelector(".ouchi-relation-row-route")?.textContent,
-    ).toContain("openmediavault親ホストhost→nanopi-r2sVM8");
+    ).toContain("openmediavault / eth0host→nanopi-r2s / eth08");
 
     await user.selectOptions(
       within(dialog).getByRole("combobox", { name: "関係名 1" }),
       "固定ラベル",
     );
     expect(
-      within(dialog).queryByRole("textbox", {
-        name: "始点プレースホルダー 1",
-      }),
-    ).not.toBeInTheDocument();
+      within(dialog).getByRole("textbox", { name: "始点ラベル 1" }),
+    ).toHaveValue("host");
     expect(
-      within(dialog).queryByRole("textbox", {
-        name: "終点プレースホルダー 1",
-      }),
-    ).not.toBeInTheDocument();
+      within(dialog).getByRole("textbox", { name: "終点ラベル 1" }),
+    ).toHaveValue("8");
   });
 
   it("lists every relation and edits it through the shared relation editor", async () => {
@@ -917,13 +913,20 @@ describe("OuchiPortal", () => {
     await user.click(within(view).getByRole("tab", { name: "関係" }));
 
     const editButton = within(view).getByRole("button", {
-      name: "openmediavaultからnanopi-r2sへの関係を編集",
+      name: "openmediavault / eth0からnanopi-r2s / eth0への関係を編集",
     });
     const row = editButton.closest("tr") as HTMLElement;
     expect(row).not.toBeNull();
-    expect(row.textContent).toContain("openmediavault（VM）");
-    expect(row.textContent).toContain("nanopi-r2s（親ホスト）");
-    expect(row.textContent).toContain("バックアップ先");
+    const cells = within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(cells.slice(0, 5)).toEqual([
+      "バックアップ先",
+      "openmediavault / eth0",
+      "VM",
+      "nanopi-r2s / eth0",
+      "親ホスト",
+    ]);
     expect(
       within(view)
         .getByRole("button", { name: "バックアップ先を編集" })
@@ -933,11 +936,11 @@ describe("OuchiPortal", () => {
     await user.click(editButton);
     const dialog = screen.getByRole("dialog", { name: "関係を編集" });
     expect(
-      within(dialog).getByRole("combobox", { name: "始点デバイス 1" }),
-    ).toHaveValue("3");
+      within(dialog).getByRole("combobox", { name: "始点インターフェース 1" }),
+    ).toHaveValue("12");
     expect(
-      within(dialog).getByRole("combobox", { name: "終点デバイス 1" }),
-    ).toHaveValue("2");
+      within(dialog).getByRole("combobox", { name: "終点インターフェース 1" }),
+    ).toHaveValue("11");
     expect(
       within(dialog).getByRole("combobox", { name: "関係名 1" }),
     ).toHaveValue("バックアップ先");
@@ -951,22 +954,18 @@ describe("OuchiPortal", () => {
       );
       expect(updateCall).toBeDefined();
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
-        fromDeviceId: 3,
-        toDeviceId: 2,
+        fromInterfaceId: 12,
+        toInterfaceId: 11,
         relationName: "バックアップ先",
-        fromPlaceholder: "",
-        toPlaceholder: "",
+        fromLabel: "VM",
+        toLabel: "親ホスト",
       });
     });
   });
 
-  it("shows resolved placeholder labels in the management relation row", async () => {
+  it("shows the relation's labels in the management relation row", async () => {
     const user = userEvent.setup();
     const templated = structuredClone(portalData);
-    templated.relationNames[0].fromLabel = "VM{}";
-    templated.relationNames[0].toLabel = "親ホスト{}";
-    templated.relations[0].fromPlaceholder = "host";
-    templated.relations[0].toPlaceholder = "8";
     templated.relations[0].fromLabel = "VMhost";
     templated.relations[0].toLabel = "親ホスト8";
     render(<OuchiPortal data={templated} />);
@@ -976,15 +975,23 @@ describe("OuchiPortal", () => {
     await user.click(within(view).getByRole("tab", { name: "関係" }));
     const row = within(view)
       .getByRole("button", {
-        name: "openmediavaultからnanopi-r2sへの関係を編集",
+        name: "openmediavault / eth0からnanopi-r2s / eth0への関係を編集",
       })
       .closest("tr") as HTMLElement;
 
-    expect(row.textContent).toContain("openmediavault（VMhost）");
-    expect(row.textContent).toContain("nanopi-r2s（親ホスト8）");
+    const cells = within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(cells.slice(0, 5)).toEqual([
+      "バックアップ先",
+      "openmediavault / eth0",
+      "VMhost",
+      "nanopi-r2s / eth0",
+      "親ホスト8",
+    ]);
   });
 
-  it("falls back to the relation name for empty management endpoint labels", async () => {
+  it("shows a dash for empty endpoint labels in the management relation row", async () => {
     const user = userEvent.setup();
     const unlabeled = structuredClone(portalData);
     unlabeled.relations[0].fromLabel = "";
@@ -996,12 +1003,20 @@ describe("OuchiPortal", () => {
     await user.click(within(view).getByRole("tab", { name: "関係" }));
     const row = within(view)
       .getByRole("button", {
-        name: "openmediavaultからnanopi-r2sへの関係を編集",
+        name: "openmediavault / eth0からnanopi-r2s / eth0への関係を編集",
       })
       .closest("tr") as HTMLElement;
 
-    expect(row.textContent).toContain("openmediavault（バックアップ先）");
-    expect(row.textContent).toContain("nanopi-r2s（バックアップ先）");
+    const cells = within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(cells.slice(0, 5)).toEqual([
+      "バックアップ先",
+      "openmediavault / eth0",
+      "-",
+      "nanopi-r2s / eth0",
+      "-",
+    ]);
   });
 
   it("adds and deletes relations from the relations tab", async () => {
@@ -1022,11 +1037,11 @@ describe("OuchiPortal", () => {
 
     const addDialog = screen.getByRole("dialog", { name: "関係を追加" });
     expect(
-      within(addDialog).getByRole("combobox", { name: "始点デバイス 1" }),
-    ).toHaveValue("1");
+      within(addDialog).getByRole("combobox", { name: "始点インターフェース 1" }),
+    ).toHaveValue("10");
     expect(
-      within(addDialog).getByRole("combobox", { name: "終点デバイス 1" }),
-    ).toHaveValue("2");
+      within(addDialog).getByRole("combobox", { name: "終点インターフェース 1" }),
+    ).toHaveValue("11");
     expect(
       within(addDialog).getByRole("combobox", { name: "関係名 1" }),
     ).toHaveValue("バックアップ先");
@@ -1042,17 +1057,17 @@ describe("OuchiPortal", () => {
       );
       expect(createCall).toBeDefined();
       expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
-        fromDeviceId: 1,
-        toDeviceId: 2,
+        fromInterfaceId: 10,
+        toInterfaceId: 11,
         relationName: "バックアップ先",
-        fromPlaceholder: "",
-        toPlaceholder: "",
+        fromLabel: "",
+        toLabel: "",
       });
     });
 
     await user.click(
       within(view).getByRole("button", {
-        name: "openmediavaultからnanopi-r2sへの関係を削除",
+        name: "openmediavault / eth0からnanopi-r2s / eth0への関係を削除",
       }),
     );
     const confirm = screen.getByRole("alertdialog", {
@@ -1120,8 +1135,6 @@ describe("OuchiPortal", () => {
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         name: "監視",
         color: "#22c55e",
-        fromLabel: null,
-        toLabel: null,
       });
     });
 
@@ -1133,16 +1146,26 @@ describe("OuchiPortal", () => {
     const editRelationNameDialog = screen.getByRole("dialog", {
       name: "関係名を編集",
     });
+    expect(
+      within(editRelationNameDialog).queryByRole("textbox", {
+        name: "始点の名前",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(editRelationNameDialog).queryByRole("textbox", {
+        name: "終点の名前",
+      }),
+    ).not.toBeInTheDocument();
     await user.clear(
       within(editRelationNameDialog).getByRole("textbox", {
-        name: "終点の名前",
+        name: "関係名の色コード",
       }),
     );
     await user.type(
       within(editRelationNameDialog).getByRole("textbox", {
-        name: "終点の名前",
+        name: "関係名の色コード",
       }),
-      "転送先",
+      "#ef4444",
     );
     await user.click(
       within(editRelationNameDialog).getByRole("button", { name: "保存" }),
@@ -1186,21 +1209,21 @@ describe("OuchiPortal", () => {
     const user = userEvent.setup();
     const duplicateData: PortalDataV2 = {
       ...portalData,
-      deviceNetworks: [
-        ...portalData.deviceNetworks,
+      interfaces: [
+        ...portalData.interfaces,
         {
           id: "14",
           deviceId: "1",
+          name: "oci",
           networkId: "3",
           ip: "192.168.253.1",
-          label: "OCI",
         },
         {
           id: "15",
           deviceId: "1",
+          name: "wan1",
           networkId: "1",
           ip: "10.0.0.1",
-          label: "WAN",
         },
       ],
       relations: [],
@@ -1229,16 +1252,16 @@ describe("OuchiPortal", () => {
           if (this.classList.contains("ouchi-canvas")) {
             return rect(0, 0, 1200, 1000);
           }
-          const membershipId = this
+          const interfaceId = this
             .getAttribute("aria-labelledby")
             ?.replace("device-", "");
-          if (this.dataset.deviceId && membershipId) {
+          if (this.dataset.deviceId && interfaceId) {
             const top =
-              membershipId === "14"
+              interfaceId === "14"
                 ? 40
-                : membershipId === "10"
+                : interfaceId === "10"
                   ? 220
-                  : membershipId === "15"
+                  : interfaceId === "15"
                     ? 420
                     : 700;
             return rect(20, top, 240, 160);
@@ -1314,13 +1337,13 @@ describe("OuchiPortal", () => {
           return rect(0, 0, 1200, 1600);
         }
         if (this instanceof HTMLElement && this.dataset.deviceId === "device-1") {
-          const membershipId = this
+          const interfaceId = this
             .getAttribute("aria-labelledby")
             ?.replace("device-", "");
           const top =
-            membershipId === "membership-1"
+            interfaceId === "interface-1"
               ? 100
-              : membershipId === "membership-2"
+              : interfaceId === "interface-2"
                 ? 400
                 : 700;
           return rect(20, top, 240, 160);
@@ -1390,19 +1413,19 @@ describe("OuchiPortal", () => {
           return rect(0, 0, 1200, 1600);
         }
         if (this instanceof HTMLElement && this.dataset.deviceId) {
-          const membershipId = this
+          const interfaceId = this
             .getAttribute("aria-labelledby")
             ?.replace("device-", "");
-          if (membershipId === "membership-4") {
+          if (interfaceId === "interface-4") {
             return rect(20, 200, 240, 160);
           }
-          if (membershipId === "membership-14") {
+          if (interfaceId === "interface-14") {
             return rect(20, 500, 240, 160);
           }
-          if (membershipId === "membership-13") {
+          if (interfaceId === "interface-13") {
             return rect(300, 500, 240, 160);
           }
-          if (membershipId === "membership-15") {
+          if (interfaceId === "interface-15") {
             return rect(580, 500, 240, 160);
           }
         }
@@ -1442,6 +1465,90 @@ describe("OuchiPortal", () => {
     expect(
       container.querySelector(".ouchi-relation-card-mask"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows endpoint labels at both ends while hovering a relation line", async () => {
+    const user = userEvent.setup();
+    const rect = (
+      left: number,
+      top: number,
+      width: number,
+      height: number,
+    ): DOMRect =>
+      ({
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+        width,
+        height,
+        x: left,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        if (this instanceof HTMLElement) {
+          if (this.classList.contains("ouchi-canvas")) {
+            return rect(0, 0, 1200, 1000);
+          }
+          if (this.dataset.deviceId === "3") {
+            return rect(20, 40, 240, 160);
+          }
+          if (this.dataset.deviceId === "2") {
+            return rect(20, 400, 240, 160);
+          }
+          if (this.dataset.deviceId) {
+            return rect(900, 40, 240, 160);
+          }
+        }
+        return rect(0, 0, 0, 0);
+      },
+    );
+    vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
+      function (this: Element) {
+        return [this.getBoundingClientRect()] as unknown as DOMRectList;
+      },
+    );
+
+    const { container } = render(<OuchiPortal data={portalData} />);
+    await user.click(
+      screen.getByRole("button", { name: "openmediavaultを選択" }),
+    );
+
+    const group = await waitFor(() => {
+      const found = container.querySelector(
+        ".ouchi-relation-connector--relation",
+      );
+      expect(found).not.toBeNull();
+      return found as Element;
+    });
+    expect(
+      container.querySelectorAll(".ouchi-relation-endpoint-label"),
+    ).toHaveLength(0);
+
+    fireEvent.pointerEnter(group, { clientX: 140, clientY: 300 });
+    fireEvent.pointerMove(group, { clientX: 140, clientY: 300 });
+
+    expect(screen.getByRole("tooltip")).toHaveTextContent("バックアップ先");
+    const labels = container.querySelectorAll(
+      ".ouchi-relation-endpoint-label",
+    );
+    expect(Array.from(labels, (label) => label.textContent)).toEqual([
+      "VM",
+      "親ホスト",
+    ]);
+    expect(labels[0]).toHaveClass("ouchi-relation-endpoint-label--bottom");
+    expect((labels[0] as HTMLElement).style.left).toBe("140px");
+    expect((labels[0] as HTMLElement).style.top).toBe("200px");
+    expect(labels[1]).toHaveClass("ouchi-relation-endpoint-label--top");
+    expect((labels[1] as HTMLElement).style.left).toBe("140px");
+    expect((labels[1] as HTMLElement).style.top).toBe("400px");
+
+    fireEvent.pointerLeave(group);
+    expect(
+      container.querySelectorAll(".ouchi-relation-endpoint-label"),
+    ).toHaveLength(0);
   });
 
   it("clears selection when clicking outside a device", () => {
@@ -1725,8 +1832,8 @@ describe("OuchiPortal", () => {
     await user.click(screen.getByRole("button", { name: "管理" }));
     await user.click(screen.getByRole("tab", { name: "共通設定" }));
     expect(
-      screen.getByRole("textbox", { name: "ポータルドメイン" }),
-    ).toHaveValue("ouchi.local");
+      screen.queryByRole("textbox", { name: "ポータルドメイン" }),
+    ).not.toBeInTheDocument();
     const input = screen.getByRole("textbox", {
       name: "ポータルタイトル",
     });
@@ -2048,7 +2155,7 @@ describe("OuchiPortal", () => {
       hostnameInput.compareDocumentPosition(categorySelect) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    const membershipHeading = within(dialog).getByText("ネットワーク所属IP");
+    const membershipHeading = within(dialog).getByText("インターフェース");
     expect(
       categorySelect.compareDocumentPosition(membershipHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2209,7 +2316,7 @@ describe("OuchiPortal", () => {
             id: 4,
             name: "ゲストWi-Fi",
             cidr: null,
-            accent: "green",
+            accent: "#4ba755",
             note: null,
           },
           201,
@@ -2222,7 +2329,7 @@ describe("OuchiPortal", () => {
           id: 4,
           name: "ゲストWi-Fi",
           cidr: null,
-          accent: "green",
+          accent: "#4ba755",
           note: null,
         });
       }
@@ -2241,10 +2348,11 @@ describe("OuchiPortal", () => {
       screen.getByRole("textbox", { name: "ネットワーク名" }),
       "ゲストWi-Fi",
     );
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "アクセント色" }),
-      "green",
-    );
+    const accentInput = screen.getByRole("textbox", {
+      name: "ネットワークのアクセント色コード",
+    });
+    await user.clear(accentInput);
+    await user.type(accentInput, "#4ba755");
     await user.click(screen.getByRole("button", { name: "追加する" }));
 
     await waitFor(() =>
@@ -2259,7 +2367,7 @@ describe("OuchiPortal", () => {
     expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
       name: "ゲストWi-Fi",
       cidr: null,
-      accent: "green",
+      accent: "#4ba755",
       note: null,
     });
   });
@@ -2271,7 +2379,7 @@ describe("OuchiPortal", () => {
     await user.click(
       screen.getByRole("button", { name: "おうちLANを削除" }),
     );
-    expect(screen.getByText(/所属IPが3件登録されています/)).toBeVisible();
+    expect(screen.getByText(/インターフェースが3件登録されています/)).toBeVisible();
   });
 
   it("does not refocus the first field on parent rerenders", () => {

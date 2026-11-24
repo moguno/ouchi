@@ -1,12 +1,12 @@
 import type {
   PortalApiData,
   PortalApiDevice,
-  PortalApiMembership,
+  PortalApiInterface,
   PortalApiNetwork,
   PortalApiRelation,
   PortalApiService,
   PortalDeviceInput,
-  PortalMembershipInput,
+  PortalInterfaceInput,
   PortalNetworkInput,
   PortalRelationInput,
   PortalRelationNameInput,
@@ -147,33 +147,33 @@ export class LedgerRestClient {
     return this.request(`/api/devices/${id}`, { method: "DELETE" });
   }
 
-  listMemberships(): Promise<PortalApiMembership[]> {
-    return this.request<PortalApiMembership[]>("/api/memberships");
+  listInterfaces(): Promise<PortalApiInterface[]> {
+    return this.request<PortalApiInterface[]>("/api/interfaces");
   }
 
-  async getMembership(
+  async getInterface(
     id: number,
-  ): Promise<PortalApiMembership | undefined> {
-    return (await this.listMemberships()).find(
-      (membership) => membership.id === id,
+  ): Promise<PortalApiInterface | undefined> {
+    return (await this.listInterfaces()).find(
+      (iface) => iface.id === id,
     );
   }
 
-  createMembership(
-    input: PortalMembershipInput,
-  ): Promise<PortalApiMembership> {
-    return this.write("POST", "/api/memberships", input);
+  createInterface(
+    input: PortalInterfaceInput,
+  ): Promise<PortalApiInterface> {
+    return this.write("POST", "/api/interfaces", input);
   }
 
-  updateMembership(
+  updateInterface(
     id: number,
-    input: PortalMembershipInput,
-  ): Promise<PortalApiMembership> {
-    return this.write("PUT", `/api/memberships/${id}`, input);
+    input: PortalInterfaceInput,
+  ): Promise<PortalApiInterface> {
+    return this.write("PUT", `/api/interfaces/${id}`, input);
   }
 
-  deleteMembership(id: number): Promise<{ ok: true }> {
-    return this.request(`/api/memberships/${id}`, { method: "DELETE" });
+  deleteInterface(id: number): Promise<{ ok: true }> {
+    return this.request(`/api/interfaces/${id}`, { method: "DELETE" });
   }
 
   listServices(): Promise<PortalApiService[]> {

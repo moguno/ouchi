@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Build the v0.6 ledger in memory and verify the design end to end.
+"""Build the v0.11 ledger in memory and verify the design end to end.
 
 Checks:
   1. schema + seed load with foreign keys on; foreign_key_check is clean
   2. row counts match the seed's intent
   3. category / is_vm consistency holds
-  4. relation traversal for omv works both directions, with relation-name
-     templates resolving placeholders back to display labels
-  5. redirect and monitor URLs assemble from scheme + membership IP +
+  4. relation traversal for omv works both directions across interfaces,
+     with each relation's own endpoint labels
+  5. redirect and monitor URLs assemble from scheme + interface IP +
      port + paths for every enabled service
   6. category='service' pseudo-devices (external SaaS): is_vm=0,
-     meter_enabled=0, membership ip is NULL, and their services
+     meter_enabled=0, interface ip is NULL, and their services
      resolve to the service_url override
 """
 import sqlite3
@@ -36,10 +36,10 @@ fk = cur.execute("PRAGMA foreign_key_check").fetchall()
 check("foreign_key_check", fk == [], f"violations={fk}")
 
 counts = {t: cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-          for t in ("networks", "devices", "device_networks", "relation_names",
+          for t in ("networks", "devices", "interfaces", "relation_names",
                     "relations", "services")}
 check("row counts", counts == {"networks": 3, "devices": 16,
-                               "device_networks": 17, "relation_names": 2,
+                               "interfaces": 17, "relation_names": 2,
                                "relations": 5,
                                "services": 9}, str(counts))
 
@@ -49,37 +49,46 @@ check("category/is_vm consistency", bad == 0, f"mismatch={bad}")
 
 relation_columns = [row[1] for row in cur.execute(
     "PRAGMA table_info(relations)").fetchall()]
-check("relation placeholder columns",
-      "from_placeholder" in relation_columns
-      and "to_placeholder" in relation_columns,
+check("relation label columns",
+      "from_label" in relation_columns
+      and "to_label" in relation_columns,
       str(relation_columns))
+relation_name_columns = [row[1] for row in cur.execute(
+    "PRAGMA table_info(relation_names)").fetchall()]
+check("relation names are pure categories",
+      relation_name_columns == ["id", "name", "color"],
+      str(relation_name_columns))
 
 # --- relation traversal for omv (both directions, labels resolved) ---
-def relation_label(template, placeholder, name):
-    if not template or not template.strip():
+def relation_label(label, name):
+    if not label or not label.strip():
         return name
-    return template.replace("{}", placeholder if placeholder else "-")
+    return label
 
 def traverse(hostname):
     did = cur.execute("SELECT id FROM devices WHERE hostname = ?",
                       (hostname,)).fetchone()[0]
     out = cur.execute(
-        """SELECT d.hostname, n.from_label, r.from_placeholder, n.name, n.color
+        """SELECT d.hostname, r.from_label, n.name, n.color
            FROM relations r
            JOIN relation_names n ON n.id = r.relation_name_id
-           JOIN devices d ON d.id = r.to_device_id
-           WHERE r.from_device_id = ?""", (did,)).fetchall()
+           JOIN interfaces ti ON ti.id = r.to_interface_id
+           JOIN devices d ON d.id = ti.device_id
+           JOIN interfaces fi ON fi.id = r.from_interface_id
+           WHERE fi.device_id = ?""", (did,)).fetchall()
     inc = cur.execute(
-        """SELECT d.hostname, n.to_label, r.to_placeholder, n.name, n.color
+        """SELECT d.hostname, r.to_label, n.name, n.color
            FROM relations r
            JOIN relation_names n ON n.id = r.relation_name_id
-           JOIN devices d ON d.id = r.from_device_id
-           WHERE r.to_device_id = ?""", (did,)).fetchall()
+           JOIN interfaces fi ON fi.id = r.from_interface_id
+           JOIN devices d ON d.id = fi.device_id
+           JOIN interfaces ti ON ti.id = r.to_interface_id
+           WHERE ti.device_id = ?""", (did,)).fetchall()
     return (
-        [(hostname, relation_label(template, placeholder, name), color)
-         for hostname, template, placeholder, name, color in out],
-        [(hostname, relation_label(template, placeholder, name), color)
-         for hostname, template, placeholder, name, color in inc],
+        [(hostname, relation_label(label, name), color)
+         for hostname, label, name, color in out],
+        [(hostname, relation_label(label, name), color)
+         for hostname, label, name, color in inc],
     )
 
 out, inc = traverse("omv")
@@ -98,7 +107,7 @@ check("acemagic reverse traversal",
 rows = cur.execute(
     """SELECT s.subdomain, s.scheme, dn.ip, s.port, s.top_path,
               s.monitor_path, s.service_url
-       FROM services s JOIN device_networks dn ON dn.id = s.device_network_id
+       FROM services s JOIN interfaces dn ON dn.id = s.interface_id
        WHERE s.enabled = 1 ORDER BY s.id""").fetchall()
 
 def build(scheme, ip, port, path, override):
@@ -127,10 +136,10 @@ check("service-category invariants (is_vm=0, meter off)", bad_svc == 0,
       f"violations={bad_svc}")
 
 bad_ip = cur.execute(
-    """SELECT COUNT(*) FROM device_networks dn
+    """SELECT COUNT(*) FROM interfaces dn
        JOIN devices d ON d.id = dn.device_id
        WHERE d.category = 'service' AND dn.ip IS NOT NULL""").fetchone()[0]
-check("service-category memberships have NULL ip", bad_ip == 0,
+check("service-category interfaces have NULL ip", bad_ip == 0,
       f"violations={bad_ip}")
 
 saas = {sub: build(s, ip, p, t, o)

@@ -29,13 +29,13 @@ export function ServicesTab({
   onServiceIcon,
   saveDisabled = false,
 }: ServicesTabProps) {
-  const addDisabled = data.deviceNetworks.length === 0;
+  const addDisabled = data.interfaces.length === 0;
   const rows = data.services.map((service) => {
-    const membership = data.deviceNetworks.find(
-      (item) => item.id === service.deviceNetworkId,
+    const iface = data.interfaces.find(
+      (item) => item.id === service.interfaceId,
     );
     const device = data.devices.find(
-      (item) => item.id === membership?.deviceId,
+      (item) => item.id === iface?.deviceId,
     );
     const name = service.petname?.trim() || service.subdomain;
     return {

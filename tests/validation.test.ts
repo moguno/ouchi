@@ -10,8 +10,8 @@ import {
   validatePropertiesPayload,
   validateDeviceInput,
   validateDevicePayload,
-  validateDeviceNetworkInput,
-  validateMembershipPayload,
+  validateInterfaceInput,
+  validateInterfacePayload,
   validateNetworkInput,
   validatePortalData,
   validateRelationInput,
@@ -76,36 +76,39 @@ const data: PortalDataV2 = {
       meterEnabled: false,
     },
   ],
-  deviceNetworks: [
+  interfaces: [
     {
       id: "10",
       deviceId: "1",
+      name: "wan1",
       networkId: "1",
       ip: "",
-      label: "WAN",
     },
     {
       id: "11",
       deviceId: "1",
+      name: "lan",
       networkId: "2",
       ip: "192.168.0.1",
-      label: "LAN",
     },
     {
       id: "12",
       deviceId: "2",
+      name: "eth0",
       networkId: "2",
       ip: "192.168.0.19",
     },
     {
       id: "13",
       deviceId: "3",
+      name: "eth0",
       networkId: "2",
       ip: "192.168.0.21",
     },
     {
       id: "14",
       deviceId: "4",
+      name: "eth0",
       networkId: "1",
       ip: "",
     },
@@ -125,6 +128,8 @@ const data: PortalDataV2 = {
       relationName: "バックアップ先",
       fromDeviceId: "3",
       toDeviceId: "2",
+      fromInterfaceId: "13",
+      toInterfaceId: "12",
       fromLabel: "バックアップ先",
       toLabel: "バックアップ先",
       color: "#3b82f6",
@@ -133,7 +138,7 @@ const data: PortalDataV2 = {
   services: [
     {
       id: "30",
-      deviceNetworkId: "12",
+      interfaceId: "12",
       subdomain: "gitea",
       petname: "おうちGit",
       description: "Gitサーバ",
@@ -147,7 +152,7 @@ const data: PortalDataV2 = {
     },
     {
       id: "31",
-      deviceNetworkId: "14",
+      interfaceId: "14",
       subdomain: "notion",
       petname: "Notion",
       scheme: "https",
@@ -163,11 +168,11 @@ const data: PortalDataV2 = {
 };
 
 describe("v0.4 data and address validation", () => {
-  it("accepts nullable membership IPs, free tags, and category service", () => {
+  it("accepts nullable interface IPs, free tags, and category service", () => {
     expect(validatePortalData(data)).toEqual({ value: data, issues: [] });
   });
 
-  it("validates IPv4 and CIDR values per membership", () => {
+  it("validates IPv4 and CIDR values per interface", () => {
     expect(isIpv4("192.168.0.19")).toBe(true);
     expect(isIpv4("192.168.0.999")).toBe(false);
     expect(isCidr("192.168.0.0/24")).toBe(true);
@@ -178,11 +183,11 @@ describe("v0.4 data and address validation", () => {
 
   it("allows an empty IP but rejects one outside the network CIDR", () => {
     expect(
-      validateDeviceNetworkInput({ networkId: "1", ip: "" }, data),
+      validateInterfaceInput({ name: "eth0", networkId: "1", ip: "" }, data),
     ).toEqual([]);
     expect(
-      validateDeviceNetworkInput(
-        { networkId: "2", ip: "192.168.1.20" },
+      validateInterfaceInput(
+        { name: "eth0", networkId: "2", ip: "192.168.1.20" },
         data,
       ),
     ).toContainEqual({
@@ -193,7 +198,7 @@ describe("v0.4 data and address validation", () => {
 
   it("rejects duplicate non-null IP addresses", () => {
     const invalid = structuredClone(data);
-    invalid.deviceNetworks[2].ip = "192.168.0.21";
+    invalid.interfaces[2].ip = "192.168.0.21";
     const result = validatePortalData(invalid);
     expect(
       result.issues.some((issue) => issue.message.includes("重複")),
@@ -219,10 +224,11 @@ describe("shared REST validation", () => {
     });
   });
 
-  it("accepts nullable API membership IPs", () => {
+  it("accepts nullable API interface IPs", () => {
     expect(
-      validateMembershipPayload({
+      validateInterfacePayload({
         deviceId: 4,
+        name: "eth0",
         networkId: 1,
         ip: null,
       }),
@@ -233,23 +239,21 @@ describe("shared REST validation", () => {
     expect(
       validateRelationPayload({
         relationName: "夜間バックアップ",
-        fromDeviceId: 3,
-        toDeviceId: 2,
+        fromInterfaceId: 13,
+        toInterfaceId: 12,
       }),
     ).toEqual([]);
     expect(
       validateRelationPayload({
         relationName: "",
-        fromDeviceId: 3,
-        toDeviceId: 2,
+        fromInterfaceId: 13,
+        toInterfaceId: 12,
       }),
     ).toContainEqual({ path: "relationName", message: "関係名は必須です" });
     expect(
       validateRelationNamePayload({
         name: "ホストOS",
         color: "#d5a22b",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
       }),
     ).toEqual([]);
     expect(
@@ -265,7 +269,7 @@ describe("shared REST validation", () => {
 
   it("does not accept service status as an input field", () => {
     const serviceInput = {
-      deviceNetworkId: 12,
+      interfaceId: 12,
       subdomain: "health",
       port: 8080,
       protocol: "tcp",
@@ -385,8 +389,10 @@ describe("shared REST validation", () => {
       validateRelationInput(
         {
           relationName: "バックアップ先",
-          fromDeviceId: "3",
-          toDeviceId: "2",
+          fromInterfaceId: "13",
+          toInterfaceId: "12",
+          fromLabel: "バックアップ先",
+          toLabel: "バックアップ先",
         },
         data,
         "20",
@@ -396,10 +402,10 @@ describe("shared REST validation", () => {
       validateRelationInput(
         {
           relationName: "バックアップ先",
-          fromDeviceId: "3",
-          toDeviceId: "2",
-          fromPlaceholder: "host",
-          toPlaceholder: "8",
+          fromInterfaceId: "13",
+          toInterfaceId: "12",
+          fromLabel: "host",
+          toLabel: "8",
         },
         data,
         "99",
@@ -409,8 +415,10 @@ describe("shared REST validation", () => {
       validateRelationInput(
         {
           relationName: "バックアップ先",
-          fromDeviceId: "3",
-          toDeviceId: "2",
+          fromInterfaceId: "13",
+          toInterfaceId: "12",
+          fromLabel: "バックアップ先",
+          toLabel: "バックアップ先",
         },
         data,
         "99",
@@ -418,7 +426,7 @@ describe("shared REST validation", () => {
     ).toContainEqual({
       path: "relationName",
       message:
-        "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
+        "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
     });
   });
 
@@ -428,8 +436,6 @@ describe("shared REST validation", () => {
       id: "relation-name-2",
       name: "監視",
       color: "#22c55e",
-      fromLabel: "監視元",
-      toLabel: "監視先",
       relationCount: 1,
     });
     invalid.relations.push({
@@ -438,6 +444,8 @@ describe("shared REST validation", () => {
       relationName: "監視",
       fromDeviceId: "4",
       toDeviceId: "2",
+      fromInterfaceId: "14",
+      toInterfaceId: "12",
       fromLabel: "監視元",
       toLabel: "監視先",
       color: "#22c55e",
@@ -450,6 +458,8 @@ describe("shared REST validation", () => {
       relationName: "バックアップ先",
       fromDeviceId: "3",
       toDeviceId: "2",
+      fromInterfaceId: "13",
+      toInterfaceId: "12",
       fromLabel: "バックアップ先",
       toLabel: "バックアップ先",
       color: "#3b82f6",
@@ -476,15 +486,15 @@ describe("shared REST validation", () => {
     });
   });
 
-  it("allows placeholder variants and rejects only an exact five-part duplicate", () => {
+  it("allows label variants and rejects only an exact five-part duplicate", () => {
     const templated = structuredClone(data);
-    templated.relations[0].fromPlaceholder = "8";
-    templated.relations[0].toPlaceholder = "443";
+    templated.relations[0].fromLabel = "8";
+    templated.relations[0].toLabel = "443";
     templated.relations.push({
       ...structuredClone(templated.relations[0]),
       id: "21",
-      fromPlaceholder: "9",
-      toPlaceholder: "443",
+      fromLabel: "9",
+      toLabel: "443",
     });
     expect(validatePortalData(templated).issues).toEqual([]);
 
@@ -496,7 +506,7 @@ describe("shared REST validation", () => {
       expect.arrayContaining([
         expect.objectContaining({
           path: "relations.22",
-          message: expect.stringContaining("プレースホルダー"),
+          message: expect.stringContaining("ラベル"),
         }),
       ]),
     );
@@ -512,7 +522,7 @@ describe("shared REST validation", () => {
         validateServiceInput(
           {
           subdomain: "health",
-          deviceNetworkId: "12",
+          interfaceId: "12",
           scheme: "http",
           port: 8080,
           protocol: "tcp",
@@ -529,7 +539,7 @@ describe("shared REST validation", () => {
       validateServiceInput(
         {
           subdomain: "health",
-          deviceNetworkId: "12",
+          interfaceId: "12",
           scheme: "http",
           port: 8080,
           protocol: "tcp",
@@ -541,6 +551,43 @@ describe("shared REST validation", () => {
         data,
       ),
     ).toContainEqual({ path: "iconKey", message: "アイコンを選択してください" });
+    // 空のトップパス／監視パスは「/」扱いで有効（既存データの大半が空文字）
+    expect(
+      validateServiceInput(
+        {
+          subdomain: "health",
+          interfaceId: "12",
+          scheme: "http",
+          port: 8080,
+          protocol: "tcp",
+          topPath: "",
+          monitorPath: "",
+          iconKey: "favicon",
+          enabled: true,
+        },
+        data,
+      ),
+    ).toEqual([]);
+    // 「/」で始まらないパスは引き続きエラー
+    expect(
+      validateServiceInput(
+        {
+          subdomain: "health",
+          interfaceId: "12",
+          scheme: "http",
+          port: 8080,
+          protocol: "tcp",
+          topPath: "health",
+          monitorPath: "/health",
+          iconKey: "favicon",
+          enabled: true,
+        },
+        data,
+      ),
+    ).toContainEqual({
+      path: "topPath",
+      message: "トップパスは / から入力してください",
+    });
   });
 
   it("accepts CIDR-less networks", () => {
@@ -556,11 +603,11 @@ describe("shared REST validation", () => {
 describe("URL assembly", () => {
   it("always includes the port and uses monitor_path fallback", () => {
     const service = data.services[0];
-    const membership = data.deviceNetworks[2];
-    expect(buildServiceUrl(service, membership)).toBe(
+    const iface = data.interfaces[2];
+    expect(buildServiceUrl(service, iface)).toBe(
       "http://192.168.0.19:3000/",
     );
-    expect(buildMonitorUrl(service, membership)).toBe(
+    expect(buildMonitorUrl(service, iface)).toBe(
       "http://192.168.0.19:3000/api/v1/version",
     );
   });
@@ -581,10 +628,10 @@ describe("URL assembly", () => {
   it("uses an explicit URL for redirect and monitor URLs", () => {
     const service = data.services[1];
     expect(
-      buildServiceUrl(service, data.deviceNetworks[4]),
+      buildServiceUrl(service, data.interfaces[4]),
     ).toBe("https://www.notion.so/");
     expect(
-      buildMonitorUrl(service, data.deviceNetworks[4]),
+      buildMonitorUrl(service, data.interfaces[4]),
     ).toBe("https://www.notion.so/");
     expect(isHttpUrl("https://example.com")).toBe(true);
     expect(isHttpUrl("javascript:alert(1)")).toBe(false);

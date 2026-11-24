@@ -1,3 +1,27 @@
+/**
+ * Until schema v0.10 the network accent was one of five tone names that
+ * mapped to this fixed palette. The values survive as the hex colors the
+ * tones convert to (migration 010 / the ouchi-ledger/7 upgrade), and as
+ * the fallback when a network carries no usable accent.
+ */
+export const LEGACY_ACCENT_COLORS: Record<string, string> = {
+  blue: "#5b9bd6",
+  green: "#4ba755",
+  orange: "#d69132",
+  violet: "#7467a8",
+  slate: "#667483",
+};
+
+export function normalizeNetworkAccent(
+  value: string | null | undefined,
+): string {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return LEGACY_ACCENT_COLORS.slate;
+  }
+  return LEGACY_ACCENT_COLORS[trimmed.toLowerCase()] ?? trimmed;
+}
+
 const BASIC_NAMED_COLORS: Record<string, string> = {
   aqua: "#00ffff",
   black: "#000000",

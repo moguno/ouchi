@@ -30,8 +30,8 @@ export function DevicesTab({
 }: DevicesTabProps) {
   const addDisabled = data.networks.length === 0;
   const rows = data.devices.map((device) => {
-    const memberships = data.deviceNetworks.filter(
-      (membership) => membership.deviceId === device.id,
+    const deviceInterfaces = data.interfaces.filter(
+      (iface) => iface.deviceId === device.id,
     );
     const displayName = device.petname?.trim() || device.name;
     return {
@@ -40,8 +40,8 @@ export function DevicesTab({
         name: displayName,
         hostname: device.name,
         ip:
-          memberships
-            .map((membership) => membership.ip)
+          deviceInterfaces
+            .map((iface) => iface.ip)
             .filter(Boolean)
             .join(", ") || "—",
         category: DEVICE_CATEGORY_LABELS[device.category],

@@ -1,87 +1,102 @@
 import type {
   PortalDevice,
+  PortalInterface,
   PortalRelation,
   PortalRelationName,
 } from "./types";
-import {
-  hasRelationPlaceholder,
-  resolveRelationLabel,
-} from "./relationLabels";
+import { displayRelationLabel } from "./relationLabels";
 
 export type RelationEditableField = keyof Pick<
   PortalRelation,
-  | "fromDeviceId"
-  | "toDeviceId"
+  | "fromInterfaceId"
+  | "toInterfaceId"
   | "relationName"
-  | "fromPlaceholder"
-  | "toPlaceholder"
+  | "fromLabel"
+  | "toLabel"
 >;
 
 interface RelationEditorProps {
   relation: PortalRelation;
   index: number;
-  fromDevices: PortalDevice[];
-  toDevices: PortalDevice[];
+  devices: PortalDevice[];
+  interfaces: PortalInterface[];
   relationNames: PortalRelationName[];
-  showFromDevice?: boolean;
+  showFromInterface?: boolean;
   onChange: (field: RelationEditableField, value: string) => void;
   onDelete: () => void;
+}
+
+function endpointSummary(
+  devices: PortalDevice[],
+  interfaces: PortalInterface[],
+  interfaceId: string,
+  fallback: string,
+): string {
+  const iface = interfaces.find((candidate) => candidate.id === interfaceId);
+  if (!iface) {
+    return fallback;
+  }
+  const device = devices.find((candidate) => candidate.id === iface.deviceId);
+  const deviceName = device?.petname?.trim() || device?.name || "不明なデバイス";
+  return `${deviceName} / ${iface.name}`;
 }
 
 export function RelationEditor({
   relation,
   index,
-  fromDevices,
-  toDevices,
+  devices,
+  interfaces,
   relationNames,
-  showFromDevice = false,
+  showFromInterface = false,
   onChange,
   onDelete,
 }: RelationEditorProps) {
   const selectedRelationName = relationNames.find(
     (candidate) => candidate.name === relation.relationName,
   );
-  const showFromPlaceholder = hasRelationPlaceholder(
-    selectedRelationName?.fromLabel,
+  const fromLabel = displayRelationLabel(relation.fromLabel);
+  const toLabel = displayRelationLabel(relation.toLabel);
+  const fromSummary = endpointSummary(
+    devices,
+    interfaces,
+    relation.fromInterfaceId,
+    "始点未選択",
   );
-  const showToPlaceholder = hasRelationPlaceholder(
-    selectedRelationName?.toLabel,
+  const toSummary = endpointSummary(
+    devices,
+    interfaces,
+    relation.toInterfaceId,
+    "終点未選択",
   );
-  const fromLabel = resolveRelationLabel(
-    selectedRelationName?.fromLabel,
-    relation.fromPlaceholder,
-    selectedRelationName?.name ?? relation.relationName,
-  );
-  const toLabel = resolveRelationLabel(
-    selectedRelationName?.toLabel,
-    relation.toPlaceholder,
-    selectedRelationName?.name ?? relation.relationName,
-  );
-  const fromDevice = fromDevices.find(
-    (device) => device.id === relation.fromDeviceId,
-  );
-  const toDevice = toDevices.find(
-    (device) => device.id === relation.toDeviceId,
-  );
-  const fromDeviceName =
-    fromDevice?.petname?.trim() ||
-    fromDevice?.name ||
-    "始点未選択";
-  const toDeviceName =
-    toDevice?.petname?.trim() ||
-    toDevice?.name ||
-    "終点未選択";
+
+  function interfaceOptions() {
+    return devices.map((device) => (
+      <optgroup
+        key={device.id}
+        label={device.petname?.trim() || device.name}
+      >
+        {interfaces
+          .filter((iface) => iface.deviceId === device.id)
+          .map((iface) => (
+            <option key={iface.id} value={iface.id}>
+              {device.name} / {iface.name}
+              {iface.ip ? ` / ${iface.ip}` : ""}
+            </option>
+          ))}
+      </optgroup>
+    ));
+  }
 
   return (
     <div className="ouchi-relation-row">
       <div className="ouchi-relation-row-route">
         <span className="ouchi-relation-endpoint">
-          <strong>{fromDeviceName}</strong>
+          <strong>{fromSummary}</strong>
           <small>{fromLabel}</small>
         </span>
         <span aria-hidden="true">→</span>
         <span className="ouchi-relation-endpoint">
-          <strong>{toDeviceName}</strong>
+          <strong>{toSummary}</strong>
           <small>{toLabel}</small>
         </span>
         <button
@@ -93,22 +108,18 @@ export function RelationEditor({
           削除
         </button>
       </div>
-      {showFromDevice && (
+      {showFromInterface && (
         <label className="ouchi-field">
-          <span>始点デバイス {index + 1}</span>
+          <span>始点インターフェース {index + 1}</span>
           <select
-            aria-label={`始点デバイス ${index + 1}`}
+            aria-label={`始点インターフェース ${index + 1}`}
             autoFocus={index === 0}
             onChange={(event) =>
-              onChange("fromDeviceId", event.target.value)
+              onChange("fromInterfaceId", event.target.value)
             }
-            value={relation.fromDeviceId}
+            value={relation.fromInterfaceId}
           >
-            {fromDevices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.petname?.trim() || device.name}
-              </option>
-            ))}
+            {interfaceOptions()}
           </select>
         </label>
       )}
@@ -132,50 +143,41 @@ export function RelationEditor({
         </select>
       </label>
       <label className="ouchi-field">
-        <span>終点デバイス {index + 1}</span>
+        <span>終点インターフェース {index + 1}</span>
         <select
-          aria-label={`終点デバイス ${index + 1}`}
-          onChange={(event) => onChange("toDeviceId", event.target.value)}
-          value={relation.toDeviceId}
+          aria-label={`終点インターフェース ${index + 1}`}
+          onChange={(event) => onChange("toInterfaceId", event.target.value)}
+          value={relation.toInterfaceId}
         >
-          {toDevices.map((device) => (
-            <option key={device.id} value={device.id}>
-              {device.petname?.trim() || device.name}
-            </option>
-          ))}
+          {interfaceOptions()}
         </select>
       </label>
-      {showFromPlaceholder && (
-        <label className="ouchi-field">
-          <span>始点プレースホルダー {index + 1}</span>
-          <input
-            aria-label={`始点プレースホルダー ${index + 1}`}
-            onChange={(event) =>
-              onChange("fromPlaceholder", event.target.value)
-            }
-            placeholder="空なら -"
-            value={relation.fromPlaceholder ?? ""}
-          />
-        </label>
-      )}
-      {showToPlaceholder && (
-        <label className="ouchi-field">
-          <span>終点プレースホルダー {index + 1}</span>
-          <input
-            aria-label={`終点プレースホルダー ${index + 1}`}
-            onChange={(event) =>
-              onChange("toPlaceholder", event.target.value)
-            }
-            placeholder="空なら -"
-            value={relation.toPlaceholder ?? ""}
-          />
-        </label>
-      )}
+      <label className="ouchi-field">
+        <span>始点ラベル {index + 1}</span>
+        <input
+          aria-label={`始点ラベル ${index + 1}`}
+          onChange={(event) =>
+            onChange("fromLabel", event.target.value)
+          }
+          placeholder="空なら表示されません"
+          value={relation.fromLabel ?? ""}
+        />
+      </label>
+      <label className="ouchi-field">
+        <span>終点ラベル {index + 1}</span>
+        <input
+          aria-label={`終点ラベル ${index + 1}`}
+          onChange={(event) =>
+            onChange("toLabel", event.target.value)
+          }
+          placeholder="空なら表示されません"
+          value={relation.toLabel ?? ""}
+        />
+      </label>
       {selectedRelationName && (
         <p className="ouchi-inline-hint">
-          色と方向ラベルは関係名「{selectedRelationName.name}」の定義を使います。
-          {"{} "}は対応するプレースホルダーで置換され、空なら{" - "}
-          になります。
+          色は関係名「{selectedRelationName.name}」の定義を使います。
+          ラベルはこの関係だけの自由な名前で、空なら表示されません。
         </p>
       )}
     </div>

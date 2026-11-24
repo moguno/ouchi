@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import type {
   PortalDeviceInput,
-  PortalMembershipInput,
+  PortalInterfaceInput,
   PortalNetworkInput,
   PortalRelationInput,
   PortalRelationNameInput,
@@ -11,7 +11,7 @@ import type {
 import {
   isIpWithinCidr,
   validateDevicePayload,
-  validateMembershipPayload,
+  validateInterfacePayload,
   validateNetworkPayload,
   validateRelationPayload,
   validateRelationNamePayload,
@@ -185,9 +185,9 @@ export function createApp(
       return context.json({ error: "IDが不正です" }, 400);
     }
     const blockers = database.networkDeletionBlockers(id);
-    if (blockers.memberships > 0) {
+    if (blockers.interfaces > 0) {
       const failure = conflict(
-        "紐づく所属が残っているためネットワークを削除できません",
+        "紐づくインターフェースが残っているためネットワークを削除できません",
         { blockers },
       );
       return context.json(failure.body, failure.status);
@@ -247,13 +247,13 @@ export function createApp(
     }
     if (
       (input as PortalDeviceInput).category === "service" &&
-      existingDevice.memberships.some((membership) => membership.ip)
+      existingDevice.interfaces.some((iface) => iface.ip)
     ) {
       const failure = invalid([
         {
           path: "category",
           message:
-            "サービスカテゴリーへ変更する前に所属IPを空にしてください",
+            "サービスカテゴリーへ変更する前にインターフェースのIPを空にしてください",
         },
       ]);
       return context.json(failure.body, failure.status);
@@ -279,19 +279,19 @@ export function createApp(
       : context.json({ error: "デバイスが見つかりません" }, 404);
   });
 
-  app.get("/api/memberships", (context) =>
-    context.json(database.listMemberships()),
+  app.get("/api/interfaces", (context) =>
+    context.json(database.listInterfaces()),
   );
 
-  const membershipIssues = (
+  const interfaceIssues = (
     input: unknown,
     existingId?: number,
   ): ValidationIssue[] => {
-    const issues = validateMembershipPayload(input);
+    const issues = validateInterfacePayload(input);
     if (issues.length > 0 || typeof input !== "object" || input === null) {
       return issues;
     }
-    const value = input as PortalMembershipInput;
+    const value = input as PortalInterfaceInput;
     const device = database.getDevice(value.deviceId);
     if (!device) {
       issues.push({ path: "deviceId", message: "デバイスが存在しません" });
@@ -302,41 +302,46 @@ export function createApp(
     ) {
       issues.push({
         path: "ip",
-        message: "サービスカテゴリーの所属IPはNULLにしてください",
+        message: "サービスカテゴリーのインターフェースIPはNULLにしてください",
       });
     }
-    const network = database.getNetwork(value.networkId);
-    if (!network) {
-      issues.push({ path: "networkId", message: "ネットワークが存在しません" });
-    } else if (
-      network.cidr &&
-      value.ip?.trim() &&
-      !isIpWithinCidr(value.ip.trim(), network.cidr)
-    ) {
-      issues.push({
-        path: "ip",
-        message: `IPは ${network.cidr} の範囲内で入力してください`,
-      });
+    if (value.networkId !== null && value.networkId !== undefined) {
+      const network = database.getNetwork(value.networkId);
+      if (!network) {
+        issues.push({
+          path: "networkId",
+          message: "ネットワークが存在しません",
+        });
+      } else if (
+        network.cidr &&
+        value.ip?.trim() &&
+        !isIpWithinCidr(value.ip.trim(), network.cidr)
+      ) {
+        issues.push({
+          path: "ip",
+          message: `IPは ${network.cidr} の範囲内で入力してください`,
+        });
+      }
     }
     if (
       existingId &&
-      !database.getMembership(existingId)
+      !database.getInterface(existingId)
     ) {
-      issues.push({ path: "id", message: "所属が見つかりません" });
+      issues.push({ path: "id", message: "インターフェースが見つかりません" });
     }
     return issues;
   };
 
-  app.post("/api/memberships", async (context) => {
+  app.post("/api/interfaces", async (context) => {
     const input = await jsonBody(context);
-    const issues = membershipIssues(input);
+    const issues = interfaceIssues(input);
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
     }
     try {
       return context.json(
-        database.createMembership(input as PortalMembershipInput),
+        database.createInterface(input as PortalInterfaceInput),
         201,
       );
     } catch (error) {
@@ -345,47 +350,48 @@ export function createApp(
     }
   });
 
-  app.put("/api/memberships/:id", async (context) => {
+  app.put("/api/interfaces/:id", async (context) => {
     const id = parseId(context.req.param("id"));
     if (!id) {
       return context.json({ error: "IDが不正です" }, 400);
     }
     const input = await jsonBody(context);
-    const issues = membershipIssues(input, id);
+    const issues = interfaceIssues(input, id);
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
     }
     try {
-      const membership = database.updateMembership(
+      const iface = database.updateInterface(
         id,
-        input as PortalMembershipInput,
+        input as PortalInterfaceInput,
       );
-      return membership
-        ? context.json(membership)
-        : context.json({ error: "所属が見つかりません" }, 404);
+      return iface
+        ? context.json(iface)
+        : context.json({ error: "インターフェースが見つかりません" }, 404);
     } catch (error) {
       const failure = databaseConflict(error);
       return context.json(failure.body, failure.status);
     }
   });
 
-  app.delete("/api/memberships/:id", (context) => {
+  app.delete("/api/interfaces/:id", (context) => {
     const id = parseId(context.req.param("id"));
     if (!id) {
       return context.json({ error: "IDが不正です" }, 400);
     }
-    const serviceCount = database.membershipServiceCount(id);
-    if (serviceCount > 0) {
+    const serviceCount = database.interfaceServiceCount(id);
+    const relationCount = database.interfaceRelationCount(id);
+    if (serviceCount > 0 || relationCount > 0) {
       const failure = conflict(
-        "サービスが紐づいているため所属を削除できません",
-        { blockers: { services: serviceCount } },
+        "サービスや関係が紐づいているためインターフェースを削除できません",
+        { blockers: { services: serviceCount, relations: relationCount } },
       );
       return context.json(failure.body, failure.status);
     }
-    return database.deleteMembership(id)
+    return database.deleteInterface(id)
       ? context.json({ ok: true })
-      : context.json({ error: "所属が見つかりません" }, 404);
+      : context.json({ error: "インターフェースが見つかりません" }, 404);
   });
 
   app.get("/api/services", (context) =>
@@ -412,10 +418,10 @@ export function createApp(
       return issues;
     }
     const value = input as PortalServiceInput;
-    if (!database.getMembership(value.deviceNetworkId)) {
+    if (!database.getInterface(value.interfaceId)) {
       issues.push({
-        path: "deviceNetworkId",
-        message: "所属が見つかりません",
+        path: "interfaceId",
+        message: "インターフェースが見つかりません",
       });
     }
     if (
@@ -598,16 +604,28 @@ export function createApp(
       return issues;
     }
     const value = input as PortalRelationInput;
-    if (!database.getDevice(value.fromDeviceId)) {
+    const fromInterface = database.getInterface(value.fromInterfaceId);
+    if (!fromInterface) {
       issues.push({
-        path: "fromDeviceId",
-        message: "関係元デバイスが存在しません",
+        path: "fromInterfaceId",
+        message: "関係元のインターフェースが存在しません",
       });
     }
-    if (!database.getDevice(value.toDeviceId)) {
+    const toInterface = database.getInterface(value.toInterfaceId);
+    if (!toInterface) {
       issues.push({
-        path: "toDeviceId",
-        message: "関係先デバイスが存在しません",
+        path: "toInterfaceId",
+        message: "関係先のインターフェースが存在しません",
+      });
+    }
+    if (
+      fromInterface &&
+      toInterface &&
+      fromInterface.deviceId === toInterface.deviceId
+    ) {
+      issues.push({
+        path: "toInterfaceId",
+        message: "同じデバイスのインターフェース同士は結べません",
       });
     }
     const relationName = database.findRelationName(value.relationName);
@@ -619,17 +637,17 @@ export function createApp(
     } else if (
       database.relationDuplicate(
         relationName.id,
-        value.fromDeviceId,
-        value.toDeviceId,
-        value.fromPlaceholder?.trim() ?? "",
-        value.toPlaceholder?.trim() ?? "",
+        value.fromInterfaceId,
+        value.toInterfaceId,
+        value.fromLabel?.trim() ?? "",
+        value.toLabel?.trim() ?? "",
         editingId,
       )
     ) {
       issues.push({
         path: "relationName",
         message:
-          "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
+          "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
       });
     }
     return issues;

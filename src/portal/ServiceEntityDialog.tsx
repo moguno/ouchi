@@ -16,7 +16,6 @@ import {
   generateId,
   validateServiceInput,
 } from "./validation";
-import { sortNetworksForDisplay } from "./networkOrder";
 import {
   FieldError,
   FormActions,
@@ -38,8 +37,8 @@ export function ServiceEntityDialog({
   const [description, setDescription] = useState(
     editing?.description ?? "",
   );
-  const [deviceNetworkId, setDeviceNetworkId] = useState(
-    editing?.deviceNetworkId ?? data.deviceNetworks[0]?.id ?? "",
+  const [interfaceId, setInterfaceId] = useState(
+    editing?.interfaceId ?? data.interfaces[0]?.id ?? "",
   );
   const [scheme, setScheme] = useState<PortalServiceScheme>(
     editing?.scheme ?? "http",
@@ -59,9 +58,6 @@ export function ServiceEntityDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formIssues, setFormIssues] = useState<ValidationIssue[]>([]);
 
-  const selectedMembership = data.deviceNetworks.find(
-    (membership) => membership.id === deviceNetworkId,
-  );
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saveDisabled) {
@@ -71,7 +67,7 @@ export function ServiceEntityDialog({
       subdomain,
       petname,
       description,
-      deviceNetworkId,
+      interfaceId,
       scheme,
       port: Number(port),
       protocol,
@@ -97,7 +93,7 @@ export function ServiceEntityDialog({
       description: description.trim() || undefined,
       // プロパティはメモダイアログが所有する。保存時は既存値を保持する。
       properties: editing?.properties ?? {},
-      deviceNetworkId,
+      interfaceId,
       scheme,
       port: Number(port),
       protocol,
@@ -153,39 +149,31 @@ export function ServiceEntityDialog({
       </label>
 
       <label className="ouchi-field">
-        <span>配置先のデバイスIP</span>
+        <span>配置先のインターフェース</span>
         <select
           aria-describedby={
-            errors.deviceNetworkId ? "service-device-network-error" : undefined
+            errors.interfaceId ? "service-interface-error" : undefined
           }
-          aria-invalid={Boolean(errors.deviceNetworkId)}
-          onChange={(event) => setDeviceNetworkId(event.target.value)}
+          aria-invalid={Boolean(errors.interfaceId)}
+          onChange={(event) => setInterfaceId(event.target.value)}
           required
-          value={deviceNetworkId}
+          value={interfaceId}
         >
-          {sortNetworksForDisplay(data.networks).map((network) => (
-            <optgroup key={network.id} label={network.name}>
-              {data.deviceNetworks
-                .filter(
-                  (membership) => membership.networkId === network.id,
-                )
-                .map((membership) => {
-                  const device = data.devices.find(
-                    (item) => item.id === membership.deviceId,
-                  );
-                  return (
-                    <option key={membership.id} value={membership.id}>
-                      {device?.name ?? membership.deviceId} /{" "}
-                      {membership.ip || "IPなし"}
-                      {membership.label ? ` / ${membership.label}` : ""}
-                    </option>
-                  );
-                })}
+          {data.devices.map((device) => (
+            <optgroup key={device.id} label={device.petname || device.name}>
+              {data.interfaces
+                .filter((iface) => iface.deviceId === device.id)
+                .map((iface) => (
+                  <option key={iface.id} value={iface.id}>
+                    {device.name} / {iface.name} /{" "}
+                    {iface.ip || "IPなし"}
+                  </option>
+                ))}
             </optgroup>
           ))}
         </select>
-        <FieldError id="service-device-network-error">
-          {errors.deviceNetworkId}
+        <FieldError id="service-interface-error">
+          {errors.interfaceId}
         </FieldError>
       </label>
 

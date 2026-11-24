@@ -227,6 +227,13 @@
   height: 100%;
 }
 
+.ouchi-service-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .ouchi-service-mark--gitea {
   padding: 9px;
 }

@@ -16,13 +16,13 @@ import {
 import {
   PortalApiError,
   createDevice,
-  createMembership,
+  createInterface,
   createNetwork,
   createRelation,
   createRelationName,
   createService,
   deleteDevice,
-  deleteMembership,
+  deleteInterface,
   deleteNetwork,
   deleteRelation,
   deleteRelationName,
@@ -30,7 +30,7 @@ import {
   exportLedger,
   importLedger,
   updateDevice,
-  updateMembership,
+  updateInterface,
   updateNetwork,
   updateRelation,
   updateRelationName,
@@ -98,7 +98,7 @@ const EMPTY_DATA: PortalDataV2 = {
   version: 2,
   networks: [],
   devices: [],
-  deviceNetworks: [],
+  interfaces: [],
   relationNames: [],
   relations: [],
   services: [],
@@ -130,7 +130,7 @@ function toDeviceInput(device: PortalDevice): PortalDeviceInput {
 
 function toServiceInput(service: PortalService): PortalServiceInput {
   return {
-    deviceNetworkId: Number(service.deviceNetworkId),
+    interfaceId: Number(service.interfaceId),
     subdomain: service.subdomain.trim().toLowerCase(),
     petname: service.petname || null,
     description: service.description || null,
@@ -272,12 +272,12 @@ export function OuchiPortal({
   function requestDelete(kind: EntityKind, id: string) {
     setMessage(undefined);
     if (kind === "network") {
-      const childCount = portalData.deviceNetworks.filter(
-        (membership) => membership.networkId === id,
+      const childCount = portalData.interfaces.filter(
+        (iface) => iface.networkId === id,
       ).length;
       if (childCount > 0) {
         setMessage(
-          `所属IPが${childCount}件登録されています。先にデバイスを編集してください。`,
+          `インターフェースが${childCount}件登録されています。先にデバイスを編集してください。`,
         );
         return;
       }
@@ -359,13 +359,13 @@ export function OuchiPortal({
       return `${target}この操作は元に戻せません。`;
     }
 
-    const membershipIds = new Set(
-      portalData.deviceNetworks
-        .filter((membership) => membership.deviceId === id)
-        .map((membership) => membership.id),
+    const interfaceIds = new Set(
+      portalData.interfaces
+        .filter((iface) => iface.deviceId === id)
+        .map((iface) => iface.id),
     );
     const serviceCount = portalData.services.filter((service) =>
-      membershipIds.has(service.deviceNetworkId),
+      interfaceIds.has(service.interfaceId),
     ).length;
     const relationCount = portalData.relations.filter(
       (relation) =>
@@ -459,7 +459,7 @@ export function OuchiPortal({
     const imported = result.imported;
     return (
       `全置き換えが完了しました。ネットワーク ${imported.networks}件、` +
-      `デバイス ${imported.devices}件、所属IP ${imported.memberships}件、` +
+      `デバイス ${imported.devices}件、インターフェース ${imported.interfaces}件、` +
       `関係名 ${imported.relationNames}件、関係 ${imported.relations}件、` +
       `サービス ${imported.services}件、` +
       `SSH公開鍵 ${imported.sshKeys}件を読み込みました。`
@@ -506,20 +506,25 @@ export function OuchiPortal({
         const existing = portalData.devices.some(
           (item) => item.id === mutation.device.id,
         );
-        const nextMembershipIds = new Set(
-          mutation.deviceNetworks.map((membership) => membership.id),
+        const nextInterfaceIds = new Set(
+          mutation.interfaces.map((iface) => iface.id),
         );
-        const blockedMembership = portalData.deviceNetworks.find(
-          (membership) =>
-            membership.deviceId === mutation.device.id &&
-            !nextMembershipIds.has(membership.id) &&
-            portalData.services.some(
-              (service) => service.deviceNetworkId === membership.id,
-            ),
+        const blockedInterface = portalData.interfaces.find(
+          (iface) =>
+            iface.deviceId === mutation.device.id &&
+            !nextInterfaceIds.has(iface.id) &&
+            (portalData.services.some(
+              (service) => service.interfaceId === iface.id,
+            ) ||
+              portalData.relations.some(
+                (relation) =>
+                  relation.fromInterfaceId === iface.id ||
+                  relation.toInterfaceId === iface.id,
+              )),
         );
-        if (blockedMembership) {
+        if (blockedInterface) {
           throw new Error(
-            "サービスが紐づく所属IPを削除する前に、サービスを削除または移動してください",
+            "サービスや関係が紐づくインターフェースを削除する前に、サービスや関係を削除または移動してください",
           );
         }
         const deviceInput = toDeviceInput(mutation.device);
@@ -534,31 +539,32 @@ export function OuchiPortal({
           savedDeviceId = String(created.id);
         }
 
-        const currentMemberships = portalData.deviceNetworks.filter(
-          (membership) => membership.deviceId === savedDeviceId,
+        const currentInterfaces = portalData.interfaces.filter(
+          (iface) => iface.deviceId === savedDeviceId,
         );
-        for (const membership of currentMemberships) {
-          if (!nextMembershipIds.has(membership.id)) {
-            await deleteMembership(apiBaseUrl, membership.id);
+        for (const iface of currentInterfaces) {
+          if (!nextInterfaceIds.has(iface.id)) {
+            await deleteInterface(apiBaseUrl, iface.id);
           }
         }
-        for (const membership of mutation.deviceNetworks) {
+        for (const iface of mutation.interfaces) {
           const input = {
             deviceId: Number(savedDeviceId),
-            networkId: Number(membership.networkId),
-            ip: membership.ip.trim() || null,
-            label: membership.label || null,
+            name: iface.name.trim(),
+            networkId: iface.networkId ? Number(iface.networkId) : null,
+            ip: iface.ip.trim() || null,
+            mac: iface.mac?.trim() || null,
           };
           if (
-            currentMemberships.some((item) => item.id === membership.id)
+            currentInterfaces.some((item) => item.id === iface.id)
           ) {
-            await updateMembership(apiBaseUrl, membership.id, input);
+            await updateInterface(apiBaseUrl, iface.id, input);
           } else {
-            await createMembership(apiBaseUrl, input);
+            await createInterface(apiBaseUrl, input);
           }
         }
-
       }
+
       setMessage(`${KIND_LABELS[kind]}を保存しました。`);
       setDialog(null);
       await reload();
@@ -575,11 +581,11 @@ export function OuchiPortal({
     }
     try {
       const input = {
-        fromDeviceId: Number(relation.fromDeviceId),
-        toDeviceId: Number(relation.toDeviceId),
+        fromInterfaceId: Number(relation.fromInterfaceId),
+        toInterfaceId: Number(relation.toInterfaceId),
         relationName: relation.relationName.trim(),
-        fromPlaceholder: relation.fromPlaceholder?.trim() ?? "",
-        toPlaceholder: relation.toPlaceholder?.trim() ?? "",
+        fromLabel: relation.fromLabel?.trim() ?? "",
+        toLabel: relation.toLabel?.trim() ?? "",
       };
       if (
         portalData.relations.some((candidate) => candidate.id === relation.id)
@@ -709,8 +715,6 @@ export function OuchiPortal({
       const input = {
         name: relationName.name,
         color: relationName.color,
-        fromLabel: relationName.fromLabel?.trim() || null,
-        toLabel: relationName.toLabel?.trim() || null,
       };
       if (
         portalData.relationNames.some(
@@ -738,7 +742,7 @@ export function OuchiPortal({
 
 
   const vmCount = portalData.devices.filter((device) => device.isVm).length;
-  const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.deviceNetworks.length}所属IP、${portalData.relations.length}関係、${portalData.services.length}サービス`;
+  const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.interfaces.length}インターフェース、${portalData.relations.length}関係、${portalData.services.length}サービス`;
   const memoDevice = deviceMemoId
     ? portalData.devices.find((item) => item.id === deviceMemoId)
     : undefined;

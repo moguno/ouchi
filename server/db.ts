@@ -4,12 +4,12 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   PortalApiData,
   PortalApiDevice,
-  PortalApiMembership,
+  PortalApiInterface,
   PortalApiNetwork,
   PortalApiRelation,
   PortalApiRelationName,
   PortalApiService,
-  PortalMembershipInput,
+  PortalInterfaceInput,
   PortalNetworkInput,
   PortalProperties,
   PortalRelationInput,
@@ -18,7 +18,6 @@ import type {
   PortalDeviceInput,
 } from "../src/portal/types";
 import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
-import { resolveRelationLabel } from "../src/portal/relationLabels";
 import { buildMonitorUrl, buildServiceUrl } from "../src/portal/urls";
 import { normalizeProperties } from "../src/portal/validation";
 
@@ -29,6 +28,11 @@ type DbOptions = {
   devicePetnameMigrationPath?: string;
   relationNamesMigrationPath?: string;
   relationPlaceholdersMigrationPath?: string;
+  relationLabelsMigrationPath?: string;
+  interfacesMigrationPath?: string;
+  interfaceMacMigrationPath?: string;
+  interfaceDropLabelMigrationPath?: string;
+  networkAccentMigrationPath?: string;
 };
 
 type NetworkRow = {
@@ -52,17 +56,18 @@ type DeviceRow = {
   properties: string;
 };
 
-type MembershipRow = {
+type InterfaceRow = {
   id: number;
   device_id: number;
-  network_id: number;
+  name: string;
+  network_id: number | null;
   ip: string | null;
-  label: string | null;
+  mac: string | null;
 };
 
 type ServiceRow = {
   id: number;
-  device_network_id: number;
+  interface_id: number;
   subdomain: string;
   petname: string | null;
   description: string | null;
@@ -85,10 +90,12 @@ type RelationRow = {
   relation_name: string;
   from_device_id: number;
   to_device_id: number;
-  from_label: string | null;
-  to_label: string | null;
-  from_placeholder: string;
-  to_placeholder: string;
+  from_interface_id: number;
+  to_interface_id: number;
+  from_interface_name: string;
+  to_interface_name: string;
+  from_label: string;
+  to_label: string;
   color: string;
 };
 
@@ -96,8 +103,6 @@ type RelationNameRow = {
   id: number;
   name: string;
   color: string;
-  from_label: string | null;
-  to_label: string | null;
   relation_count: number;
 };
 
@@ -134,19 +139,20 @@ function toApiNetwork(row: NetworkRow): PortalApiNetwork {
   };
 }
 
-function toApiMembership(row: MembershipRow): PortalApiMembership {
+function toApiInterface(row: InterfaceRow): PortalApiInterface {
   return {
     id: asNumber(row.id),
     deviceId: asNumber(row.device_id),
-    networkId: asNumber(row.network_id),
+    name: row.name,
+    networkId: row.network_id === null ? null : asNumber(row.network_id),
     ip: row.ip,
-    label: row.label,
+    mac: row.mac,
   };
 }
 
 function toApiDevice(
   row: DeviceRow,
-  memberships: PortalApiMembership[],
+  interfaces: PortalApiInterface[],
 ): PortalApiDevice {
   return {
     id: asNumber(row.id),
@@ -159,7 +165,7 @@ function toApiDevice(
     meterEnabled: Boolean(row.meter_enabled),
     note: row.note,
     properties: parseProperties(row.properties),
-    memberships,
+    interfaces,
   };
 }
 
@@ -173,7 +179,7 @@ function toApiService(row: ServiceRow): PortalApiService {
   };
   return {
     id: asNumber(row.id),
-    deviceNetworkId: asNumber(row.device_network_id),
+    interfaceId: asNumber(row.interface_id),
     subdomain: row.subdomain,
     petname: row.petname,
     description: row.description,
@@ -196,25 +202,18 @@ function toApiService(row: ServiceRow): PortalApiService {
 }
 
 function toApiRelation(row: RelationRow): PortalApiRelation {
-  const relationName = row.relation_name;
   return {
     id: asNumber(row.id),
     relationNameId: asNumber(row.relation_name_id),
-    relationName,
+    relationName: row.relation_name,
     fromDeviceId: asNumber(row.from_device_id),
     toDeviceId: asNumber(row.to_device_id),
-    fromPlaceholder: row.from_placeholder,
-    toPlaceholder: row.to_placeholder,
-    fromLabel: resolveRelationLabel(
-      row.from_label,
-      row.from_placeholder,
-      relationName,
-    ),
-    toLabel: resolveRelationLabel(
-      row.to_label,
-      row.to_placeholder,
-      relationName,
-    ),
+    fromInterfaceId: asNumber(row.from_interface_id),
+    toInterfaceId: asNumber(row.to_interface_id),
+    fromInterfaceName: row.from_interface_name,
+    toInterfaceName: row.to_interface_name,
+    fromLabel: row.from_label,
+    toLabel: row.to_label,
     color: row.color,
   };
 }
@@ -224,23 +223,25 @@ function toApiRelationName(row: RelationNameRow): PortalApiRelationName {
     id: asNumber(row.id),
     name: row.name,
     color: row.color,
-    fromLabel: row.from_label,
-    toLabel: row.to_label,
     relationCount: asNumber(row.relation_count),
   };
 }
 
 const RELATION_SELECT = `
   SELECT r.id, n.id AS relation_name_id, n.name AS relation_name,
-         n.color, n.from_label, n.to_label,
-         r.from_device_id, r.to_device_id,
-         r.from_placeholder, r.to_placeholder
+         n.color,
+         fi.device_id AS from_device_id, ti.device_id AS to_device_id,
+         r.from_interface_id, r.to_interface_id,
+         fi.name AS from_interface_name, ti.name AS to_interface_name,
+         r.from_label, r.to_label
   FROM relations r
   JOIN relation_names n ON n.id = r.relation_name_id
+  JOIN interfaces fi ON fi.id = r.from_interface_id
+  JOIN interfaces ti ON ti.id = r.to_interface_id
 `;
 
 const RELATION_NAME_SELECT = `
-  SELECT n.id, n.name, n.color, n.from_label, n.to_label,
+  SELECT n.id, n.name, n.color,
          COUNT(r.id) AS relation_count
   FROM relation_names n
   LEFT JOIN relations r ON r.relation_name_id = n.id
@@ -322,12 +323,15 @@ export class PortalDatabase {
         .all() as Array<{ name: string }>;
     }
     if (
-      !relationColumns.some(
+      (!relationColumns.some(
         (column) => column.name === "from_placeholder",
       ) ||
-      !relationColumns.some(
-        (column) => column.name === "to_placeholder",
-      )
+        !relationColumns.some(
+          (column) => column.name === "to_placeholder",
+        )) &&
+      // Databases born from the current schema already carry the label
+      // columns that supersede placeholders; they must skip this step.
+      !relationColumns.some((column) => column.name === "from_label")
     ) {
       const relationPlaceholdersMigrationPath =
         options.relationPlaceholdersMigrationPath ??
@@ -340,6 +344,96 @@ export class PortalDatabase {
       this.database.exec(
         readFileSync(relationPlaceholdersMigrationPath, "utf8"),
       );
+      relationColumns = this.database
+        .prepare("PRAGMA table_info(relations)")
+        .all() as Array<{ name: string }>;
+    }
+    const relationNameColumns = this.database
+      .prepare("PRAGMA table_info(relation_names)")
+      .all() as Array<{ name: string }>;
+    if (
+      relationColumns.some(
+        (column) => column.name === "from_placeholder",
+      ) ||
+      relationNameColumns.some((column) => column.name === "from_label")
+    ) {
+      const relationLabelsMigrationPath =
+        options.relationLabelsMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "006_relation_labels.sql",
+        );
+      this.database.exec(
+        readFileSync(relationLabelsMigrationPath, "utf8"),
+      );
+    }
+
+    const legacyMembershipTable = this.database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'device_networks'",
+      )
+      .get() as { name: string } | undefined;
+    if (legacyMembershipTable) {
+      const interfacesMigrationPath =
+        options.interfacesMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "007_interfaces.sql",
+        );
+      this.database.exec(readFileSync(interfacesMigrationPath, "utf8"));
+    }
+
+    const interfaceColumns = this.database
+      .prepare("PRAGMA table_info(interfaces)")
+      .all() as Array<{ name: string }>;
+    if (!interfaceColumns.some((column) => column.name === "mac")) {
+      const interfaceMacMigrationPath =
+        options.interfaceMacMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "008_interface_mac.sql",
+        );
+      this.database.exec(readFileSync(interfaceMacMigrationPath, "utf8"));
+    }
+
+    const interfaceColumnsAfterMac = this.database
+      .prepare("PRAGMA table_info(interfaces)")
+      .all() as Array<{ name: string }>;
+    if (interfaceColumnsAfterMac.some((column) => column.name === "label")) {
+      const interfaceDropLabelMigrationPath =
+        options.interfaceDropLabelMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "009_interface_drop_label.sql",
+        );
+      this.database.exec(
+        readFileSync(interfaceDropLabelMigrationPath, "utf8"),
+      );
+    }
+
+    const legacyAccent = this.database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM networks WHERE accent IN ('blue', 'green', 'orange', 'violet', 'slate')",
+      )
+      .get() as { count: number };
+    if (legacyAccent.count > 0) {
+      const networkAccentMigrationPath =
+        options.networkAccentMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "010_network_accent_color.sql",
+        );
+      this.database.exec(readFileSync(networkAccentMigrationPath, "utf8"));
     }
 
     const row = this.database
@@ -405,13 +499,13 @@ export class PortalDatabase {
     return this.getNetwork(id);
   }
 
-  networkDeletionBlockers(id: number): { memberships: number } {
+  networkDeletionBlockers(id: number): { interfaces: number } {
     const row = this.database
       .prepare(
-        "SELECT COUNT(*) AS count FROM device_networks WHERE network_id = ?",
+        "SELECT COUNT(*) AS count FROM interfaces WHERE network_id = ?",
       )
       .get(id) as { count: number };
-    return { memberships: row.count };
+    return { interfaces: row.count };
   }
 
   deleteNetwork(id: number): boolean {
@@ -428,16 +522,16 @@ export class PortalDatabase {
          FROM devices ORDER BY id`,
       )
       .all() as DeviceRow[];
-    const memberships = this.database
+    const interfaceRows = this.database
       .prepare(
-        `SELECT id, device_id, network_id, ip, label
-         FROM device_networks ORDER BY id`,
+        `SELECT id, device_id, name, network_id, ip, mac
+         FROM interfaces ORDER BY id`,
       )
-      .all() as MembershipRow[];
-    const byDevice = new Map<number, PortalApiMembership[]>();
-    for (const row of memberships) {
+      .all() as InterfaceRow[];
+    const byDevice = new Map<number, PortalApiInterface[]>();
+    for (const row of interfaceRows) {
       const list = byDevice.get(asNumber(row.device_id)) ?? [];
-      list.push(toApiMembership(row));
+      list.push(toApiInterface(row));
       byDevice.set(asNumber(row.device_id), list);
     }
     return rows.map((row) =>
@@ -505,11 +599,11 @@ export class PortalDatabase {
 
   deviceCascadeCounts(
     id: number,
-  ): { memberships: number; services: number; relations: number } {
-    const membershipRow = this.database
+  ): { interfaces: number; services: number; relations: number } {
+    const interfaceRow = this.database
       .prepare(
         `SELECT COUNT(*) AS count
-         FROM device_networks
+         FROM interfaces
          WHERE device_id = ?`,
       )
       .get(id) as { count: number };
@@ -517,18 +611,20 @@ export class PortalDatabase {
       .prepare(
         `SELECT COUNT(*) AS count
          FROM services s
-         JOIN device_networks dn ON dn.id = s.device_network_id
-         WHERE dn.device_id = ?`,
+         JOIN interfaces i ON i.id = s.interface_id
+         WHERE i.device_id = ?`,
       )
       .get(id) as { count: number };
     const relationRow = this.database
       .prepare(
-        `SELECT COUNT(*) AS count FROM relations
-         WHERE from_device_id = ? OR to_device_id = ?`,
+        `SELECT COUNT(*) AS count FROM relations r
+         JOIN interfaces fi ON fi.id = r.from_interface_id
+         JOIN interfaces ti ON ti.id = r.to_interface_id
+         WHERE fi.device_id = ? OR ti.device_id = ?`,
       )
       .get(id, id) as { count: number };
     return {
-      memberships: asNumber(membershipRow.count),
+      interfaces: asNumber(interfaceRow.count),
       services: asNumber(serviceRow.count),
       relations: asNumber(relationRow.count),
     };
@@ -551,19 +647,24 @@ export class PortalDatabase {
       this.database
         .prepare(
           `DELETE FROM relations
-           WHERE from_device_id = ? OR to_device_id = ?`,
+           WHERE from_interface_id IN (
+             SELECT id FROM interfaces WHERE device_id = ?
+           )
+           OR to_interface_id IN (
+             SELECT id FROM interfaces WHERE device_id = ?
+           )`,
         )
         .run(id, id);
       this.database
         .prepare(
           `DELETE FROM services
-           WHERE device_network_id IN (
-             SELECT id FROM device_networks WHERE device_id = ?
+           WHERE interface_id IN (
+             SELECT id FROM interfaces WHERE device_id = ?
            )`,
         )
         .run(id);
       this.database
-        .prepare("DELETE FROM device_networks WHERE device_id = ?")
+        .prepare("DELETE FROM interfaces WHERE device_id = ?")
         .run(id);
       this.database
         .prepare("DELETE FROM device_keys WHERE device_id = ?")
@@ -583,79 +684,92 @@ export class PortalDatabase {
     }
   }
 
-  listMemberships(): PortalApiMembership[] {
+  listInterfaces(): PortalApiInterface[] {
     return (
       this.database
         .prepare(
-          `SELECT id, device_id, network_id, ip, label
-           FROM device_networks ORDER BY id`,
+          `SELECT id, device_id, name, network_id, ip, mac
+           FROM interfaces ORDER BY id`,
         )
-        .all() as MembershipRow[]
-    ).map(toApiMembership);
+        .all() as InterfaceRow[]
+    ).map(toApiInterface);
   }
 
-  getMembership(id: number): PortalApiMembership | undefined {
+  getInterface(id: number): PortalApiInterface | undefined {
     const row = this.database
       .prepare(
-        `SELECT id, device_id, network_id, ip, label
-         FROM device_networks WHERE id = ?`,
+        `SELECT id, device_id, name, network_id, ip, mac
+         FROM interfaces WHERE id = ?`,
       )
-      .get(id) as MembershipRow | undefined;
-    return row ? toApiMembership(row) : undefined;
+      .get(id) as InterfaceRow | undefined;
+    return row ? toApiInterface(row) : undefined;
   }
 
-  createMembership(input: PortalMembershipInput): PortalApiMembership {
+  createInterface(input: PortalInterfaceInput): PortalApiInterface {
     const result = this.database
       .prepare(
-        `INSERT INTO device_networks (device_id, network_id, ip, label)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO interfaces (device_id, name, network_id, ip, mac)
+         VALUES (?, ?, ?, ?, ?)`,
       )
       .run(
         input.deviceId,
+        input.name.trim(),
         input.networkId,
         nullableText(input.ip),
-        nullableText(input.label),
+        nullableText(input.mac),
       );
-    return this.getMembership(asNumber(result.lastInsertRowid))!;
+    return this.getInterface(asNumber(result.lastInsertRowid))!;
   }
 
-  updateMembership(
+  updateInterface(
     id: number,
-    input: PortalMembershipInput,
-  ): PortalApiMembership | undefined {
-    if (!this.getMembership(id)) {
+    input: PortalInterfaceInput,
+  ): PortalApiInterface | undefined {
+    if (!this.getInterface(id)) {
       return undefined;
     }
     this.database
       .prepare(
-        `UPDATE device_networks
-         SET device_id = ?, network_id = ?, ip = ?, label = ?
+        `UPDATE interfaces
+         SET device_id = ?, name = ?, network_id = ?, ip = ?, mac = ?
          WHERE id = ?`,
       )
       .run(
         input.deviceId,
+        input.name.trim(),
         input.networkId,
         nullableText(input.ip),
-        nullableText(input.label),
+        nullableText(input.mac),
         id,
       );
-    return this.getMembership(id);
+    return this.getInterface(id);
   }
 
-  membershipServiceCount(id: number): number {
+  interfaceServiceCount(id: number): number {
     return (
       this.database
         .prepare(
-          "SELECT COUNT(*) AS count FROM services WHERE device_network_id = ?",
+          "SELECT COUNT(*) AS count FROM services WHERE interface_id = ?",
         )
         .get(id) as { count: number }
     ).count;
   }
 
-  deleteMembership(id: number): boolean {
+  interfaceRelationCount(id: number): number {
+    return (
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM relations
+           WHERE from_interface_id = ? OR to_interface_id = ?`,
+        )
+        .get(id, id) as { count: number }
+    ).count;
+  }
+
+  deleteInterface(id: number): boolean {
     return asNumber(
       this.database
-        .prepare("DELETE FROM device_networks WHERE id = ?")
+        .prepare("DELETE FROM interfaces WHERE id = ?")
         .run(id).changes,
     ) > 0;
   }
@@ -664,13 +778,13 @@ export class PortalDatabase {
     return (
       this.database
         .prepare(
-          `SELECT s.id, s.device_network_id, s.subdomain, s.petname,
+          `SELECT s.id, s.interface_id, s.subdomain, s.petname,
                   s.description, s.port, s.protocol, s.scheme, s.top_path,
                   s.monitor_path, s.service_url, s.icon_key, s.favicon_url,
                   s.properties, s.enabled,
-                  dn.ip
+                  i.ip
            FROM services s
-           JOIN device_networks dn ON dn.id = s.device_network_id
+           JOIN interfaces i ON i.id = s.interface_id
            ORDER BY s.id`,
         )
         .all() as ServiceRow[]
@@ -685,13 +799,13 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO services
-          (device_network_id, subdomain, petname, description, port, protocol,
+          (interface_id, subdomain, petname, description, port, protocol,
            scheme, top_path, monitor_path, service_url, icon_key,
            favicon_url, properties, enabled)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        input.deviceNetworkId,
+        input.interfaceId,
         input.subdomain.trim().toLowerCase(),
         nullableText(input.petname),
         nullableText(input.description),
@@ -723,7 +837,7 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE services
-         SET device_network_id = ?, subdomain = ?, petname = ?,
+         SET interface_id = ?, subdomain = ?, petname = ?,
              description = ?, port = ?, protocol = ?, scheme = ?,
              top_path = ?, monitor_path = ?, service_url = ?, icon_key = ?,
              favicon_url = ?, enabled = ?,
@@ -731,7 +845,7 @@ export class PortalDatabase {
          WHERE id = ?`,
       )
       .run(
-        input.deviceNetworkId,
+        input.interfaceId,
         input.subdomain.trim().toLowerCase(),
         nullableText(input.petname),
         nullableText(input.description),
@@ -820,14 +934,12 @@ export class PortalDatabase {
   ): PortalApiRelationName {
     const result = this.database
       .prepare(
-        `INSERT INTO relation_names (name, color, from_label, to_label)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO relation_names (name, color)
+         VALUES (?, ?)`,
       )
       .run(
         input.name.trim(),
         input.color.trim(),
-        nullableText(input.fromLabel),
-        nullableText(input.toLabel),
       );
     return this.getRelationName(asNumber(result.lastInsertRowid))!;
   }
@@ -842,14 +954,12 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE relation_names
-         SET name = ?, color = ?, from_label = ?, to_label = ?
+         SET name = ?, color = ?
          WHERE id = ?`,
       )
       .run(
         input.name.trim(),
         input.color.trim(),
-        nullableText(input.fromLabel),
-        nullableText(input.toLabel),
         id,
       );
     return this.getRelationName(id);
@@ -883,16 +993,16 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO relations
-          (relation_name_id, from_device_id, to_device_id,
-           from_placeholder, to_placeholder)
+          (relation_name_id, from_interface_id, to_interface_id,
+           from_label, to_label)
          VALUES (?, ?, ?, ?, ?)`,
       )
       .run(
         relationName.id,
-        input.fromDeviceId,
-        input.toDeviceId,
-        input.fromPlaceholder?.trim() ?? "",
-        input.toPlaceholder?.trim() ?? "",
+        input.fromInterfaceId,
+        input.toInterfaceId,
+        input.fromLabel?.trim() ?? "",
+        input.toLabel?.trim() ?? "",
       );
     return this.getRelation(asNumber(result.lastInsertRowid))!;
   }
@@ -911,16 +1021,16 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE relations
-         SET relation_name_id = ?, from_device_id = ?, to_device_id = ?,
-             from_placeholder = ?, to_placeholder = ?
+         SET relation_name_id = ?, from_interface_id = ?, to_interface_id = ?,
+             from_label = ?, to_label = ?
          WHERE id = ?`,
       )
       .run(
         relationName.id,
-        input.fromDeviceId,
-        input.toDeviceId,
-        input.fromPlaceholder?.trim() ?? "",
-        input.toPlaceholder?.trim() ?? "",
+        input.fromInterfaceId,
+        input.toInterfaceId,
+        input.fromLabel?.trim() ?? "",
+        input.toLabel?.trim() ?? "",
         id,
       );
     return this.getRelation(id);
@@ -928,29 +1038,29 @@ export class PortalDatabase {
 
   relationDuplicate(
     relationNameId: number,
-    fromDeviceId: number,
-    toDeviceId: number,
-    fromPlaceholder: string,
-    toPlaceholder: string,
+    fromInterfaceId: number,
+    toInterfaceId: number,
+    fromLabel: string,
+    toLabel: string,
     excludingId?: number,
   ): PortalApiRelation | undefined {
     const row = this.database
       .prepare(
         `${RELATION_SELECT}
          WHERE r.relation_name_id = ?
-           AND r.from_device_id = ?
-           AND r.to_device_id = ?
-           AND r.from_placeholder = ?
-           AND r.to_placeholder = ?
+           AND r.from_interface_id = ?
+           AND r.to_interface_id = ?
+           AND r.from_label = ?
+           AND r.to_label = ?
            ${excludingId === undefined ? "" : "AND r.id <> ?"}
          LIMIT 1`,
       )
       .get(
         relationNameId,
-        fromDeviceId,
-        toDeviceId,
-        fromPlaceholder,
-        toPlaceholder,
+        fromInterfaceId,
+        toInterfaceId,
+        fromLabel,
+        toLabel,
         ...(excludingId === undefined ? [] : [excludingId]),
       ) as RelationRow | undefined;
     return row ? toApiRelation(row) : undefined;
@@ -970,7 +1080,7 @@ export class PortalDatabase {
     const rows = this.database
       .prepare(
         `${RELATION_SELECT}
-         WHERE r.from_device_id = ? OR r.to_device_id = ?
+         WHERE fi.device_id = ? OR ti.device_id = ?
          ORDER BY r.id`,
       )
       .all(deviceId, deviceId) as RelationRow[];
@@ -987,9 +1097,9 @@ export class PortalDatabase {
             ? relation.toDeviceId
             : relation.fromDeviceId;
         const label =
-          direction === "outgoing"
+          (direction === "outgoing"
             ? relation.fromLabel
-            : relation.toLabel;
+            : relation.toLabel) || relation.relationName;
         return {
           ...relation,
           direction,

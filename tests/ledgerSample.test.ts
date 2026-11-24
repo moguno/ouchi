@@ -11,7 +11,7 @@ describe("Pages sample ledger", () => {
     );
     const ledger = parseLedgerYaml(yaml);
 
-    expect(ledger.format).toBe("ouchi-ledger/2");
+    expect(ledger.format).toBe("ouchi-ledger/7");
     expect(ledger.settings.title).toBe("あなたのおうち環境");
     expect(ledger.networks).toHaveLength(4);
     expect(ledger.networks.map((network) => network.name)).toEqual([
@@ -28,7 +28,7 @@ describe("Pages sample ledger", () => {
     ]);
     expect(ledger.devices).toHaveLength(19);
     expect(
-      ledger.devices.flatMap((device) => device.memberships),
+      ledger.devices.flatMap((device) => device.interfaces),
     ).toHaveLength(21);
     expect(ledger.services).toHaveLength(16);
     expect(ledger.relations).toHaveLength(5);
@@ -36,10 +36,11 @@ describe("Pages sample ledger", () => {
       expect.objectContaining({
         name: "VM",
         color: "#d48a2f",
-        fromLabel: "親ホスト",
-        toLabel: "VM",
       }),
     ]);
+    expect(ledger.relations[0]).toEqual(
+      expect.objectContaining({ fromLabel: "親ホスト", toLabel: "VM" }),
+    );
     const devicePetnames = ledger.devices.map((device) => device.petname);
     const servicePetnames = ledger.services.map((service) => service.petname);
     expect(devicePetnames.every((petname) => Boolean(petname))).toBe(true);
@@ -58,33 +59,35 @@ describe("Pages sample ledger", () => {
       ledger.devices.filter((device) => device.category === "service"),
     ).toHaveLength(2);
     expect(
-      ledger.devices.flatMap((device) => device.memberships).every(
-        (membership) =>
-          membership.ip === null ||
+      ledger.devices.flatMap((device) => device.interfaces).every(
+        (iface) =>
+          iface.ip === null ||
           /^(?:192\.0\.2|198\.51\.100|203\.0\.113|198\.18)\./.test(
-            membership.ip,
+            iface.ip,
           ),
       ),
     ).toBe(true);
     const assignedIps = ledger.devices
-      .flatMap((device) => device.memberships)
-      .flatMap((membership) => (membership.ip ? [membership.ip] : []));
+      .flatMap((device) => device.interfaces)
+      .flatMap((iface) => (iface.ip ? [iface.ip] : []));
     expect(new Set(assignedIps).size).toBe(assignedIps.length);
     const networkNames = new Set(
       ledger.networks.map((network) => network.name),
     );
     expect(
       ledger.devices
-        .flatMap((device) => device.memberships)
-        .every((membership) => networkNames.has(membership.network)),
+        .flatMap((device) => device.interfaces)
+        .every(
+          (iface) => iface.network === null || networkNames.has(iface.network),
+        ),
     ).toBe(true);
     expect(
       ledger.services.every((service) =>
         ledger.devices.some(
           (device) =>
             device.hostname === service.device &&
-            device.memberships.some(
-              (membership) => membership.network === service.network,
+            device.interfaces.some(
+              (iface) => iface.name === service.interface,
             ),
         ),
       ),
@@ -109,7 +112,7 @@ describe("Pages sample ledger", () => {
           category: "physical",
           isVm: false,
           petname: expect.any(String),
-          memberships: [
+          interfaces: [
             expect.objectContaining({
               network,
               ip,
@@ -131,8 +134,8 @@ describe("Pages sample ledger", () => {
     expect(
       ledger.devices
         .filter((device) =>
-          device.memberships.some(
-            (membership) => membership.network === "家族用LAN",
+          device.interfaces.some(
+            (iface) => iface.network === "家族用LAN",
           ),
         )
         .filter((device) => physicalHostnames.has(device.hostname)),
@@ -140,8 +143,8 @@ describe("Pages sample ledger", () => {
     expect(
       ledger.devices
         .filter((device) =>
-          device.memberships.some(
-            (membership) => membership.network === "ホームラボ",
+          device.interfaces.some(
+            (iface) => iface.network === "ホームラボ",
           ),
         )
         .filter((device) => physicalHostnames.has(device.hostname)),
@@ -155,8 +158,8 @@ describe("Pages sample ledger", () => {
       ].map(
         (network) =>
           ledger.devices.filter((device) =>
-            device.memberships.some(
-              (membership) => membership.network === network,
+            device.interfaces.some(
+              (iface) => iface.network === network,
             ),
           ).length,
       ),
@@ -172,9 +175,9 @@ describe("Pages sample ledger", () => {
       l3Switch?.category,
     ).toBe("network");
     expect(
-      l3Switch?.memberships.map((membership) => ({
-        network: membership.network,
-        ip: membership.ip,
+      l3Switch?.interfaces.map((iface) => ({
+        network: iface.network,
+        ip: iface.ip,
       })),
     ).toEqual([
       { network: "家族用LAN", ip: "198.51.100.1" },
@@ -182,8 +185,8 @@ describe("Pages sample ledger", () => {
       { network: "個人ネットワーク", ip: "198.18.0.1" },
     ]);
     expect(
-      l3Switch?.memberships.some(
-        (membership) => membership.network === "インターネット",
+      l3Switch?.interfaces.some(
+        (iface) => iface.network === "インターネット",
       ),
     ).toBe(false);
 
@@ -191,11 +194,11 @@ describe("Pages sample ledger", () => {
       (device) => device.hostname === "cedar-host",
     );
     expect(host?.category).toBe("physical");
-    expect(host?.memberships).toEqual([
+    expect(host?.interfaces).toEqual([
       expect.objectContaining({
         network: "ホームラボ",
         ip: "203.0.113.10",
-        label: "VMホスト",
+        mac: null,
       }),
     ]);
     const vms = ledger.devices.filter(
@@ -211,16 +214,16 @@ describe("Pages sample ledger", () => {
     expect(
       vms.slice(0, 3).every(
         (device) =>
-          device.memberships.length === 1 &&
-          device.memberships[0].network === "ホームラボ",
+          device.interfaces.length === 1 &&
+          device.interfaces[0].network === "ホームラボ",
       ),
     ).toBe(true);
     expect(
       vms.slice(3).every(
         (device) =>
           device.isVm &&
-          device.memberships.length === 1 &&
-          device.memberships[0].network === "個人ネットワーク",
+          device.interfaces.length === 1 &&
+          device.interfaces[0].network === "個人ネットワーク",
       ),
     ).toBe(true);
     expect(
@@ -232,8 +235,8 @@ describe("Pages sample ledger", () => {
           hostname,
           category: device?.category,
           isVm: device?.isVm,
-          network: device?.memberships[0]?.network,
-          ip: device?.memberships[0]?.ip,
+          network: device?.interfaces[0]?.network,
+          ip: device?.interfaces[0]?.ip,
         };
       }),
     ).toEqual([
@@ -261,8 +264,8 @@ describe("Pages sample ledger", () => {
           hostname,
           category: device?.category,
           isVm: device?.isVm,
-          network: device?.memberships[0]?.network,
-          ip: device?.memberships[0]?.ip,
+          network: device?.interfaces[0]?.network,
+          ip: device?.interfaces[0]?.ip,
         };
       }),
     ).toEqual([
@@ -284,17 +287,17 @@ describe("Pages sample ledger", () => {
     expect(
       ledger.relations
         .filter((relation) =>
-          ["acorn-notes", "fern-gallery"].includes(relation.to),
+          ["acorn-notes", "fern-gallery"].includes(relation.to.device),
         )
-        .map((relation) => relation.from),
+        .map((relation) => relation.from.device),
     ).toEqual(["akari", "akari"]);
     expect(
       ledger.devices.find((device) => device.hostname === "spruce-host"),
     ).toBeUndefined();
     expect(
       ledger.relations.map((relation) => ({
-        from: relation.from,
-        to: relation.to,
+        from: relation.from.device,
+        to: relation.to.device,
         relationName: relation.relationName,
       })),
     ).toEqual([
@@ -331,12 +334,12 @@ describe("Pages sample ledger", () => {
     const networksByHostname = new Map(
       ledger.devices.map((device) => [
         device.hostname,
-        new Set(device.memberships.map((membership) => membership.network)),
+        new Set(device.interfaces.map((iface) => iface.network)),
       ]),
     );
     for (const relation of ledger.relations) {
-      const from = deviceByHostname.get(relation.from);
-      const to = deviceByHostname.get(relation.to);
+      const from = deviceByHostname.get(relation.from.device);
+      const to = deviceByHostname.get(relation.to.device);
       expect(from).toEqual(
         expect.objectContaining({
           category: "physical",
@@ -350,12 +353,12 @@ describe("Pages sample ledger", () => {
         }),
       );
       const sharedNetworks = [
-        ...(networksByHostname.get(relation.from) ?? []),
+        ...(networksByHostname.get(relation.from.device) ?? []),
       ].filter((network) =>
-        networksByHostname.get(relation.to)?.has(network),
+        networksByHostname.get(relation.to.device)?.has(network),
       );
       expect(sharedNetworks).toHaveLength(1);
-      expect(sharedNetworks[0]).toBe(to?.memberships[0]?.network);
+      expect(sharedNetworks[0]).toBe(to?.interfaces[0]?.network);
     }
 
     expect(
@@ -365,7 +368,7 @@ describe("Pages sample ledger", () => {
     ).toEqual(
       expect.objectContaining({
         device: "ouchi-pages",
-        network: "インターネット",
+        interface: "eth0",
         petname: "GitHub",
         description: "GitHub Pages で公開するこのポータル自身",
         serviceUrl: "https://moguno.github.io/ouchi/",
@@ -380,7 +383,7 @@ describe("Pages sample ledger", () => {
     ).toEqual(
       expect.objectContaining({
         device: "lumen-notes",
-        network: "インターネット",
+        interface: "eth0",
         petname: "Google Drive",
         description: "Google のクラウドストレージサービス",
         serviceUrl: "https://drive.google.com/",

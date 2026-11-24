@@ -1,24 +1,56 @@
 # ouchi.local v1 実装ブリーフ（2026-11-21）— カイルから Codex へ
 
-## 現在の優先仕様: ADDENDUM-24 補足1
+## 現在の優先仕様: インターフェースモデル（2026-11-23、もぐの決定）
 
-本書の旧 v0.4・関係タグ記述より、`ADDENDUM-24.md`、
-`ADDENDUM-24-SUPPLEMENT-1.md`、`schema.sql` v0.6 を優先する。
+本書の旧「所属（device_networks）」記述より、`schema.sql` v0.8 と
+移行007を優先する。
 
-- 関係名 `relation_names(id, name, color, from_label, to_label)` が定義を持つ
-- 始点／終点ラベルは `{}` をプレースホルダーとするテンプレート。全 `{}` を
-  関係側の値で置換し、空値なら `?`、空テンプレートなら関係名へフォールバックする
-- 関係 `relations(id, relation_name_id, from_device_id, to_device_id,
-  from_placeholder, to_placeholder)` は（関係名、始点、終点、始点値、終点値）を
+- 所属はインターフェースに吸収された。`interfaces(id, device_id, name,
+  network_id, ip, label)`：I/F と IP は 1:1、IP は nullable
+  （スイッチのポート等は IP なし）、ネットワークは最大1つ。
+  トランクポートは論理 I/F（ポート1-1、ポート1-2）に分けて表す
+- 関係はデバイスではなく I/F 同士を結ぶ：
+  `relations(id, relation_name_id, from_interface_id, to_interface_id,
+  from_label, to_label)`、一意キーは（関係名、始点I/F、終点I/F、
+  始点ラベル、終点ラベル）
+- サービスは `interface_id` で I/F を参照する
+- REST は `/api/interfaces` の CRUD（旧 `/api/memberships` は廃止）。
+  MCP ツールも `*_interface` に改名（総数38は不変）
+- YAML は `format: ouchi-ledger/7`。/3→/4 変換は移行007と同じ規則
+  （所属→ eth0, eth1, …、関係端点は共有ネットワークのヒューリスティクス）、
+  /4→/5 は I/F への MAC アドレス（任意）追加に伴う形式だけの前進、
+  /5→/6 は I/F の表示ラベル削除（項目を取り除く）、
+  /6→/7 はネットワークのアクセントをトーン名から自由色へ
+  （トーン名はパレットの hex 値に変換）
+- 起動時移行007が所属を I/F 化し、関係端点を付け替える。
+  移行008は I/F に `mac`（NULL可）を追加し、移行009は I/F の `label` を削除、
+  移行010はネットワークの `accent` のトーン名を hex 値に変換する
+
+## 前の優先仕様: ラベルは関係側（2026-11-23、もぐの決定）
+
+本書の旧 v0.4・関係タグ記述および `ADDENDUM-24.md`、
+`ADDENDUM-24-SUPPLEMENT-1.md`、`schema.sql` v0.6 より、`schema.sql` v0.7
+と移行006を優先する。
+
+- 関係名 `relation_names(id, name, color)` は名前と色だけのカテゴリー
+- 始点／終点ラベルは関係ごとに自由文で持つ。空のラベルは表示しない
+  （関係名へのフォールバックはしない。`{}` テンプレートと
+  プレースホルダーは廃止）
+- 関係 `relations(id, relation_name_id, from_interface_id, to_interface_id,
+  from_label, to_label)` は（関係名、始点I/F、終点I/F、始点ラベル、終点ラベル）を
   一意とする
-- 使用中の関係名削除は409。同じデバイスペアに異なる関係名を併存できる
-- YAML は `format: ouchi-ledger/2` と `relationNames` を使い、旧形式は
-  タグによる1段変換で取り込む。関係の `fromPlaceholder` / `toPlaceholder` は
-  空なら省略でき、旧形式は未入力として扱う
+- 使用中の関係名削除は409。同じI/Fペアに異なる関係名を併存できる
+- YAML は `format: ouchi-ledger/7` と `relationNames` を使う。旧形式は
+  1段ずつの変換で取り込む（/1→/2 はタグのグルーピング、/2→/3 は
+  テンプレートを各関係のラベルへ展開、/3→/4 は所属のI/F化、
+  /4→/5 は I/F の MAC 追加に伴う形式の前進、/5→/6 は I/F の表示ラベル削除、
+  /6→/7 はネットワークのアクセントのトーン名→ hex 変換）
 - REST は `/api/relation-names` の CRUD と、関係名を名前で指定する関係 CRUD
   を使う。旧 `PUT /api/relations/tags/:tag/color` は廃止
 - 起動時移行004が旧関係をタグでグルーピングし、最初の関係から色・ラベルを
-  引き継ぐ。移行005が2列追加と5列一意キーへの再構成を行う
+  引き継ぐ。移行005が2列追加と5列一意キーへの再構成を行い、移行006が
+  ラベルを関係名から関係へ展開して移す。移行007が所属をインターフェースへ
+  吸収し、関係端点をI/Fへ付け替える
 
 ## 0. これは何か
 
@@ -62,7 +94,7 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 | `GET /api/portal` | ポータル表示用のスナップショット一式（下記 3.2）。GUI の初期表示はこれ1本で足りること |
 | `GET /api/networks` / `POST /api/networks` / `PUT /api/networks/:id` / `DELETE /api/networks/:id` | ネットワーク CRUD |
 | `GET /api/devices` / `POST /api/devices` / `PUT /api/devices/:id` / `DELETE /api/devices/:id` | デバイス CRUD（IP はここで持たない） |
-| `GET /api/memberships` / `POST /api/memberships` / `PUT /api/memberships/:id` / `DELETE /api/memberships/:id` | 所属（device_networks）CRUD。IP の登録・変更はここ。デバイスとネットワークの紐付け変更もここ |
+| `GET /api/interfaces` / `POST /api/interfaces` / `PUT /api/interfaces/:id` / `DELETE /api/interfaces/:id` | インターフェース CRUD。名前・ネットワーク・IP の登録・変更はここ（旧 `/api/memberships` は移行007で廃止） |
 | `GET /api/services` / `POST /api/services` / `PUT /api/services/:id` / `DELETE /api/services/:id` | サービス CRUD |
 | `GET /api/relations` / `POST /api/relations` / `PUT /api/relations/:id` / `DELETE /api/relations/:id` | 関係 CRUD。既存タグと異なる色での作成・更新は400 |
 | `PUT /api/relations/tags/:tag/color` | 指定タグを持つ全関係の色をトランザクション内で一括更新 |
@@ -75,18 +107,18 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 モックの PortalDataV2 の形に、DB の内容を組み立てて返す。生のテーブルをそのまま返さない。
 
 - networks：`id, name, cidr, accent, note`
-- devices：`id, hostname, petname, category, isVm, sshUser, sshPort, meterEnabled, memberships: [{ id, networkId, ip, label }]`
-- services：`id, deviceNetworkId, subdomain, petname, description, port, protocol, scheme, topPath, monitorPath, serviceUrl, iconKey, enabled` に加え、組み立て済みの `url`（リダイレクト先）と `monitorUrl` を含める
-- relations：`id, fromDeviceId, toDeviceId, tag, fromLabel, toLabel, color`
+- devices：`id, hostname, petname, category, isVm, sshUser, sshPort, meterEnabled, interfaces: [{ id, name, networkId, ip, label }]`
+- services：`id, interfaceId, subdomain, petname, description, port, protocol, scheme, topPath, monitorPath, serviceUrl, iconKey, enabled` に加え、組み立て済みの `url`（リダイレクト先）と `monitorUrl` を含める
+- relations：`id, fromDeviceId, toDeviceId, fromInterfaceId, toInterfaceId, fromInterfaceName, toInterfaceName, relationName, fromLabel, toLabel, color`
 - status：状態プロバイダ（Gatus 等）が接続されている場合のみ、サービスごとに `status: up / down / maintenance` を付ける。未接続時は status 自体を付けない（下記 3.4）
 
 ### 3.3 URL の組み立て規則（verify.py と同じにする）
 
 - `service_url` が入っていればそれを優先する
-- なければ `scheme://所属IP:port` ＋ `top_path`（空なら `/`）がリダイレクト先・ポータルリンク用の `url`
-- 監視用は `scheme://所属IP:port` ＋ `monitor_path`（空なら `top_path`、それも空なら `/`）
+- なければ `scheme://インターフェースIP:port` ＋ `top_path`（空なら `/`）がリダイレクト先・ポータルリンク用の `url`
+- 監視用は `scheme://インターフェースIP:port` ＋ `monitor_path`（空なら `top_path`、それも空なら `/`）
 - ポートは 80 / 443 でも省略せず明示する（verify.py の出力 `http://192.168.0.19:80/` に合わせる。生成側と食い違わないため）
-- 所属 IP が未登録（NULL）のサービスは `url` / `monitorUrl` を `null` にし、GUI ではリンクを出さない
+- インターフェース IP が未登録（NULL）のサービスは `url` / `monitorUrl` を `null` にし、GUI ではリンクを出さない
 
 ### 3.4 状態とメーター：モックのランダムは使わない
 

@@ -25,9 +25,9 @@ export function NetworksTab({
 }: NetworksTabProps) {
   const rows = sortNetworksForDisplay(data.networks).map((network) => {
     const deviceCount = new Set(
-      data.deviceNetworks
-        .filter((membership) => membership.networkId === network.id)
-        .map((membership) => membership.deviceId),
+      data.interfaces
+        .filter((iface) => iface.networkId === network.id)
+        .map((iface) => iface.deviceId),
     ).size;
     return {
       id: network.id,

@@ -1,5 +1,5 @@
 import type {
-  PortalDeviceNetwork,
+  PortalInterface,
   PortalService,
 } from "./types";
 
@@ -16,13 +16,13 @@ export function buildServiceUrl(
     PortalService,
     "scheme" | "port" | "topPath" | "serviceUrl"
   >,
-  deviceNetwork: Pick<PortalDeviceNetwork, "ip">,
+  iface: Pick<PortalInterface, "ip">,
 ): string | null {
   const explicitUrl = service.serviceUrl?.trim();
   if (explicitUrl) {
     return explicitUrl;
   }
-  const ip = deviceNetwork.ip.trim();
+  const ip = iface.ip.trim();
   if (!ip) {
     return null;
   }
@@ -36,13 +36,13 @@ export function buildMonitorUrl(
     PortalService,
     "scheme" | "port" | "topPath" | "monitorPath" | "serviceUrl"
   >,
-  deviceNetwork: Pick<PortalDeviceNetwork, "ip">,
+  iface: Pick<PortalInterface, "ip">,
 ): string | null {
   const explicitUrl = service.serviceUrl?.trim();
   if (explicitUrl) {
     return explicitUrl;
   }
-  const ip = deviceNetwork.ip.trim();
+  const ip = iface.ip.trim();
   if (!ip) {
     return null;
   }

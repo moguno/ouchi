@@ -1,25 +1,11 @@
 /**
- * Resolve a directional relation label from its relation-name template.
+ * Display form of a relation endpoint label.
  *
- * Every `{}` in the template receives the relation edge's placeholder value.
- * An empty value is rendered as `-`. An empty template falls back to the
- * relation name and deliberately ignores the placeholder.
+ * Labels live on each relation as free text and may be empty; an empty
+ * label is not displayed at all (no fallback to the relation name).
  */
-export function resolveRelationLabel(
-  template: string | null | undefined,
-  placeholder: string | null | undefined,
-  relationName: string,
+export function displayRelationLabel(
+  label: string | null | undefined,
 ): string {
-  const normalizedTemplate = template?.trim() ?? "";
-  if (!normalizedTemplate) {
-    return relationName;
-  }
-  const value = placeholder?.trim() || "-";
-  return normalizedTemplate.split("{}").join(value);
-}
-
-export function hasRelationPlaceholder(
-  template: string | null | undefined,
-): boolean {
-  return template?.includes("{}") ?? false;
+  return label?.trim() ?? "";
 }

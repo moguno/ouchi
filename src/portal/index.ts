@@ -1,11 +1,10 @@
 export { OuchiPortal } from "./OuchiPortal";
 export type {
-  AccentTone,
   OuchiPortalProps,
   PortalDataV2,
   PortalDeviceCategory,
   PortalDeviceResources,
-  PortalDeviceNetwork,
+  PortalInterface,
   PortalGenericIconKey,
   PortalIconKind,
   PortalIconKey,

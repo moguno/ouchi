@@ -10,7 +10,6 @@ import type {
   PortalRelation,
   ValidationIssue,
 } from "./types";
-import { resolveRelationLabel } from "./relationLabels";
 import {
   generateId,
   validateRelationInput,
@@ -32,6 +31,10 @@ export function RelationDialog({
   saveDisabled = false,
 }: RelationDialogProps) {
   const firstRelationName = data.relationNames[0];
+  const firstInterface = data.interfaces[0];
+  const firstOtherInterface = data.interfaces.find(
+    (iface) => iface.deviceId !== firstInterface?.deviceId,
+  );
   const [relation, setRelation] = useState<PortalRelation>(() =>
     editing
       ? { ...editing }
@@ -39,20 +42,14 @@ export function RelationDialog({
           id: generateId("relation"),
           relationNameId: firstRelationName?.id ?? "",
           relationName: firstRelationName?.name ?? "",
-          fromDeviceId: data.devices[0]?.id ?? "",
-          toDeviceId: data.devices[1]?.id ?? data.devices[0]?.id ?? "",
-          fromPlaceholder: "",
-          toPlaceholder: "",
-          fromLabel: resolveRelationLabel(
-            firstRelationName?.fromLabel,
-            "",
-            firstRelationName?.name ?? "",
-          ),
-          toLabel: resolveRelationLabel(
-            firstRelationName?.toLabel,
-            "",
-            firstRelationName?.name ?? "",
-          ),
+          fromDeviceId: firstInterface?.deviceId ?? "",
+          toDeviceId:
+            firstOtherInterface?.deviceId ?? firstInterface?.deviceId ?? "",
+          fromInterfaceId: firstInterface?.id ?? "",
+          toInterfaceId:
+            firstOtherInterface?.id ?? firstInterface?.id ?? "",
+          fromLabel: "",
+          toLabel: "",
           color: firstRelationName?.color ?? "#d5a22b",
         },
   );
@@ -70,18 +67,6 @@ export function RelationDialog({
             ? {
                 relationNameId: definition.id,
                 color: definition.color,
-                fromPlaceholder: "",
-                toPlaceholder: "",
-                fromLabel: resolveRelationLabel(
-                  definition.fromLabel,
-                  "",
-                  definition.name,
-                ),
-                toLabel: resolveRelationLabel(
-                  definition.toLabel,
-                  "",
-                  definition.name,
-                ),
           }
         : {}),
     }));
@@ -92,11 +77,17 @@ export function RelationDialog({
     if (saveDisabled) {
       return;
     }
+    const fromInterface = data.interfaces.find(
+      (iface) => iface.id === relation.fromInterfaceId,
+    );
+    const toInterface = data.interfaces.find(
+      (iface) => iface.id === relation.toInterfaceId,
+    );
     const normalized: PortalRelation = {
       ...relation,
       relationName: relation.relationName.trim(),
-      fromPlaceholder: relation.fromPlaceholder?.trim() ?? "",
-      toPlaceholder: relation.toPlaceholder?.trim() ?? "",
+      fromDeviceId: fromInterface?.deviceId ?? relation.fromDeviceId,
+      toDeviceId: toInterface?.deviceId ?? relation.toDeviceId,
       fromLabel: relation.fromLabel.trim(),
       toLabel: relation.toLabel.trim(),
     };
@@ -136,14 +127,14 @@ export function RelationDialog({
           </div>
         )}
         <RelationEditor
-          fromDevices={data.devices}
+          devices={data.devices}
           index={0}
+          interfaces={data.interfaces}
           onChange={updateRelation}
           onDelete={onClose}
           relation={relation}
           relationNames={data.relationNames}
-          showFromDevice
-          toDevices={data.devices}
+          showFromInterface
         />
         <FormActions
           disabled={saveDisabled}

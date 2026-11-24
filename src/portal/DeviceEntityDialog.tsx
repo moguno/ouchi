@@ -9,13 +9,13 @@ import {
   PORTAL_DEVICE_CATEGORIES,
   type PortalDevice,
   type PortalDeviceCategory,
-  type PortalDeviceNetwork,
+  type PortalInterface,
   type ValidationIssue,
 } from "./types";
 import {
   generateId,
   validateDeviceInput,
-  validateDeviceNetworkInput,
+  validateInterfaceInput,
 } from "./validation";
 import { sortNetworksForDisplay } from "./networkOrder";
 import {
@@ -26,13 +26,15 @@ import {
 } from "./EntityFormParts";
 import type { EntityFormProps } from "./entityDialogTypes";
 
-function newMembership(
+function newInterface(
   deviceId: string,
-  networkId: string,
-): PortalDeviceNetwork {
+  name: string,
+  networkId: string | null,
+): PortalInterface {
   return {
-    id: generateId("device-network"),
+    id: generateId("interface"),
     deviceId,
+    name,
     networkId,
     ip: "",
   };
@@ -52,40 +54,49 @@ export function DeviceEntityDialog({
   const [category, setCategory] = useState<PortalDeviceCategory>(
     editing?.category ?? "physical",
   );
-  const [memberships, setMemberships] = useState<PortalDeviceNetwork[]>(() => {
-    const existing = data.deviceNetworks.filter(
-      (membership) => membership.deviceId === editing?.id,
+  const [interfaces, setInterfaces] = useState<PortalInterface[]>(() => {
+    const existing = data.interfaces.filter(
+      (iface) => iface.deviceId === editing?.id,
     );
     if (existing.length > 0) {
       return existing;
     }
     return [
-      newMembership(draftDeviceId.current, data.networks[0]?.id ?? ""),
+      newInterface(
+        draftDeviceId.current,
+        "eth0",
+        data.networks[0]?.id ?? null,
+      ),
     ];
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formIssues, setFormIssues] = useState<ValidationIssue[]>([]);
 
-  function updateMembership(
+  function updateInterface(
     id: string,
-    field: keyof Pick<PortalDeviceNetwork, "networkId" | "ip" | "label">,
+    field: keyof Pick<PortalInterface, "name" | "networkId" | "ip" | "mac">,
     value: string,
   ) {
-    setMemberships((current) =>
-      current.map((membership) =>
-        membership.id === id
-          ? { ...membership, [field]: value }
-          : membership,
-      ),
+    setInterfaces((current) =>
+      current.map((iface) => {
+        if (iface.id !== id) {
+          return iface;
+        }
+        if (field === "networkId") {
+          return { ...iface, networkId: value === "" ? null : value };
+        }
+        return { ...iface, [field]: value };
+      }),
     );
   }
 
-  function addMembership() {
-    setMemberships((current) => [
+  function addInterface() {
+    setInterfaces((current) => [
       ...current,
-      newMembership(
+      newInterface(
         draftDeviceId.current,
-        data.networks[0]?.id ?? "",
+        `eth${current.length}`,
+        data.networks[0]?.id ?? null,
       ),
     ]);
   }
@@ -117,55 +128,59 @@ export function DeviceEntityDialog({
       editing?.id,
       data,
     );
-    const normalizedMemberships = memberships.map((membership) => ({
-      ...membership,
+    const normalizedInterfaces = interfaces.map((iface) => ({
+      ...iface,
       deviceId: device.id,
-      ip: membership.ip.trim(),
-      label: membership.label?.trim() || undefined,
+      name: iface.name.trim(),
+      ip: iface.ip.trim(),
+      mac: iface.mac?.trim() || undefined,
     }));
 
-    if (normalizedMemberships.length === 0) {
+    if (normalizedInterfaces.length === 0) {
       issues.push({
-        path: "deviceNetworks",
-        message: "ネットワーク所属を1件以上追加してください",
+        path: "interfaces",
+        message: "インターフェースを1件以上追加してください",
       });
     }
 
-    normalizedMemberships.forEach((membership, index) => {
-      const membershipIssues = validateDeviceNetworkInput(
-        membership,
+    normalizedInterfaces.forEach((iface, index) => {
+      const interfaceIssues = validateInterfaceInput(
+        iface,
         data,
-        membership.id,
+        iface.id,
       ).map((issue) => ({
         ...issue,
-        path: `deviceNetworks[${index}].${issue.path}`,
+        path: `interfaces[${index}].${issue.path}`,
       }));
-      issues.push(...membershipIssues);
+      issues.push(...interfaceIssues);
+    });
+
+    const localNames = new Set<string>();
+    normalizedInterfaces.forEach((iface, index) => {
+      if (!iface.name) {
+        return;
+      }
+      if (localNames.has(iface.name)) {
+        issues.push({
+          path: `interfaces[${index}].name`,
+          message: "同じフォーム内でインターフェース名が重複しています",
+        });
+      }
+      localNames.add(iface.name);
     });
 
     const localIps = new Set<string>();
-    normalizedMemberships.forEach((membership, index) => {
-      if (localIps.has(membership.ip)) {
-        if (!membership.ip) {
-          return;
-        }
+    normalizedInterfaces.forEach((iface, index) => {
+      if (!iface.ip) {
+        return;
+      }
+      if (localIps.has(iface.ip)) {
         issues.push({
-          path: `deviceNetworks[${index}].ip`,
+          path: `interfaces[${index}].ip`,
           message: "同じフォーム内でIPが重複しています",
         });
       }
-      if (membership.ip) {
-        localIps.add(membership.ip);
-      }
-    });
-
-    normalizedMemberships.forEach((membership, index) => {
-      if (!membership.networkId) {
-        issues.push({
-          path: `deviceNetworks[${index}].networkId`,
-          message: "所属ネットワークを選択してください",
-        });
-      }
+      localIps.add(iface.ip);
     });
 
     if (issues.length > 0) {
@@ -178,7 +193,7 @@ export function DeviceEntityDialog({
     setFormIssues([]);
     onSave("device", {
       device,
-      deviceNetworks: normalizedMemberships,
+      interfaces: normalizedInterfaces,
     });
   }
 
@@ -191,7 +206,7 @@ export function DeviceEntityDialog({
           aria-describedby="device-name-hint"
           aria-labelledby="device-petname-label"
           onChange={(event) => setPetname(event.target.value)}
-          placeholder="例: 門番"
+          placeholder="例: 私のデバイス"
           ref={firstFieldRef as RefObject<HTMLInputElement | null>}
           value={petname}
         />
@@ -205,7 +220,7 @@ export function DeviceEntityDialog({
           aria-invalid={Boolean(errors.name)}
           aria-label="ホスト名"
           onChange={(event) => setName(event.target.value)}
-          placeholder="例: nanopi-r2s"
+          placeholder="例: my-device"
           required
           value={name}
         />
@@ -235,34 +250,48 @@ export function DeviceEntityDialog({
       <section className="ouchi-form-section">
         <header>
           <div>
-            <strong>ネットワーク所属IP</strong>
-            <small>同じデバイスを複数ネットワークへ所属できます。</small>
+            <strong>インターフェース</strong>
+            <small>
+              インターフェースごとにネットワークとIPを持ちます。スイッチのポートなどIPがないものはIPを空欄にしてください。
+            </small>
           </div>
           <button
             className="ouchi-secondary-button ouchi-secondary-button--compact"
-            onClick={addMembership}
+            onClick={addInterface}
             type="button"
           >
-            所属を追加
+            インターフェースを追加
           </button>
         </header>
         <div className="ouchi-editor-stack">
-          {memberships.map((membership, index) => (
-            <div className="ouchi-editor-row" key={membership.id}>
+          {interfaces.map((iface, index) => (
+            <div className="ouchi-editor-row" key={iface.id}>
               <div className="ouchi-form-grid">
+                <label className="ouchi-field">
+                  <span>インターフェース名 {index + 1}</span>
+                  <input
+                    aria-label={`インターフェース名 ${index + 1}`}
+                    onChange={(event) =>
+                      updateInterface(iface.id, "name", event.target.value)
+                    }
+                    placeholder="例: eth0"
+                    value={iface.name}
+                  />
+                </label>
                 <label className="ouchi-field">
                   <span>ネットワーク {index + 1}</span>
                   <select
                     aria-label={`所属ネットワーク ${index + 1}`}
                     onChange={(event) =>
-                      updateMembership(
-                        membership.id,
+                      updateInterface(
+                        iface.id,
                         "networkId",
                         event.target.value,
                       )
                     }
-                    value={membership.networkId}
+                    value={iface.networkId ?? ""}
                   >
+                    <option value="">（なし）</option>
                     {sortNetworksForDisplay(data.networks).map((network) => (
                       <option key={network.id} value={network.id}>
                         {network.name}
@@ -277,40 +306,32 @@ export function DeviceEntityDialog({
                     aria-label={`IPアドレス ${index + 1}`}
                     inputMode="decimal"
                     onChange={(event) =>
-                      updateMembership(
-                        membership.id,
-                        "ip",
-                        event.target.value,
-                      )
+                      updateInterface(iface.id, "ip", event.target.value)
                     }
                     placeholder="例: 192.168.0.42"
-                    value={membership.ip}
+                    value={iface.ip}
+                  />
+                </label>
+                <label className="ouchi-field">
+                  <span>MACアドレス {index + 1}</span>
+                  <input
+                    aria-label={`MACアドレス ${index + 1}`}
+                    onChange={(event) =>
+                      updateInterface(iface.id, "mac", event.target.value)
+                    }
+                    placeholder="例: 00:11:22:33:44:55"
+                    value={iface.mac ?? ""}
                   />
                 </label>
               </div>
               <div className="ouchi-editor-row-foot">
-                <label className="ouchi-field">
-                  <span>表示ラベル {index + 1}</span>
-                  <input
-                    aria-label={`表示ラベル ${index + 1}`}
-                    onChange={(event) =>
-                      updateMembership(
-                        membership.id,
-                        "label",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="例: LAN"
-                    value={membership.label ?? ""}
-                  />
-                </label>
                 <button
-                  aria-label={`所属IP ${index + 1}を削除`}
+                  aria-label={`インターフェース ${index + 1}を削除`}
                   className="ouchi-manage-danger"
-                  disabled={memberships.length === 1}
+                  disabled={interfaces.length === 1}
                   onClick={() =>
-                    setMemberships((current) =>
-                      current.filter((item) => item.id !== membership.id),
+                    setInterfaces((current) =>
+                      current.filter((item) => item.id !== iface.id),
                     )
                   }
                   type="button"

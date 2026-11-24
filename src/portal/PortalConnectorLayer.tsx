@@ -10,22 +10,28 @@ import {
   routeConnectorLinks,
   type ConnectorLink,
   type ConnectorRect,
+  type ConnectorSide,
 } from "./connectors";
 import type {
   PortalDataV2,
 } from "./types";
 import { relationTooltip } from "./portalPresentation";
+import { displayRelationLabel } from "./relationLabels";
 
 export interface RelationConnector {
   id: string;
   kind: "same-device" | "relation";
   color: string;
   tooltip: string;
+  startLabel?: string;
+  endLabel?: string;
   d: string;
   startX: number;
   startY: number;
   endX: number;
   endY: number;
+  startSide: ConnectorSide;
+  endSide: ConnectorSide;
 }
 
 export interface ConnectorTooltip {
@@ -97,15 +103,23 @@ export function usePortalConnectors({
         id: `card-${index}`,
         rect: localRect(card),
       }));
-      const cardsFor = (deviceId: string) =>
+      const cardsFor = (deviceId: string, interfaceId?: string) =>
         cards
           .map((card, index) => ({ card, node: cardNodes[index] }))
-          .filter(({ card }) => card.dataset.deviceId === deviceId);
+          .filter(
+            ({ card }) =>
+              card.dataset.deviceId === deviceId &&
+              (interfaceId === undefined ||
+                card.dataset.interfaceId === interfaceId),
+          );
 
       const links: ConnectorLink[] = [];
       const metadata = new Map<
         string,
-        Pick<RelationConnector, "kind" | "color" | "tooltip">
+        Pick<
+          RelationConnector,
+          "kind" | "color" | "tooltip" | "startLabel" | "endLabel"
+        >
       >();
       const selectedCards = cardsFor(selectedDeviceId);
       selectedCards.forEach((selectedCard, selectedIndex) => {
@@ -137,10 +151,45 @@ export function usePortalConnectors({
           relation.fromDeviceId === selectedDeviceId
             ? relation.toDeviceId
             : relation.fromDeviceId;
-        const relatedCards = cardsFor(relatedDeviceId);
+        // Connector start points sit on the selected device's card, so map
+        // the relation's endpoint labels onto start/end by which side of
+        // the relation the selected device is.
+        const selectedIsFrom = relation.fromDeviceId === selectedDeviceId;
+        // A relation belongs to one interface on each side: draw it only
+        // between the cards of those interfaces. When an endpoint
+        // interface has no card on screen (e.g. it has no network), fall
+        // back to the device's cards so the relation stays visible.
+        const selectedInterfaceId = selectedIsFrom
+          ? relation.fromInterfaceId
+          : relation.toInterfaceId;
+        const relatedInterfaceId = selectedIsFrom
+          ? relation.toInterfaceId
+          : relation.fromInterfaceId;
+        const selectedEndpointCards = cardsFor(
+          selectedDeviceId,
+          selectedInterfaceId,
+        );
+        const selectedTargets =
+          selectedEndpointCards.length > 0
+            ? selectedEndpointCards
+            : selectedCards;
+        const relatedEndpointCards = cardsFor(
+          relatedDeviceId,
+          relatedInterfaceId,
+        );
+        const relatedTargets =
+          relatedEndpointCards.length > 0
+            ? relatedEndpointCards
+            : cardsFor(relatedDeviceId);
+        const startLabel = displayRelationLabel(
+          selectedIsFrom ? relation.fromLabel : relation.toLabel,
+        );
+        const endLabel = displayRelationLabel(
+          selectedIsFrom ? relation.toLabel : relation.fromLabel,
+        );
 
-        selectedCards.forEach((selectedCard, selectedIndex) => {
-          relatedCards.forEach((relatedCard, relatedIndex) => {
+        selectedTargets.forEach((selectedCard, selectedIndex) => {
+          relatedTargets.forEach((relatedCard, relatedIndex) => {
             const id = `${relation.id}-${selectedIndex}-${relatedIndex}`;
             links.push({
               id,
@@ -151,6 +200,8 @@ export function usePortalConnectors({
               kind: "relation",
               color: relation.color,
               tooltip: relationTooltip(relation),
+              startLabel,
+              endLabel,
             });
           });
         });
@@ -223,6 +274,28 @@ export function PortalConnectorLayer({
   handlers: PortalConnectorHandlers;
   tooltip?: ConnectorTooltip;
 }) {
+  const activeConnector = tooltip
+    ? connectors.find((connector) => connector.id === tooltip.id)
+    : undefined;
+  const endpointLabels =
+    activeConnector?.kind === "relation"
+      ? [
+          {
+            key: "start",
+            label: activeConnector.startLabel,
+            side: activeConnector.startSide,
+            x: activeConnector.startX,
+            y: activeConnector.startY,
+          },
+          {
+            key: "end",
+            label: activeConnector.endLabel,
+            side: activeConnector.endSide,
+            x: activeConnector.endX,
+            y: activeConnector.endY,
+          },
+        ].filter((endpoint) => endpoint.label)
+      : [];
   return (
     <>
       {connectors.length > 0 && (
@@ -282,6 +355,22 @@ export function PortalConnectorLayer({
           {tooltip.text}
         </div>
       )}
+      {activeConnector &&
+        endpointLabels.map((endpoint) => (
+          <div
+            className={`ouchi-relation-endpoint-label ouchi-relation-endpoint-label--${endpoint.side}`}
+            key={endpoint.key}
+            style={
+              {
+                left: endpoint.x,
+                top: endpoint.y,
+                "--ouchi-relation-color": activeConnector.color,
+              } as CSSProperties
+            }
+          >
+            {endpoint.label}
+          </div>
+        ))}
     </>
   );
 }

@@ -61,6 +61,40 @@
   transform: translateY(-100%);
 }
 
+.ouchi-relation-endpoint-label {
+  position: absolute;
+  z-index: 3;
+  padding: 3px 8px;
+  color: #20252c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1.5px solid var(--ouchi-relation-color);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(31, 48, 62, 0.2);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Chips sit on the card side of each endpoint (inside the card), not in
+   the gap outside the edge. */
+.ouchi-relation-endpoint-label--top {
+  transform: translate(-50%, 7px);
+}
+
+.ouchi-relation-endpoint-label--bottom {
+  transform: translate(-50%, calc(-100% - 7px));
+}
+
+.ouchi-relation-endpoint-label--left {
+  transform: translate(7px, -50%);
+}
+
+.ouchi-relation-endpoint-label--right {
+  transform: translate(calc(-100% - 7px), -50%);
+}
+
 @keyframes ouchi-relation-draw {
   from {
     stroke-dashoffset: 22;

@@ -1,7 +1,7 @@
 import type {
   PortalApiData,
   PortalApiDevice,
-  PortalApiMembership,
+  PortalApiInterface,
   PortalApiRelation,
   PortalApiService,
 } from "../src/portal/types";
@@ -30,10 +30,10 @@ function networkLabel(
   return `${network.name} (id=${network.id}, accent=${network.accent}${cidr})`;
 }
 
-function membershipSuffix(membership: PortalApiMembership): string {
-  const ip = membership.ip ? membership.ip : "(IPなし)";
-  const label = membership.label ? `, label=${membership.label}` : "";
-  return `${ip}${label}, membershipId=${membership.id}`;
+function interfaceSuffix(iface: PortalApiInterface): string {
+  const ip = iface.ip ? iface.ip : "(IPなし)";
+  const mac = iface.mac ? `, mac=${iface.mac}` : "";
+  return `${iface.name}: ${ip}${mac}, interfaceId=${iface.id}`;
 }
 
 function serviceLine(service: PortalApiService): string {
@@ -58,61 +58,64 @@ function relationLine(
   const fromLabel = relation.fromLabel || relation.relationName;
   const toLabel = relation.toLabel || relation.relationName;
   return (
-    `${from} --[${fromLabel}]--> ${to} ` +
+    `${from}:${relation.fromInterfaceName} --[${fromLabel}]--> ` +
+    `${to}:${relation.toInterfaceName} ` +
     `[relationName=${relation.relationName}, color=${relation.color}, ` +
     `fromLabel=${fromLabel}, toLabel=${toLabel}, ` +
-    `fromPlaceholder=${relation.fromPlaceholder || ""}, ` +
-    `toPlaceholder=${relation.toPlaceholder || ""}, id=${relation.id}]`
+    `id=${relation.id}]`
   );
 }
 
 function relatedServiceMap(
-  memberships: PortalApiMembership[],
+  interfaces: PortalApiInterface[],
   services: PortalApiService[],
 ): Map<number, PortalApiService[]> {
-  const servicesByMembership = new Map<number, PortalApiService[]>();
+  const servicesByInterface = new Map<number, PortalApiService[]>();
   for (const service of services) {
     const list =
-      servicesByMembership.get(service.deviceNetworkId) ?? [];
+      servicesByInterface.get(service.interfaceId) ?? [];
     list.push(service);
-    servicesByMembership.set(service.deviceNetworkId, list);
+    servicesByInterface.set(service.interfaceId, list);
   }
-  return servicesByMembership;
+  return servicesByInterface;
 }
 
 function hierarchyLines(data: PortalApiData): string[] {
-  const membershipsByNetwork = new Map<number, PortalApiMembership[]>();
-  for (const membership of data.devices.flatMap(
-    (device) => device.memberships,
-  )) {
-    const list = membershipsByNetwork.get(membership.networkId) ?? [];
-    list.push(membership);
-    membershipsByNetwork.set(membership.networkId, list);
+  const interfacesByNetwork = new Map<number, PortalApiInterface[]>();
+  const unnetworkedInterfaces: PortalApiInterface[] = [];
+  for (const iface of data.devices.flatMap((device) => device.interfaces)) {
+    if (iface.networkId === null) {
+      unnetworkedInterfaces.push(iface);
+      continue;
+    }
+    const list = interfacesByNetwork.get(iface.networkId) ?? [];
+    list.push(iface);
+    interfacesByNetwork.set(iface.networkId, list);
   }
   const deviceById = new Map(data.devices.map((device) => [device.id, device]));
-  const servicesByMembership = relatedServiceMap(
-    data.devices.flatMap((device) => device.memberships),
+  const servicesByInterface = relatedServiceMap(
+    data.devices.flatMap((device) => device.interfaces),
     data.services,
   );
   const lines = ["networks:"];
   for (const network of data.networks) {
     lines.push(`- ${networkLabel(network)}`);
-    const memberships = membershipsByNetwork.get(network.id) ?? [];
-    if (memberships.length === 0) {
+    const interfaces = interfacesByNetwork.get(network.id) ?? [];
+    if (interfaces.length === 0) {
       lines.push("  devices: (なし)");
       continue;
     }
     lines.push("  devices:");
-    for (const membership of memberships) {
-      const device = deviceById.get(membership.deviceId);
+    for (const iface of interfaces) {
+      const device = deviceById.get(iface.deviceId);
       if (!device) {
         continue;
       }
       lines.push(
         `  - ${deviceLabel(device)} ` +
-          `[interface: ${membershipSuffix(membership)}]`,
+          `[interface: ${interfaceSuffix(iface)}]`,
       );
-      const services = servicesByMembership.get(membership.id) ?? [];
+      const services = servicesByInterface.get(iface.id) ?? [];
       if (services.length === 0) {
         lines.push("    services: (なし)");
       } else {
@@ -121,6 +124,18 @@ function hierarchyLines(data: PortalApiData): string[] {
           lines.push(`    - ${serviceLine(service)}`);
         }
       }
+    }
+  }
+  if (unnetworkedInterfaces.length > 0) {
+    lines.push("interfaces without network:");
+    for (const iface of unnetworkedInterfaces) {
+      const device = deviceById.get(iface.deviceId);
+      if (!device) {
+        continue;
+      }
+      lines.push(
+        `- ${deviceLabel(device)} [interface: ${interfaceSuffix(iface)}]`,
+      );
     }
   }
   return lines;
@@ -158,9 +173,9 @@ function collectRelationTraversal(
         ? relation.toDeviceId
         : relation.fromDeviceId;
       const direction = isOutgoing ? "outgoing" : "incoming";
-      const directionLabel = isOutgoing
+      const directionLabel = (isOutgoing
         ? relation.fromLabel
-        : relation.toLabel;
+        : relation.toLabel) || relation.relationName;
       const existingTraversal = traversals.get(relation.id);
       const traversalDepth = current.currentDepth + 1;
       if (
@@ -209,12 +224,12 @@ function neighborhoodLines(
   const deviceById = new Map(data.devices.map((device) => [device.id, device]));
   const traversal = collectRelationTraversal(data, startDeviceId, depth);
   const deviceServices = data.services.filter((service) => {
-    const membership = data.devices
-      .flatMap((device) => device.memberships)
-      .find((item) => item.id === service.deviceNetworkId);
+    const iface = data.devices
+      .flatMap((device) => device.interfaces)
+      .find((item) => item.id === service.interfaceId);
     return (
-      membership !== undefined &&
-      traversal.deviceDepths.has(membership.deviceId)
+      iface !== undefined &&
+      traversal.deviceDepths.has(iface.deviceId)
     );
   });
   const lines = [

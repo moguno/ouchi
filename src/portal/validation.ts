@@ -1,13 +1,11 @@
 import {
-  ACCENT_TONES,
   PORTAL_DEVICE_CATEGORIES,
   PORTAL_SERVICE_SCHEMES,
   PORTAL_STATUSES,
-  type AccentTone,
   type PortalDataV2,
   type PortalDevice,
   type PortalDeviceCategory,
-  type PortalDeviceNetwork,
+  type PortalInterface,
   type PortalNetwork,
   type PortalProperties,
   type PortalRelation,
@@ -26,7 +24,7 @@ import { isIconReference } from "./iconCatalog";
 
 export const DEFAULT_PORTAL_TITLE = "あなたのホームラボ";
 export const MAX_PORTAL_TITLE_LENGTH = 100;
-export const MAX_RELATION_PLACEHOLDER_LENGTH = 100;
+export const MAX_RELATION_LABEL_LENGTH = 100;
 export const MAX_PROPERTY_KEY_LENGTH = 128;
 export const MAX_PROPERTY_VALUE_BYTES = 64 * 1024;
 export const PLAINTEXT_SECRET_WARNING =
@@ -276,12 +274,12 @@ function relationColorIssue(
   return undefined;
 }
 
-function relationPlaceholderIssues(
+function relationLabelIssues(
   input: Record<string, unknown>,
   path = "",
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  for (const field of ["fromPlaceholder", "toPlaceholder"] as const) {
+  for (const field of ["fromLabel", "toLabel"] as const) {
     const value = input[field];
     if (value === undefined) {
       continue;
@@ -290,15 +288,15 @@ function relationPlaceholderIssues(
       issues.push({
         path: `${path}${field}`,
         message:
-          field === "fromPlaceholder"
-            ? "始点プレースホルダーが不正です"
-            : "終点プレースホルダーが不正です",
+          field === "fromLabel"
+            ? "始点ラベルが不正です"
+            : "終点ラベルが不正です",
       });
-    } else if ([...value.trim()].length > MAX_RELATION_PLACEHOLDER_LENGTH) {
+    } else if ([...value.trim()].length > MAX_RELATION_LABEL_LENGTH) {
       issues.push({
         path: `${path}${field}`,
         message:
-          `プレースホルダーは${MAX_RELATION_PLACEHOLDER_LENGTH}文字以内で` +
+          `ラベルは${MAX_RELATION_LABEL_LENGTH}文字以内で` +
           "入力してください",
       });
     }
@@ -306,8 +304,17 @@ function relationPlaceholderIssues(
   return issues;
 }
 
-export function isAccent(value: unknown): value is AccentTone {
-  return typeof value === "string" && ACCENT_TONES.includes(value as AccentTone);
+function accentColorIssue(
+  value: unknown,
+  path: string,
+): ValidationIssue | undefined {
+  if (!isNonEmptyString(value)) {
+    return { path, message: "アクセント色は必須です" };
+  }
+  if ([...value.trim()].length > 100) {
+    return { path, message: "アクセント色は100文字以内で入力してください" };
+  }
+  return undefined;
 }
 
 export function isIconKey(value: unknown): value is string {
@@ -380,8 +387,9 @@ function validateNetwork(
       issues.push({ path: `${path}.cidr`, message: "CIDRの形式が不正です" });
     }
   }
-  if (!isAccent(input.accent)) {
-    issues.push({ path: `${path}.accent`, message: "アクセント色が不正です" });
+  const accentIssue = accentColorIssue(input.accent, `${path}.accent`);
+  if (accentIssue) {
+    issues.push(accentIssue);
   }
   return issues;
 }
@@ -462,13 +470,13 @@ function validateDevice(
   return issues;
 }
 
-function validateDeviceNetwork(
+function validateInterface(
   input: unknown,
   index: number,
 ): ValidationIssue[] {
-  const path = `deviceNetworks[${index}]`;
+  const path = `interfaces[${index}]`;
   if (!isRecord(input)) {
-    return [{ path, message: "ネットワーク所属の形式が不正です" }];
+    return [{ path, message: "インターフェースの形式が不正です" }];
   }
 
   const issues: ValidationIssue[] = [];
@@ -478,10 +486,20 @@ function validateDeviceNetwork(
   if (!isNonEmptyString(input.deviceId)) {
     issues.push({ path: `${path}.deviceId`, message: "デバイスIDは必須です" });
   }
-  if (!isNonEmptyString(input.networkId)) {
+  if (!isNonEmptyString(input.name)) {
+    issues.push({
+      path: `${path}.name`,
+      message: "インターフェース名は必須です",
+    });
+  }
+  if (
+    input.networkId !== null &&
+    input.networkId !== undefined &&
+    !isNonEmptyString(input.networkId)
+  ) {
     issues.push({
       path: `${path}.networkId`,
-      message: "ネットワークIDは必須です",
+      message: "ネットワークIDが不正です",
     });
   }
   if (
@@ -509,16 +527,16 @@ function validateRelation(
   if (!isNonEmptyString(input.id)) {
     issues.push({ path: `${path}.id`, message: "IDは必須です" });
   }
-  if (!isNonEmptyString(input.fromDeviceId)) {
+  if (!isNonEmptyString(input.fromInterfaceId)) {
     issues.push({
-      path: `${path}.fromDeviceId`,
-      message: "関係元デバイスIDは必須です",
+      path: `${path}.fromInterfaceId`,
+      message: "関係元インターフェースIDは必須です",
     });
   }
-  if (!isNonEmptyString(input.toDeviceId)) {
+  if (!isNonEmptyString(input.toInterfaceId)) {
     issues.push({
-      path: `${path}.toDeviceId`,
-      message: "関係先デバイスIDは必須です",
+      path: `${path}.toInterfaceId`,
+      message: "関係先インターフェースIDは必須です",
     });
   }
   if (!isNonEmptyString(input.relationName)) {
@@ -529,13 +547,20 @@ function validateRelation(
   }
   if (typeof input.fromLabel !== "string") {
     issues.push({ path: `${path}.fromLabel`, message: "始点ラベルが不正です" });
+  } else if ([...input.fromLabel.trim()].length > MAX_RELATION_LABEL_LENGTH) {
+    issues.push({
+      path: `${path}.fromLabel`,
+      message: `ラベルは${MAX_RELATION_LABEL_LENGTH}文字以内で入力してください`,
+    });
   }
   if (typeof input.toLabel !== "string") {
     issues.push({ path: `${path}.toLabel`, message: "終点ラベルが不正です" });
+  } else if ([...input.toLabel.trim()].length > MAX_RELATION_LABEL_LENGTH) {
+    issues.push({
+      path: `${path}.toLabel`,
+      message: `ラベルは${MAX_RELATION_LABEL_LENGTH}文字以内で入力してください`,
+    });
   }
-  issues.push(
-    ...relationPlaceholderIssues(input, `${path}.`),
-  );
   const colorIssue = relationColorIssue(input.color, `${path}.color`);
   if (colorIssue) {
     issues.push(colorIssue);
@@ -561,14 +586,6 @@ function validateRelationName(
   const colorIssue = relationColorIssue(input.color, `${path}.color`);
   if (colorIssue) {
     issues.push(colorIssue);
-  }
-  for (const field of ["fromLabel", "toLabel"] as const) {
-    if (!isOptionalString(input[field])) {
-      issues.push({
-        path: `${path}.${field}`,
-        message: field === "fromLabel" ? "始点ラベルが不正です" : "終点ラベルが不正です",
-      });
-    }
   }
   if (
     typeof input.relationCount !== "number" ||
@@ -596,10 +613,10 @@ function validateService(
   if (!isNonEmptyString(input.id)) {
     issues.push({ path: `${path}.id`, message: "IDは必須です" });
   }
-  if (!isNonEmptyString(input.deviceNetworkId)) {
+  if (!isNonEmptyString(input.interfaceId)) {
     issues.push({
-      path: `${path}.deviceNetworkId`,
-      message: "配置先IPは必須です",
+      path: `${path}.interfaceId`,
+      message: "配置先インターフェースは必須です",
     });
   }
   if (!isNonEmptyString(input.subdomain)) {
@@ -705,7 +722,7 @@ export function validatePortalData(
   for (const key of [
     "networks",
     "devices",
-    "deviceNetworks",
+    "interfaces",
     "relationNames",
     "relations",
     "services",
@@ -749,7 +766,7 @@ export function validatePortalData(
 
   const networks = input.networks as unknown[];
   const devices = input.devices as unknown[];
-  const deviceNetworks = input.deviceNetworks as unknown[];
+  const interfaces = input.interfaces as unknown[];
   const relationNames = input.relationNames as unknown[];
   const relations = input.relations as unknown[];
   const services = input.services as unknown[];
@@ -760,8 +777,8 @@ export function validatePortalData(
   devices.forEach((device, index) =>
     issues.push(...validateDevice(device, index)),
   );
-  deviceNetworks.forEach((deviceNetwork, index) =>
-    issues.push(...validateDeviceNetwork(deviceNetwork, index)),
+  interfaces.forEach((iface, index) =>
+    issues.push(...validateInterface(iface, index)),
   );
   relationNames.forEach((relationName, index) =>
     issues.push(...validateRelationName(relationName, index)),
@@ -781,7 +798,7 @@ export function validatePortalData(
     version: 2,
     networks: networks as PortalNetwork[],
     devices: devices as PortalDevice[],
-    deviceNetworks: deviceNetworks as PortalDeviceNetwork[],
+    interfaces: interfaces as PortalInterface[],
     relationNames: relationNames as PortalRelationName[],
     relations: relations as PortalRelation[],
     services: services as PortalService[],
@@ -791,7 +808,7 @@ export function validatePortalData(
   };
   issues.push(...duplicateIssues(data.networks, "networks"));
   issues.push(...duplicateIssues(data.devices, "devices"));
-  issues.push(...duplicateIssues(data.deviceNetworks, "deviceNetworks"));
+  issues.push(...duplicateIssues(data.interfaces, "interfaces"));
   issues.push(...duplicateIssues(data.relationNames, "relationNames"));
   issues.push(...duplicateIssues(data.relations, "relations"));
   issues.push(...duplicateIssues(data.services, "services"));
@@ -802,63 +819,59 @@ export function validatePortalData(
   const deviceById = new Map(
     data.devices.map((device) => [device.id, device]),
   );
-  const membershipById = new Map(
-    data.deviceNetworks.map((membership) => [membership.id, membership]),
+  const interfaceById = new Map(
+    data.interfaces.map((iface) => [iface.id, iface]),
   );
-  for (const membership of data.deviceNetworks) {
-    const device = deviceById.get(membership.deviceId);
+  for (const iface of data.interfaces) {
+    const device = deviceById.get(iface.deviceId);
     if (!device) {
       issues.push({
-        path: `deviceNetworks.${membership.id}.deviceId`,
-        message: `デバイス「${membership.deviceId}」が存在しません`,
+        path: `interfaces.${iface.id}.deviceId`,
+        message: `デバイス「${iface.deviceId}」が存在しません`,
       });
     }
 
-    const network = networkById.get(membership.networkId);
-    if (!network) {
-      issues.push({
-        path: `deviceNetworks.${membership.id}.networkId`,
-        message: `ネットワーク「${membership.networkId}」が存在しません`,
-      });
-      continue;
-    }
-    if (
-      network.cidr &&
-      membership.ip &&
-      !isIpWithinCidr(membership.ip, network.cidr)
-    ) {
-      issues.push({
-        path: `deviceNetworks.${membership.id}.ip`,
-        message: `IP ${membership.ip} は ${network.cidr} の範囲外です`,
-      });
+    if (iface.networkId !== null && iface.networkId !== undefined) {
+      const network = networkById.get(iface.networkId);
+      if (!network) {
+        issues.push({
+          path: `interfaces.${iface.id}.networkId`,
+          message: `ネットワーク「${iface.networkId}」が存在しません`,
+        });
+      } else if (
+        network.cidr &&
+        iface.ip &&
+        !isIpWithinCidr(iface.ip, network.cidr)
+      ) {
+        issues.push({
+          path: `interfaces.${iface.id}.ip`,
+          message: `IP ${iface.ip} は ${network.cidr} の範囲外です`,
+        });
+      }
     }
   }
 
   const ipOwner = new Map<string, string>();
-  for (const membership of data.deviceNetworks) {
-    if (!membership.ip) {
+  for (const iface of data.interfaces) {
+    if (!iface.ip) {
       continue;
     }
-    const owner = ipOwner.get(membership.ip);
+    const owner = ipOwner.get(iface.ip);
     if (owner) {
       issues.push({
-        path: `deviceNetworks.${membership.id}.ip`,
-        message: `IP ${membership.ip} は ${owner} と重複しています`,
+        path: `interfaces.${iface.id}.ip`,
+        message: `IP ${iface.ip} は ${owner} と重複しています`,
       });
     } else {
-      ipOwner.set(membership.ip, membership.id);
+      ipOwner.set(iface.ip, iface.id);
     }
   }
 
   for (const device of data.devices) {
-    if (
-      !data.deviceNetworks.some(
-        (membership) => membership.deviceId === device.id,
-      )
-    ) {
+    if (!data.interfaces.some((iface) => iface.deviceId === device.id)) {
       issues.push({
-        path: `devices.${device.id}.deviceNetworks`,
-        message: "デバイスには1つ以上のネットワーク所属IPが必要です",
+        path: `devices.${device.id}.interfaces`,
+        message: "デバイスには1つ以上のインターフェースが必要です",
       });
     }
   }
@@ -890,46 +903,52 @@ export function validatePortalData(
     }
     const key = [
       relation.relationNameId,
-      relation.fromDeviceId,
-      relation.toDeviceId,
-      (relation.fromPlaceholder ?? "").trim(),
-      (relation.toPlaceholder ?? "").trim(),
+      relation.fromInterfaceId,
+      relation.toInterfaceId,
+      (relation.fromLabel ?? "").trim(),
+      (relation.toLabel ?? "").trim(),
     ].join("\u0000");
     if (relationKeys.has(key)) {
       issues.push({
         path: `relations.${relation.id}`,
         message:
-          "同じ関係名・始点・終点・プレースホルダーの関係が重複しています",
+          "同じ関係名・始点・終点・ラベルの関係が重複しています",
       });
     } else {
       relationKeys.add(key);
     }
 
-    if (!deviceById.has(relation.fromDeviceId)) {
+    const fromInterface = interfaceById.get(relation.fromInterfaceId);
+    if (!fromInterface) {
       issues.push({
-        path: `relations.${relation.id}.fromDeviceId`,
-        message: `デバイス「${relation.fromDeviceId}」が存在しません`,
+        path: `relations.${relation.id}.fromInterfaceId`,
+        message: `インターフェース「${relation.fromInterfaceId}」が存在しません`,
       });
     }
-    if (!deviceById.has(relation.toDeviceId)) {
+    const toInterface = interfaceById.get(relation.toInterfaceId);
+    if (!toInterface) {
       issues.push({
-        path: `relations.${relation.id}.toDeviceId`,
-        message: `デバイス「${relation.toDeviceId}」が存在しません`,
+        path: `relations.${relation.id}.toInterfaceId`,
+        message: `インターフェース「${relation.toInterfaceId}」が存在しません`,
       });
     }
-    if (relation.fromDeviceId === relation.toDeviceId) {
+    if (
+      fromInterface &&
+      toInterface &&
+      fromInterface.deviceId === toInterface.deviceId
+    ) {
       issues.push({
-        path: `relations.${relation.id}.toDeviceId`,
+        path: `relations.${relation.id}.toInterfaceId`,
         message: "同じデバイス自身へ関係は定義できません",
       });
     }
   }
 
   for (const service of data.services) {
-    if (!membershipById.has(service.deviceNetworkId)) {
+    if (!interfaceById.has(service.interfaceId)) {
       issues.push({
-        path: `services.${service.id}.deviceNetworkId`,
-        message: `配置先IP「${service.deviceNetworkId}」が存在しません`,
+        path: `services.${service.id}.interfaceId`,
+        message: `配置先インターフェース「${service.interfaceId}」が存在しません`,
       });
     }
   }
@@ -945,6 +964,11 @@ export function validateNetworkInput(
   const issues: ValidationIssue[] = [];
   if (!input.name.trim()) {
     issues.push({ path: "name", message: "ネットワーク名を入力してください" });
+  }
+
+  const accentIssue = accentColorIssue(input.accent, "accent");
+  if (accentIssue) {
+    issues.push(accentIssue);
   }
 
   const cidr = input.cidr?.trim();
@@ -964,15 +988,15 @@ export function validateNetworkInput(
   }
 
   if (cidr && isCidr(cidr)) {
-    const invalidMembership = data.deviceNetworks.find(
-      (membership) =>
-        membership.networkId === editingId &&
-        !isIpWithinCidr(membership.ip, cidr),
+    const invalidInterface = data.interfaces.find(
+      (iface) =>
+        iface.networkId === editingId &&
+        !isIpWithinCidr(iface.ip, cidr),
     );
-    if (invalidMembership) {
+    if (invalidInterface) {
       issues.push({
         path: "cidr",
-        message: `既存IP ${invalidMembership.ip} が範囲外になります`,
+        message: `既存IP ${invalidInterface.ip} が範囲外になります`,
       });
     }
   }
@@ -1029,16 +1053,27 @@ export function validateDeviceInput(
   return issues;
 }
 
-export function validateDeviceNetworkInput(
-  input: Pick<PortalDeviceNetwork, "networkId" | "ip">,
+export function validateInterfaceInput(
+  input: Pick<PortalInterface, "name" | "networkId" | "ip">,
   data: PortalDataV2,
   editingId?: string,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const network = data.networks.find(
-    (item) => item.id === input.networkId,
-  );
-  if (!network) {
+  if (!input.name.trim()) {
+    issues.push({
+      path: "name",
+      message: "インターフェース名を入力してください",
+    });
+  }
+  const network =
+    input.networkId === null || input.networkId === undefined
+      ? undefined
+      : data.networks.find((item) => item.id === input.networkId);
+  if (
+    input.networkId !== null &&
+    input.networkId !== undefined &&
+    !network
+  ) {
     issues.push({
       path: "networkId",
       message: "所属ネットワークを選択してください",
@@ -1050,9 +1085,8 @@ export function validateDeviceNetworkInput(
   }
   if (
     normalizedIp &&
-    data.deviceNetworks.some(
-      (membership) =>
-        membership.id !== editingId && membership.ip === normalizedIp,
+    data.interfaces.some(
+      (iface) => iface.id !== editingId && iface.ip === normalizedIp,
     )
   ) {
     issues.push({ path: "ip", message: "同じIPが登録されています" });
@@ -1075,30 +1109,40 @@ export function validateRelationInput(
   input: Pick<
     PortalRelation,
     | "relationName"
-    | "fromDeviceId"
-    | "toDeviceId"
-    | "fromPlaceholder"
-    | "toPlaceholder"
+    | "fromInterfaceId"
+    | "toInterfaceId"
+    | "fromLabel"
+    | "toLabel"
   >,
   data: PortalDataV2,
   editingId?: string,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  if (!data.devices.some((device) => device.id === input.fromDeviceId)) {
+  const fromInterface = data.interfaces.find(
+    (iface) => iface.id === input.fromInterfaceId,
+  );
+  if (!fromInterface) {
     issues.push({
-      path: "fromDeviceId",
-      message: "関係元デバイスを選択してください",
+      path: "fromInterfaceId",
+      message: "関係元インターフェースを選択してください",
     });
   }
-  if (!data.devices.some((device) => device.id === input.toDeviceId)) {
+  const toInterface = data.interfaces.find(
+    (iface) => iface.id === input.toInterfaceId,
+  );
+  if (!toInterface) {
     issues.push({
-      path: "toDeviceId",
-      message: "関係先デバイスを選択してください",
+      path: "toInterfaceId",
+      message: "関係先インターフェースを選択してください",
     });
   }
-  if (input.fromDeviceId === input.toDeviceId) {
+  if (
+    fromInterface &&
+    toInterface &&
+    fromInterface.deviceId === toInterface.deviceId
+  ) {
     issues.push({
-      path: "toDeviceId",
+      path: "toInterfaceId",
       message: "同じデバイス自身へ関係は定義できません",
     });
   }
@@ -1117,23 +1161,23 @@ export function validateRelationInput(
       message: "選択した関係名が存在しません",
     });
   }
-  issues.push(...relationPlaceholderIssues(input));
-  const fromPlaceholder = (input.fromPlaceholder ?? "").trim();
-  const toPlaceholder = (input.toPlaceholder ?? "").trim();
+  issues.push(...relationLabelIssues(input));
+  const fromLabel = (input.fromLabel ?? "").trim();
+  const toLabel = (input.toLabel ?? "").trim();
   const duplicate = data.relations.find(
     (relation) =>
       relation.id !== editingId &&
       relation.relationNameId === relationName?.id &&
-      relation.fromDeviceId === input.fromDeviceId &&
-      relation.toDeviceId === input.toDeviceId &&
-      (relation.fromPlaceholder ?? "").trim() === fromPlaceholder &&
-      (relation.toPlaceholder ?? "").trim() === toPlaceholder,
+      relation.fromInterfaceId === input.fromInterfaceId &&
+      relation.toInterfaceId === input.toInterfaceId &&
+      (relation.fromLabel ?? "").trim() === fromLabel &&
+      (relation.toLabel ?? "").trim() === toLabel,
   );
   if (duplicate) {
     issues.push({
       path: "relationName",
       message:
-        "同じ関係名・始点・終点・プレースホルダーの関係はすでに登録されています",
+        "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
     });
   }
   return issues;
@@ -1167,7 +1211,7 @@ export function validateServiceInput(
     | "subdomain"
     | "petname"
     | "description"
-    | "deviceNetworkId"
+    | "interfaceId"
     | "scheme"
     | "port"
     | "protocol"
@@ -1197,13 +1241,11 @@ export function validateServiceInput(
     });
   }
   if (
-    !data.deviceNetworks.some(
-      (membership) => membership.id === input.deviceNetworkId,
-    )
+    !data.interfaces.some((iface) => iface.id === input.interfaceId)
   ) {
     issues.push({
-      path: "deviceNetworkId",
-      message: "配置先のデバイスIPを選択してください",
+      path: "interfaceId",
+      message: "配置先のインターフェースを選択してください",
     });
   }
   if (!isScheme(input.scheme)) {
@@ -1218,13 +1260,14 @@ export function validateServiceInput(
   if (!isProtocol(input.protocol)) {
     issues.push({ path: "protocol", message: "プロトコルを選択してください" });
   }
-  if (!isHttpPath(input.topPath)) {
+  // 空文字は「/」扱い（データモデルの既定）。ペイロード検証と揃える。
+  if (input.topPath.trim() !== "" && !isHttpPath(input.topPath)) {
     issues.push({
       path: "topPath",
       message: "トップパスは / から入力してください",
     });
   }
-  if (!isHttpPath(input.monitorPath)) {
+  if (input.monitorPath.trim() !== "" && !isHttpPath(input.monitorPath)) {
     issues.push({
       path: "monitorPath",
       message: "監視パスは / から入力してください",
@@ -1272,8 +1315,9 @@ export function validateNetworkPayload(input: unknown): ValidationIssue[] {
   ) {
     issues.push({ path: "cidr", message: "CIDRの形式が不正です" });
   }
-  if (!isNonEmptyString(input.accent)) {
-    issues.push({ path: "accent", message: "アクセント色は必須です" });
+  const accentIssue = accentColorIssue(input.accent, "accent");
+  if (accentIssue) {
+    issues.push(accentIssue);
   }
   if (input.note !== undefined && !isNullableString(input.note)) {
     issues.push({ path: "note", message: "メモが不正です" });
@@ -1337,15 +1381,22 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
   return issues;
 }
 
-export function validateMembershipPayload(input: unknown): ValidationIssue[] {
+export function validateInterfacePayload(input: unknown): ValidationIssue[] {
   if (!isRecord(input)) {
-    return [{ path: "root", message: "所属の形式が不正です" }];
+    return [{ path: "root", message: "インターフェースの形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
   if (!isPositiveInteger(input.deviceId)) {
     issues.push({ path: "deviceId", message: "デバイスIDが不正です" });
   }
-  if (!isPositiveInteger(input.networkId)) {
+  if (!isNonEmptyString(input.name)) {
+    issues.push({ path: "name", message: "インターフェース名は必須です" });
+  }
+  if (
+    input.networkId !== undefined &&
+    input.networkId !== null &&
+    !isPositiveInteger(input.networkId)
+  ) {
     issues.push({ path: "networkId", message: "ネットワークIDが不正です" });
   }
   if (
@@ -1356,8 +1407,8 @@ export function validateMembershipPayload(input: unknown): ValidationIssue[] {
   ) {
     issues.push({ path: "ip", message: "IPv4アドレスの形式が不正です" });
   }
-  if (input.label !== undefined && !isNullableString(input.label)) {
-    issues.push({ path: "label", message: "所属ラベルが不正です" });
+  if (input.mac !== undefined && !isNullableString(input.mac)) {
+    issues.push({ path: "mac", message: "MACアドレスが不正です" });
   }
   return issues;
 }
@@ -1367,25 +1418,31 @@ export function validateRelationPayload(input: unknown): ValidationIssue[] {
     return [{ path: "root", message: "関係の形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
-  if (!isPositiveInteger(input.fromDeviceId)) {
-    issues.push({ path: "fromDeviceId", message: "関係元IDが不正です" });
+  if (!isPositiveInteger(input.fromInterfaceId)) {
+    issues.push({
+      path: "fromInterfaceId",
+      message: "関係元インターフェースIDが不正です",
+    });
   }
-  if (!isPositiveInteger(input.toDeviceId)) {
-    issues.push({ path: "toDeviceId", message: "関係先IDが不正です" });
+  if (!isPositiveInteger(input.toInterfaceId)) {
+    issues.push({
+      path: "toInterfaceId",
+      message: "関係先インターフェースIDが不正です",
+    });
   }
   if (
-    isPositiveInteger(input.fromDeviceId) &&
-    input.fromDeviceId === input.toDeviceId
+    isPositiveInteger(input.fromInterfaceId) &&
+    input.fromInterfaceId === input.toInterfaceId
   ) {
     issues.push({
-      path: "toDeviceId",
-      message: "同じデバイス自身へ関係は定義できません",
+      path: "toInterfaceId",
+      message: "同じインターフェース自身へ関係は定義できません",
     });
   }
   if (!isNonEmptyString(input.relationName)) {
     issues.push({ path: "relationName", message: "関係名は必須です" });
   }
-  issues.push(...relationPlaceholderIssues(input));
+  issues.push(...relationLabelIssues(input));
   return issues;
 }
 
@@ -1403,14 +1460,6 @@ export function validateRelationNamePayload(
   if (colorIssue) {
     issues.push(colorIssue);
   }
-  for (const field of ["fromLabel", "toLabel"] as const) {
-    if (input[field] !== undefined && !isNullableString(input[field])) {
-      issues.push({
-        path: field,
-        message: field === "fromLabel" ? "始点ラベルが不正です" : "終点ラベルが不正です",
-      });
-    }
-  }
   return issues;
 }
 
@@ -1419,10 +1468,10 @@ export function validateServicePayload(input: unknown): ValidationIssue[] {
     return [{ path: "root", message: "サービスの形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
-  if (!isPositiveInteger(input.deviceNetworkId)) {
+  if (!isPositiveInteger(input.interfaceId)) {
     issues.push({
-      path: "deviceNetworkId",
-      message: "所属IDが不正です",
+      path: "interfaceId",
+      message: "インターフェースIDが不正です",
     });
   }
   if (!isNonEmptyString(input.subdomain)) {

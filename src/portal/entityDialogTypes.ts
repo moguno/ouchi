@@ -3,14 +3,14 @@ import type { EntityKind } from "./managementTypes";
 import type {
   PortalDataV2,
   PortalDevice,
-  PortalDeviceNetwork,
+  PortalInterface,
   PortalNetwork,
   PortalService,
 } from "./types";
 
 export interface DeviceMutation {
   device: PortalDevice;
-  deviceNetworks: PortalDeviceNetwork[];
+  interfaces: PortalInterface[];
 }
 
 export type PortalEntity = PortalNetwork | PortalService | DeviceMutation;

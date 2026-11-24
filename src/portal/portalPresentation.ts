@@ -27,21 +27,19 @@ export function relationLabelFor(
   fromPerspective: boolean,
 ): string {
   return fromPerspective
-    ? relation.fromLabel.trim() || relation.relationName
-    : relation.toLabel.trim() || relation.relationName;
+    ? relation.fromLabel.trim()
+    : relation.toLabel.trim();
 }
 
 export function relationTooltip(relation: PortalRelation): string {
-  return `${relationLabelFor(relation, true)}⇒${relationLabelFor(
-    relation,
-    false,
-  )}`;
+  return relation.relationName;
 }
 
 export function deviceVisual(
   deviceId: string,
   selectedDeviceId: string | undefined,
   relations: PortalRelation[],
+  interfaceId?: string,
 ): DeviceVisual {
   if (!selectedDeviceId) {
     return { mode: "neutral", tags: [] };
@@ -58,15 +56,28 @@ export function deviceVisual(
         relation.fromDeviceId === deviceId),
   );
   if (related.length > 0) {
+    // Endpoint labels belong to one interface of this device: a card
+    // shows only the tags of relations touching its own interface.
+    const tagRelations =
+      interfaceId === undefined
+        ? related
+        : related.filter(
+            (relation) =>
+              (relation.fromDeviceId === deviceId
+                ? relation.fromInterfaceId
+                : relation.toInterfaceId) === interfaceId,
+          );
     return {
       mode: "related",
-      tags: related.map((relation) => ({
-        label: relationLabelFor(
-          relation,
-          relation.fromDeviceId !== selectedDeviceId,
-        ),
-        color: relation.color,
-      })),
+      tags: tagRelations
+        .map((relation) => ({
+          label: relationLabelFor(
+            relation,
+            relation.fromDeviceId !== selectedDeviceId,
+          ),
+          color: relation.color,
+        }))
+        .filter((tag) => tag.label),
       color: related[0].color,
     };
   }

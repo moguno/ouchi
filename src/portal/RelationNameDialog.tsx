@@ -1,6 +1,6 @@
 import "./styles/manage-simple.css";
 import { useRef, useState, type FormEvent } from "react";
-import { colorValueForInput } from "./colorValue";
+import { ColorField } from "./ColorField";
 import { ManageDialog } from "./ManageDialog";
 import {
   FieldError,
@@ -36,8 +36,6 @@ export function RelationNameDialog({
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(editing?.name ?? "");
   const [color, setColor] = useState(editing?.color ?? "#d5a22b");
-  const [fromLabel, setFromLabel] = useState(editing?.fromLabel ?? "");
-  const [toLabel, setToLabel] = useState(editing?.toLabel ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [issues, setFormIssues] = useState<ValidationIssue[]>([]);
   const [saving, setSaving] = useState(false);
@@ -51,8 +49,6 @@ export function RelationNameDialog({
       id: editing?.id ?? generateId("relation-name"),
       name: name.trim(),
       color: color.trim(),
-      fromLabel: fromLabel.trim() || undefined,
-      toLabel: toLabel.trim() || undefined,
       relationCount: editing?.relationCount ?? 0,
     };
     const nextIssues = validateRelationNameInput(
@@ -97,43 +93,16 @@ export function RelationNameDialog({
             />
             <FieldError id="relation-name-error">{errors.name}</FieldError>
           </label>
-          <label className="ouchi-manage-field">
-            <span>色</span>
-            <span className="ouchi-manage-color-row">
-              <input
-                aria-label="関係名の色"
-                onChange={(event) => setColor(event.target.value)}
-                type="color"
-                value={colorValueForInput(color)}
-              />
-              <input
-                aria-label="関係名の色コード"
-                aria-invalid={Boolean(errors.color)}
-                onChange={(event) => setColor(event.target.value)}
-                placeholder="#d5a22b"
-                value={color}
-              />
-            </span>
-            <FieldError id="relation-name-color-error">
-              {errors.color}
-            </FieldError>
-          </label>
-          <label className="ouchi-manage-field">
-            <span>始点の名前</span>
-            <input
-              onChange={(event) => setFromLabel(event.target.value)}
-              placeholder="空なら関係名を使用"
-              value={fromLabel}
-            />
-          </label>
-          <label className="ouchi-manage-field">
-            <span>終点の名前</span>
-            <input
-              onChange={(event) => setToLabel(event.target.value)}
-              placeholder="空なら関係名を使用"
-              value={toLabel}
-            />
-          </label>
+          <ColorField
+            label="色"
+            value={color}
+            onChange={setColor}
+            error={errors.color}
+            errorId="relation-name-color-error"
+            colorAriaLabel="関係名の色"
+            codeAriaLabel="関係名の色コード"
+            placeholder="#d5a22b"
+          />
         </div>
         <FormActions
           disabled={saveDisabled}

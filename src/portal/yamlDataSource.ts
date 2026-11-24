@@ -1,11 +1,9 @@
 import { parse } from "yaml";
 import {
-  ACCENT_TONES,
-  type AccentTone,
   type PortalDataV2,
   type PortalDevice,
   type PortalDeviceCategory,
-  type PortalDeviceNetwork,
+  type PortalInterface,
   type PortalNetwork,
   type PortalRelation,
   type PortalRelationName,
@@ -15,7 +13,10 @@ import {
   type ValidationIssue,
 } from "./types";
 import { normalizeServiceIconReference } from "./iconCatalog";
-import { resolveRelationLabel } from "./relationLabels";
+import {
+  LEGACY_ACCENT_COLORS,
+  normalizeNetworkAccent,
+} from "./colorValue";
 import { buildMonitorUrl, buildServiceUrl } from "./urls";
 import {
   normalizeProperties,
@@ -23,7 +24,12 @@ import {
   validatePropertiesPayload,
 } from "./validation";
 
-export const LEDGER_FORMAT = "ouchi-ledger/2";
+export const LEDGER_FORMAT = "ouchi-ledger/7";
+export const V6_LEDGER_FORMAT = "ouchi-ledger/6";
+export const V5_LEDGER_FORMAT = "ouchi-ledger/5";
+export const V4_LEDGER_FORMAT = "ouchi-ledger/4";
+export const PREVIOUS_LEDGER_FORMAT = "ouchi-ledger/3";
+export const V2_LEDGER_FORMAT = "ouchi-ledger/2";
 export const LEGACY_LEDGER_FORMAT = "ouchi-ledger/1";
 
 type RecordValue = Record<string, unknown>;
@@ -76,11 +82,8 @@ function nullableText(value: unknown): string | undefined {
   return normalized || undefined;
 }
 
-function normalizeAccent(value: unknown): AccentTone {
-  const accent = text(value);
-  return ACCENT_TONES.includes(accent as AccentTone)
-    ? (accent as AccentTone)
-    : "slate";
+function normalizeAccent(value: unknown): string {
+  return normalizeNetworkAccent(text(value));
 }
 
 function nullableNumber(value: unknown): number | undefined {
@@ -89,8 +92,8 @@ function nullableNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-function membershipKey(device: string, network: string): string {
-  return `${device}\u0000${network}`;
+function interfaceKey(device: string, name: string): string {
+  return `${device}\u0000${name}`;
 }
 
 function formatIssues(issues: ValidationIssue[]): string {
@@ -118,8 +121,6 @@ function upgradeLegacyDocument(
         const definition: RecordValue = {
           name: relationName,
           color: text(item.color),
-          fromLabel: nullableText(item.fromLabel),
-          toLabel: nullableText(item.toLabel),
         };
         byName.set(relationName, definition);
         relationNames.push(definition);
@@ -128,20 +129,276 @@ function upgradeLegacyDocument(
         from: item.from,
         to: item.to,
         relationName,
+        fromLabel: text(item.fromLabel),
+        toLabel: text(item.toLabel),
       };
     },
   );
   return {
     ...root,
-    format: LEDGER_FORMAT,
+    format: PREVIOUS_LEDGER_FORMAT,
+    relationNames,
+    relations,
+  };
+}
+
+function expandLegacyLabel(
+  template: string | null | undefined,
+  placeholder: unknown,
+): string {
+  const normalizedTemplate = template?.trim() ?? "";
+  if (!normalizedTemplate) {
+    return "";
+  }
+  const value = text(placeholder) || "-";
+  return normalizedTemplate.split("{}").join(value);
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/2: relation-name label templates are
+ * expanded into free-text labels on each relation.
+ */
+function upgradeV2Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V2_LEDGER_FORMAT) {
+    return root;
+  }
+  const definitions = new Map<string, RecordValue>();
+  const relationNames = (
+    Array.isArray(root.relationNames) ? root.relationNames : []
+  ).map((item) => {
+    if (!isRecord(item)) {
+      return item;
+    }
+    const name = text(item.name);
+    if (name && !definitions.has(name)) {
+      definitions.set(name, item);
+    }
+    return {
+      name: item.name,
+      color: item.color,
+    };
+  });
+  const relations = (Array.isArray(root.relations) ? root.relations : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const definition = definitions.get(text(item.relationName));
+      return {
+        from: item.from,
+        to: item.to,
+        relationName: item.relationName,
+        fromLabel: expandLegacyLabel(
+          definition ? nullableText(definition.fromLabel) : null,
+          item.fromPlaceholder,
+        ),
+        toLabel: expandLegacyLabel(
+          definition ? nullableText(definition.toLabel) : null,
+          item.toPlaceholder,
+        ),
+      };
+    },
+  );
+  return {
+    ...root,
+    format: PREVIOUS_LEDGER_FORMAT,
     relationNames,
     relations,
   };
 }
 
 /**
- * Convert the natural-key `ouchi-ledger/2` export into the SPA display model.
- * Legacy `ouchi-ledger/1` relation rows are upgraded before validation.
+ * One-step upgrade from ouchi-ledger/3: memberships become named
+ * interfaces (eth0, eth1, ... per device), relation endpoints resolve
+ * to interfaces (shared-network heuristic, mirroring the server), and
+ * services point at the interface on their network.
+ */
+function upgradeV3Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== PREVIOUS_LEDGER_FORMAT) {
+    return root;
+  }
+  const interfacesByDevice = new Map<
+    string,
+    Array<{ name: string; network: string | null }>
+  >();
+  const devices = (Array.isArray(root.devices) ? root.devices : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const hostname = text(item.hostname);
+      const memberships = Array.isArray(item.memberships)
+        ? item.memberships
+        : [];
+      const interfaces = memberships.map((membership, index) => {
+        if (!isRecord(membership)) {
+          return membership;
+        }
+        return {
+          name: `eth${index}`,
+          network: nullableText(membership.network) ?? null,
+          ip: membership.ip ?? null,
+        };
+      });
+      interfacesByDevice.set(
+        hostname,
+        interfaces.map((iface) => ({
+          name: text((iface as RecordValue).name),
+          network:
+            typeof (iface as RecordValue).network === "string"
+              ? ((iface as RecordValue).network as string)
+              : null,
+        })),
+      );
+      const { memberships: _memberships, ...rest } = item;
+      return { ...rest, interfaces };
+    },
+  );
+  const resolveEndpoint = (
+    hostname: string,
+    otherHostname: string,
+  ): string => {
+    const own = interfacesByDevice.get(hostname) ?? [];
+    if (own.length <= 1) {
+      return own[0]?.name ?? "eth0";
+    }
+    const otherNetworks = new Set(
+      (interfacesByDevice.get(otherHostname) ?? [])
+        .map((iface) => iface.network)
+        .filter((network) => network !== null),
+    );
+    const shared = own.find(
+      (iface) => iface.network !== null && otherNetworks.has(iface.network),
+    );
+    return (shared ?? own[0]).name;
+  };
+  const relations = (Array.isArray(root.relations) ? root.relations : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const from = text(item.from);
+      const to = text(item.to);
+      return {
+        from: { device: from, interface: resolveEndpoint(from, to) },
+        to: { device: to, interface: resolveEndpoint(to, from) },
+        relationName: item.relationName,
+        ...(item.fromLabel ? { fromLabel: item.fromLabel } : {}),
+        ...(item.toLabel ? { toLabel: item.toLabel } : {}),
+      };
+    },
+  );
+  const services = (Array.isArray(root.services) ? root.services : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const device = text(item.device);
+      const network = text(item.network);
+      const match = (interfacesByDevice.get(device) ?? []).find(
+        (iface) => iface.network === network,
+      );
+      const { network: _network, ...rest } = item;
+      return { ...rest, interface: match?.name ?? "" };
+    },
+  );
+  return {
+    ...root,
+    format: V4_LEDGER_FORMAT,
+    devices,
+    relations,
+    services,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/4: interfaces gain an optional
+ * MAC address. /4 documents carry no MAC values, so the step only
+ * advances the format marker.
+ */
+function upgradeV4Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V4_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
+    format: V5_LEDGER_FORMAT,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/5: the interface label is
+ * dropped (displayed nowhere; endpoint notes live on relations).
+ * The step strips the field from every device's interfaces.
+ */
+function upgradeV5Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V5_LEDGER_FORMAT) {
+    return root;
+  }
+  const devices = (Array.isArray(root.devices) ? root.devices : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const interfaces = (
+        Array.isArray(item.interfaces) ? item.interfaces : []
+      ).map((iface) => {
+        if (!isRecord(iface)) {
+          return iface;
+        }
+        const { label: _label, ...rest } = iface;
+        return rest;
+      });
+      return { ...item, interfaces };
+    },
+  );
+  return {
+    ...root,
+    format: V6_LEDGER_FORMAT,
+    devices,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/6: the network accent becomes a
+ * free CSS color, so the five legacy tone names convert to the palette
+ * hex values they used to name. Other values pass through unchanged.
+ */
+function upgradeV6Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V6_LEDGER_FORMAT) {
+    return root;
+  }
+  const networks = (Array.isArray(root.networks) ? root.networks : []).map(
+    (item) => {
+      if (!isRecord(item) || typeof item.accent !== "string") {
+        return item;
+      }
+      const converted =
+        LEGACY_ACCENT_COLORS[item.accent.trim().toLowerCase()];
+      return converted ? { ...item, accent: converted } : item;
+    },
+  );
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
+    networks,
+  };
+}
+
+/**
+ * Convert the natural-key `ouchi-ledger/6` export into the SPA display model.
+ * Legacy `ouchi-ledger/1`, `/2`, `/3`, `/4` and `/5` documents are upgraded one
+ * step at a time before validation.
  * This is the YAML counterpart to `normalizePortalData` in apiClient.ts.
  */
 export function ledgerYamlToPortalData(input: string): PortalDataV2 {
@@ -167,7 +424,15 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     );
   }
 
-  const root = upgradeLegacyDocument(parsed);
+  const root = upgradeV6Document(
+    upgradeV5Document(
+      upgradeV4Document(
+        upgradeV3Document(
+          upgradeV2Document(upgradeLegacyDocument(parsed)),
+        ),
+      ),
+    ),
+  );
 
   if (root.format !== LEDGER_FORMAT) {
     issues.push({
@@ -219,9 +484,9 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
   }
 
   const devices: PortalDevice[] = [];
-  const deviceNetworks: PortalDeviceNetwork[] = [];
+  const interfaces: PortalInterface[] = [];
   const deviceByName = new Map<string, PortalDevice>();
-  const membershipByNaturalKey = new Map<string, PortalDeviceNetwork>();
+  const interfaceByNaturalKey = new Map<string, PortalInterface>();
 
   devicesRaw.forEach((item, index) => {
     const path = `devices[${index}]`;
@@ -273,54 +538,54 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       }
     }
 
-    const memberships = Array.isArray(device.memberships)
-      ? device.memberships
+    const rawInterfaces = Array.isArray(device.interfaces)
+      ? device.interfaces
       : [];
-    if (!Array.isArray(device.memberships)) {
+    if (!Array.isArray(device.interfaces)) {
       issues.push({
-        path: `${path}.memberships`,
-        message: "membershipsは配列で指定してください",
+        path: `${path}.interfaces`,
+        message: "interfacesは配列で指定してください",
       });
     }
-    for (const [membershipIndex, membershipItem] of memberships.entries()) {
-      const membershipPath = `${path}.memberships[${membershipIndex}]`;
-      const membership = requiredRecord(
-        membershipItem,
-        membershipPath,
-        issues,
-      );
-      const networkName = text(membership.network);
-      const network = networkByName.get(networkName);
-      if (!networkName) {
+    for (const [interfaceIndex, interfaceItem] of rawInterfaces.entries()) {
+      const interfacePath = `${path}.interfaces[${interfaceIndex}]`;
+      const iface = requiredRecord(interfaceItem, interfacePath, issues);
+      const interfaceName = text(iface.name);
+      if (!interfaceName) {
         issues.push({
-          path: `${membershipPath}.network`,
-          message: "所属ネットワーク名は必須です",
+          path: `${interfacePath}.name`,
+          message: "インターフェース名は必須です",
         });
-      } else if (!network) {
+      }
+      const networkName = text(iface.network);
+      const network = networkName
+        ? networkByName.get(networkName)
+        : undefined;
+      if (networkName && !network) {
         issues.push({
-          path: `${membershipPath}.network`,
+          path: `${interfacePath}.network`,
           message: `ネットワーク「${networkName}」が存在しません`,
         });
       }
 
-      const portalMembership: PortalDeviceNetwork = {
-        id: `membership-${deviceNetworks.length + 1}`,
+      const portalInterface: PortalInterface = {
+        id: `interface-${interfaces.length + 1}`,
         deviceId: portalDevice.id,
-        networkId:
-          network?.id ?? `missing-network-${membershipIndex + 1}`,
-        ip: text(membership.ip),
-        label: nullableText(membership.label),
+        name: interfaceName,
+        networkId: network?.id ?? null,
+        ip: text(iface.ip),
+        mac: nullableText(iface.mac),
       };
-      deviceNetworks.push(portalMembership);
-      if (hostname && networkName) {
-        const key = membershipKey(hostname, networkName);
-        if (membershipByNaturalKey.has(key)) {
+      interfaces.push(portalInterface);
+      if (hostname && interfaceName) {
+        const key = interfaceKey(hostname, interfaceName);
+        if (interfaceByNaturalKey.has(key)) {
           issues.push({
-            path: membershipPath,
-            message: `${hostname} の ${networkName} 所属が重複しています`,
+            path: interfacePath,
+            message: `${hostname} のインターフェース ${interfaceName} が重複しています`,
           });
         } else {
-          membershipByNaturalKey.set(key, portalMembership);
+          interfaceByNaturalKey.set(key, portalInterface);
         }
       }
     }
@@ -348,8 +613,6 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         id: `relation-name-${index + 1}`,
         name,
         color: text(relationName.color),
-        fromLabel: nullableText(relationName.fromLabel),
-        toLabel: nullableText(relationName.toLabel),
         relationCount: 0,
       };
       if (name && !relationNameByName.has(name)) {
@@ -363,24 +626,44 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
   const relations: PortalRelation[] = relationsRaw.map((item, index) => {
     const path = `relations[${index}]`;
     const relation = requiredRecord(item, path, issues);
-    const from = text(relation.from);
-    const to = text(relation.to);
+    const endpoint = (value: unknown) =>
+      isRecord(value)
+        ? { device: text(value.device), interface: text(value.interface) }
+        : { device: "", interface: "" };
+    const from = endpoint(relation.from);
+    const to = endpoint(relation.to);
     const relationNameText = text(relation.relationName);
     const relationName = relationNameByName.get(relationNameText);
-    const fromPlaceholder = text(relation.fromPlaceholder);
-    const toPlaceholder = text(relation.toPlaceholder);
-    const fromDevice = deviceByName.get(from);
-    const toDevice = deviceByName.get(to);
+    const fromLabel = text(relation.fromLabel);
+    const toLabel = text(relation.toLabel);
+    const fromDevice = deviceByName.get(from.device);
+    const toDevice = deviceByName.get(to.device);
+    const fromInterface = interfaceByNaturalKey.get(
+      interfaceKey(from.device, from.interface),
+    );
+    const toInterface = interfaceByNaturalKey.get(
+      interfaceKey(to.device, to.interface),
+    );
     if (!fromDevice) {
       issues.push({
-        path: `${path}.from`,
-        message: `デバイス「${from}」が存在しません`,
+        path: `${path}.from.device`,
+        message: `デバイス「${from.device}」が存在しません`,
+      });
+    } else if (!fromInterface) {
+      issues.push({
+        path: `${path}.from.interface`,
+        message: `インターフェース「${from.device} / ${from.interface}」が存在しません`,
       });
     }
     if (!toDevice) {
       issues.push({
-        path: `${path}.to`,
-        message: `デバイス「${to}」が存在しません`,
+        path: `${path}.to.device`,
+        message: `デバイス「${to.device}」が存在しません`,
+      });
+    } else if (!toInterface) {
+      issues.push({
+        path: `${path}.to.interface`,
+        message: `インターフェース「${to.device} / ${to.interface}」が存在しません`,
       });
     }
     if (!relationNameText) {
@@ -406,18 +689,10 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       relationName: relationNameText,
       fromDeviceId: fromDevice?.id ?? "",
       toDeviceId: toDevice?.id ?? "",
-      fromPlaceholder,
-      toPlaceholder,
-      fromLabel: resolveRelationLabel(
-        relationName?.fromLabel,
-        fromPlaceholder,
-        relationNameText,
-      ),
-      toLabel: resolveRelationLabel(
-        relationName?.toLabel,
-        toPlaceholder,
-        relationNameText,
-      ),
+      fromInterfaceId: fromInterface?.id ?? "",
+      toInterfaceId: toInterface?.id ?? "",
+      fromLabel,
+      toLabel,
       color: relationName?.color ?? "",
     };
   });
@@ -430,9 +705,9 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     const path = `services[${index}]`;
     const service = requiredRecord(item, path, issues);
     const deviceName = text(service.device);
-    const networkName = text(service.network);
-    const membership = membershipByNaturalKey.get(
-      membershipKey(deviceName, networkName),
+    const interfaceName = text(service.interface);
+    const iface = interfaceByNaturalKey.get(
+      interfaceKey(deviceName, interfaceName),
     );
     if (!deviceName) {
       issues.push({
@@ -440,16 +715,16 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         message: "deviceの自然キーは必須です",
       });
     }
-    if (!networkName) {
+    if (!interfaceName) {
       issues.push({
-        path: `${path}.network`,
-        message: "networkの自然キーは必須です",
+        path: `${path}.interface`,
+        message: "interfaceの自然キーは必須です",
       });
     }
-    if (deviceName && networkName && !membership) {
+    if (deviceName && interfaceName && !iface) {
       issues.push({
         path,
-        message: `${deviceName} の ${networkName} 所属が存在しません`,
+        message: `${deviceName} のインターフェース ${interfaceName} が存在しません`,
       });
     }
     if (service.properties !== undefined) {
@@ -463,7 +738,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
 
     const portalService: PortalService = {
       id: `service-${index + 1}`,
-      deviceNetworkId: membership?.id ?? "",
+      interfaceId: iface?.id ?? "",
       subdomain: text(service.subdomain).toLowerCase(),
       petname: nullableText(service.petname),
       description: nullableText(service.description),
@@ -483,9 +758,9 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       url: null,
       monitorUrl: null,
     };
-    if (membership) {
-      portalService.url = buildServiceUrl(portalService, membership);
-      portalService.monitorUrl = buildMonitorUrl(portalService, membership);
+    if (iface) {
+      portalService.url = buildServiceUrl(portalService, iface);
+      portalService.monitorUrl = buildMonitorUrl(portalService, iface);
     }
     return portalService;
   });
@@ -494,7 +769,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     version: 2,
     networks,
     devices,
-    deviceNetworks,
+    interfaces,
     relationNames,
     relations,
     services,

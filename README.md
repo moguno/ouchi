@@ -9,8 +9,8 @@ v1 は LAN 内利用を前提とした認証なしの構成です。
 
 - ホームラボのネットワーク／デバイス／サービスを台帳に登録し、ポータルに一覧表示
 - サービスのタイルからワンクリックで各サービスの画面へ移動
-- デバイス同士の関係を再利用可能な「関係名」で表現。関係名が色と両端の
-  方向ラベルを持ち、`{}` を関係ごとのプレースホルダーで置換できる
+- デバイス同士の関係を再利用可能な「関係名」で分類。関係名は色を持ち、
+  両端のラベルは関係ごとに自由文で付けられる（空なら関係名を表示）
 - 管理画面からネットワーク／デバイス／サービス／関係を追加・編集・削除
 - デバイス／サービス本体へ任意のキーバリュー `properties` を保存
 - dashboard-icons と同梱汎用アイコンを文字列検索してサービスへ設定
@@ -31,7 +31,7 @@ v1 は LAN 内利用を前提とした認証なしの構成です。
 - `src/portal/`: 表示・編集 UI、API クライアント、共有型・検証
 - `server/`: Hono API、SQLite リポジトリ、SPA 静的配信
 - `mcp/`: REST API 上に載る MCP サーバー、地図テキスト、MCP ツール
-- `contract-v1/`: 台帳スキーマ v0.6、シード、起動時移行、検証スクリプト
+- `contract-v1/`: 台帳スキーマ v0.8、シード、起動時移行、検証スクリプト
 - `docs/design-notes.md`: 表示仕様や未決事項などの設計メモ（開発者向け）
 - `data/ouchi.sqlite`: 初回起動時に生成される台帳（Git 管理外）
 - `dist/`: 埋め込み用 React ライブラリ
@@ -71,7 +71,7 @@ npm start
 | `OUCHI_DB_PATH` | `data/ouchi.sqlite` |
 
 初回起動時は `contract-v1/schema.sql` と `contract-v1/seed.sql` から
-16デバイス・17所属・9サービスの実ラボ台帳を作成します。既存 DB がある場合は
+16デバイス・17インターフェース・9サービスの実ラボ台帳を作成します。既存 DB がある場合は
 シードを上書きしません。デバイス petname 追加前の DB は起動時に
 `contract-v1/migrations/001_add_device_petname.sql` の
 `ALTER TABLE devices ADD COLUMN petname TEXT` を一度だけ適用します。
@@ -80,7 +80,20 @@ npm start
 ADDENDUM-24 より前のタグ付き関係は移行004で `relation_names` と
 （関係名、始点、終点）の関係表へ変換します。補足1より前の関係表には
 移行005を適用し、始点／終点プレースホルダーを空文字で追加して
-5列の完全一致一意キーへ再構成します。
+5列の完全一致一意キーへ再構成します。移行006は関係名のラベル
+テンプレートを各関係の値で展開し、ラベルを関係側の自由文へ移します
+（関係名は名前と色だけのカテゴリーになります）。移行007は所属
+（device_networks）をインターフェースへ吸収します。各所属は eth0,
+eth1, … と名付けたインターフェースになり、所属のなかったデバイスには
+素の eth0 ができます。関係の端点は、両端が共有するネットワークの
+インターフェースへ付け替えます（定まらない場合は先頭のインターフェース）。
+インターフェースは名前を持ち、ネットワークは最大1つ、IP は最大1つ
+（スイッチのポートなど IP のないものは NULL）です。関係はデバイスでは
+なくインターフェース同士を結び、サービスはインターフェースにぶら下がります。
+移行008はインターフェースに MAC アドレス（任意、NULL可）を追加します。
+移行009はインターフェースの表示ラベルを削除します（表示箇所がなく、
+端点のメモは関係のラベルが担います）。
+YAML 形式は `ouchi-ledger/7` で、旧形式からは1段ずつの変換で取り込みます。
 
 バックアップは稼働中に `sqlite3 .backup` を使ってください。
 
@@ -169,27 +182,29 @@ curl -sS http://192.168.0.32:3333/mcp \
 - 読み取り: `get_network_map`、`get_device_neighborhood`、
   `search_devices`、`search_services`、`resolve_service_url`
 - 台帳 CRUD: `list/get/create/update/delete` の
-  `network`、`device`、`membership`、`service`、`relation_name`、`relation`
+  `network`、`device`、`interface`、`service`、`relation_name`、`relation`
 - 関係: `get_device_relations`、`create_relation`、`update_relation`、
   `delete_relation`
 - 一括転送: `export_ledger_yaml`、`import_ledger_yaml`
 
-地図テキストはネットワーク→デバイス→サービスの階層を含み、関係名が持つ
-`fromLabel` / `toLabel` テンプレートをプレースホルダーで置換した方向ラベル、
+地図テキストはネットワーク→デバイス→サービスの階層を含み、関係ごとの
+`fromLabel` / `toLabel`（空なら関係名で代替した方向ラベル）、
 関係名、色、方向を表示します。
 デバイスとサービスの `properties` も地図テキストへ全件表示します。
 `get_network_map` に `deviceId` と `depth` を渡すと、関係を双方向に
 たどった近傍ビューも同じ結果へ含めます。検索は名前、ホスト名、
-ペットネーム、IP、所属、説明、URL、関係名を対象にします。
+ペットネーム、IP、インターフェース、説明、URL、関係名を対象にします。
 さらにプロパティのキーと値を検索対象に含めます。
 
 書き込みツールは REST の POST/PUT/DELETE をそのまま呼びます。REST が
 HTTP 400 の `issues` を返した場合は MCP の `isError: true` と
 `structuredContent.error.body.issues` に同じ内容を返します。削除時の
-HTTP 409 も同様です。（関係名、始点、終点、始点プレースホルダー、
-終点プレースホルダー）の完全一致重複禁止、使用中の関係名の削除禁止、
+HTTP 409 も同様です。（関係名、始点、終点、始点ラベル、
+終点ラベル）の完全一致重複禁止、使用中の関係名の削除禁止、
 カテゴリ `service` の疑似デバイスが IP を持たず VM／メーターを無効にする、
-という規則も REST 側で判定されます。
+という規則も REST 側で判定されます。関係の重複判定は
+（関係名、始点インターフェース、終点インターフェース、始点ラベル、
+終点ラベル）の完全一致です。
 デバイス／サービスの作成・更新ツールは `properties` を受け取ります。
 
 ## REST API
@@ -204,16 +219,16 @@ HTTP 409 も同様です。（関係名、始点、終点、始点プレース�
 | `GET /api/networks` | ネットワーク一覧 |
 | `POST /api/networks` | ネットワーク作成 |
 | `PUT /api/networks/:id` | ネットワーク更新 |
-| `DELETE /api/networks/:id` | ネットワーク削除（所属が残る場合は409） |
-| `GET /api/devices` | デバイス一覧（所属を内包） |
+| `DELETE /api/networks/:id` | ネットワーク削除（インターフェースが残る場合は409） |
+| `GET /api/devices` | デバイス一覧（インターフェースを内包） |
 | `GET /api/devices/:id` | デバイス単体（プロパティを内包） |
 | `POST /api/devices` | デバイス作成 |
 | `PUT /api/devices/:id` | デバイス更新 |
-| `DELETE /api/devices/:id` | デバイス削除（所属・サービス・関係が残る場合は409） |
-| `GET /api/memberships` | 所属一覧 |
-| `POST /api/memberships` | 所属作成（IPはNULL可） |
-| `PUT /api/memberships/:id` | 所属更新 |
-| `DELETE /api/memberships/:id` | 所属削除（サービスが残る場合は409） |
+| `DELETE /api/devices/:id` | デバイス削除（配下のインターフェース・サービス・関係も一括削除） |
+| `GET /api/interfaces` | インターフェース一覧 |
+| `POST /api/interfaces` | インターフェース作成（名前必須、ネットワーク・IPはNULL可） |
+| `PUT /api/interfaces/:id` | インターフェース更新 |
+| `DELETE /api/interfaces/:id` | インターフェース削除（サービス・関係が残る場合は409） |
 | `GET /api/services` | サービス一覧 |
 | `GET /api/services/:id` | サービス単体（プロパティを内包） |
 | `POST /api/services` | サービス作成 |
@@ -222,11 +237,11 @@ HTTP 409 も同様です。（関係名、始点、終点、始点プレース�
 | `GET /api/relation-names` | 関係名一覧（各要素に使用件数 `relationCount`） |
 | `GET /api/relation-names/:id` | 関係名単体 |
 | `POST /api/relation-names` | 関係名作成 |
-| `PUT /api/relation-names/:id` | 関係名更新（名前・色・始点／終点ラベル） |
+| `PUT /api/relation-names/:id` | 関係名更新（名前・色） |
 | `DELETE /api/relation-names/:id` | 関係名削除（使用中は409） |
-| `GET /api/relations` | 関係一覧（色・方向ラベル解決済み） |
-| `GET /api/relations/:id` | 関係単体（色・方向ラベル解決済み） |
-| `POST /api/relations` | 関係作成（関係名、始点、終点、任意の両端プレースホルダー） |
+| `GET /api/relations` | 関係一覧（色つき、ラベルは関係自身の値） |
+| `GET /api/relations/:id` | 関係単体（色つき、ラベルは関係自身の値） |
+| `POST /api/relations` | 関係作成（関係名、始点I/F、終点I/F、任意の両端ラベル） |
 | `PUT /api/relations/:id` | 関係更新（5列の完全一致重複は400） |
 | `DELETE /api/relations/:id` | 関係削除 |
 | `GET /api/devices/:id/relations?depth=1` | 双方向の関係トラバース |
@@ -241,33 +256,36 @@ HTTP 409 も同様です。（関係名、始点、終点、始点プレース�
 
 - ネットワーク: `id, name, cidr, accent, note`
 - デバイス: `id, hostname, petname, properties, category, isVm, sshUser,
-  sshPort, meterEnabled, memberships`
-- 所属: `id, deviceId, networkId, ip, label`
+  sshPort, meterEnabled, interfaces`
+- インターフェース: `id, deviceId, name, networkId, ip, label`
 - サービス: DB列と `properties` に組み立て済みの `url` / `monitorUrl` を追加
-- 関係名: `id, name, color, fromLabel, toLabel, relationCount`
+- 関係名: `id, name, color, relationCount`
 - 関係: `id, relationNameId, relationName, fromDeviceId, toDeviceId,
-  fromPlaceholder, toPlaceholder, fromLabel, toLabel, color`。
-  `fromLabel` / `toLabel` はテンプレートの `{}` を値で置換済み
+  fromInterfaceId, toInterfaceId, fromInterfaceName, toInterfaceName,
+  fromLabel, toLabel, color`。
+  `fromLabel` / `toLabel` は関係自身が持つ自由文ラベル（空文字あり）
 - 設定: `domain, title`
 
 `title` はポータル左上に表示する名称です。空文字・改行・100文字超は
 HTTP 400 で拒否し、DB を変更しません。
 
-### 関係ラベルとプレースホルダー
+### 関係ラベル
 
-関係名の始点／終点ラベルはテンプレートです。`{}` はすべて同じ値で置換され、
-関係側の `fromPlaceholder` / `toPlaceholder` が空なら `-` になります。
+始点／終点ラベルは関係ごとに持つ自由文です。関係名は名前と色だけの
+カテゴリーで、ラベルの定義は持ちません。
 
-- テンプレート `ポート{}`、終点プレースホルダー `8` → `ポート8`
-- テンプレート `ポート{}`、終点プレースホルダー未入力 → `ポート-`
-- テンプレートに `{}` がなければ、プレースホルダーは表示へ影響しない
-- テンプレートが空なら関係名で代替し、プレースホルダーは適用しない
-- 同じデバイスペア・同じ関係名でも、両端プレースホルダーが異なれば共存できる
+- ラベルはそのまま表示される（例：始点ラベル `ポート8` → `ポート8`）
+- ラベルが空なら、ポータルと管理画面では表示しない
+  （MCP の地図／近傍テキストでのみ関係名で代替する）
+- 同じインターフェースペア・同じ関係名でも、両端ラベルが異なれば共存できる
 
-関係編集ダイアログは、選択中の関係名ラベルに `{}` がある方向だけ
-プレースホルダー入力欄を表示します。ポータル、関係タブ、MCP の地図／近傍では
-置換済みラベルを表示します。REST の入力では両フィールドを省略でき、
+関係編集ダイアログは始点／終点ラベルの入力欄を常時表示します。
+REST の入力では両フィールドを省略でき、
 省略時は空文字です。
+
+旧形式（関係名が `{}` テンプレートを持ち、関係がプレースホルダー値を
+持つ形）は、DB 起動時移行006と YAML の /2→/3 変換で、テンプレートを
+各関係の値で展開して自由文ラベルへ移します。
 
 デバイス `petname` は任意の愛称です。ポータルでは petname が主表示になり、
 未設定時は hostname を表示します。
@@ -296,26 +314,27 @@ HTTP 400 で拒否し、DB を変更しません。
 次の5タブで構成します。
 
 - ネットワーク: 件数付きのテーブル一覧と CRUD
-- デバイス: 件数付きのテーブル一覧と CRUD。編集ダイアログには関係編集がある
+- デバイス: 件数付きのテーブル一覧と CRUD。編集ダイアログでインターフェース（名前・ネットワーク・IP・ラベル）を編集する
 - サービス: 件数付きのテーブル一覧と CRUD
-- 関係: 関係名一覧（名前、色、始点／終点ラベル、使用件数）と CRUD。
-  関係一覧は元デバイス→先デバイスと解決済み方向ラベルを表示する。関係編集は
-  関係名選択＋始点／終点デバイス選択で、必要な方向だけプレースホルダー欄を
-  表示する。デバイス編集と共通エディタを使う
+- 関係: 関係名一覧（名前、色、使用件数）と CRUD。
+  関係一覧は関係名／始点／始点ラベル／終点／終点ラベルの列で表示する
+  （始点・終点はデバイス名／インターフェース名、ラベルが空なら「-」）。
+  関係編集は関係名選択＋始点／終点インターフェース選択＋両端ラベルの自由入力
 - 共通設定: ポータルタイトルの保存、YAML エクスポート／インポート、全置換の注意書き
 
 管理画面の一覧は共通テーブル部品で表示し、追加・編集は標準の `<dialog>` を
 使います。関係名もインライン編集せず、編集ボタンから共通ダイアログを開きます。
 既定タブはネットワークです。使用中の関係名は使用数と無効化された削除ボタンで
 判別でき、先に使用中の関係を削除する必要があります。
-静的な YAML データソースを使う表示専用デモでは、従来どおり管理 UI を表示しません。
+静的な YAML データソースを使うデモでも管理 UI は開けますが、保存操作は無効になります。
 
 ### YAML エクスポート／インポート
 
-`GET /api/export` は `format: ouchi-ledger/2` と `exportedAt` を持つ YAML を
-返します。DB の内部 ID は含めず、所属はデバイスのホスト名とネットワーク名、
-サービスは同じ自然キー、関係は `relationNames[]` の名前と from/to の
-ホスト名で参照します。SSH 鍵は
+`GET /api/export` は `format: ouchi-ledger/4` と `exportedAt` を持つ YAML を
+返します。DB の内部 ID は含めず、インターフェースはデバイスのホスト名と
+インターフェース名とネットワーク名、サービスはデバイス名と
+インターフェース名、関係は `relationNames[]` の名前と from/to の
+（ホスト名、インターフェース名）で参照します。SSH 鍵は
 `sshKeys` と `deviceKeys` に分け、公開鍵だけを出力します。
 
 `POST /api/import` は YAML 全体の形式、既存の入力検証、自然キーの一意性、
@@ -326,9 +345,9 @@ HTTP 400 で拒否し、DB を変更しません。
 提供します。YAML の `settings` には `domain` と `title` を含め、往復後も
 同じ値を復元します。`devices[].petname` も出力・入力し、空値は未設定として
 往復します。
-`relations[]` は任意の `fromPlaceholder` / `toPlaceholder` を持ち、空値は
-エクスポートで省略できます。フィールドのない旧 YAML は両方とも未入力
-（空文字）として取り込みます。
+`relations[]` は任意の `fromLabel` / `toLabel`（関係自身の自由文ラベル）を
+持ち、空値はエクスポートで省略できます。フィールドのない旧 YAML は両方とも
+未入力（空文字）として取り込みます。
 `devices[].properties` と `services[].properties` も全件を出力・入力し、
 往復で保持します。`properties` を持たない旧 YAML は空マップとして
 インポートできます。同一エンティティ内で同じキーが重複した YAML は
@@ -336,6 +355,14 @@ HTTP 400 で拒否します。
 旧 `ouchi-ledger/1` の `relations[].tag / color / fromLabel / toLabel` は、
 タグでグルーピングして関係名を生成する1段変換を経て取り込みます。色と
 方向ラベルは同じタグの最初の関係から採用し、DB移行004と同じ規則です。
+旧 `ouchi-ledger/2` はさらにもう1段の変換で取り込みます。関係名の
+`{}` テンプレートを各関係のプレースホルダー値で展開し（空値なら `-`、
+テンプレートが空なら空ラベル）、関係自身のラベルにします。
+旧 `ouchi-ledger/3` はさらにもう1段の変換で取り込みます。各デバイスの
+所属を eth0, eth1, … と名付けたインターフェースにし、サービスは
+（デバイス、ネットワーク）からそのインターフェースへ、関係の端点は
+両端が共有するネットワークのインターフェースへ付け替えます
+（DB移行007と同じ規則）。
 
 ### サービスアイコン
 
@@ -373,11 +400,11 @@ Apache-2.0 の独自 SVG です。
 ### URL 組み立て
 
 `service_url` がある場合はリダイレクト先と監視URLの両方で優先します。
-それ以外は所属 IP とポートから組み立て、80/443 でもポートを省略しません。
+それ以外はインターフェース IP とポートから組み立て、80/443 でもポートを省略しません。
 
 - `url`: `{scheme}://{ip}:{port}{top_path}`。パス空は `/`
 - `monitorUrl`: 監視パス、空ならトップパス、両方空なら `/`
-- 所属 IP が NULL で `service_url` も空なら、どちらも `null`
+- インターフェース IP が NULL で `service_url` も空なら、どちらも `null`
 
 ### GitHub Pages 向け YAML デモ
 
@@ -392,11 +419,11 @@ CSS、YAML はすべて相対参照なので、GitHub Pages の `/<リポジト�
 自動配備します。公開URLは
 `https://moguno.github.io/ouchi/` です。
 
-デモのデータは `format: ouchi-ledger/2` の架空サンプルです。インターネット、
+デモのデータは `format: ouchi-ledger/4` の架空サンプルです。インターネット、
 家族用LAN、ホームラボ、個人ネットワークの4ネットワークへ TEST-NET-1／2／3
 （`192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`）と
 RFC 2544 ベンチマーク用（`198.18.0.0/24`）を割り当てます。
-`l3-switch` は家族用LAN、ホームラボ、個人ネットワークへ所属します。
+`l3-switch` は3つのインターフェースで家族用LAN、ホームラボ、個人ネットワークへ接続します。
 物理ホストとVMの関係は `relationNames` と `relations` で表し、インターネット
 上にはデモ自身を指すサービスを登録しています。
 Pages デモでも管理画面を開けます。入力やダイアログ操作は試せますが、
@@ -431,7 +458,7 @@ Vitest は共有検証、SPA の API 読み込み／全画面管理 UI と5タ�
 共通テーブルとネイティブダイアログ／関係名・関係 CRUD・使用件数、Hono API の in-process CRUD、
 関係トラバース、URL 組み立て、YAML のラウンドトリップと不正時の DB 無変更を
 検証します。旧スキーマDBの004移行、旧YAMLの1段変換、使用中関係名の409、
-移行005、テンプレート置換、`-` 表示、5列の完全一致重複拒否も検証します。
+移行005、テンプレート置換、`-` 表示、5列の完全一致重複拒否、移行007のインターフェース化も検証します。
 MCP は初期化、ツール一覧、置換済み地図トラバース、URL 解決、
 CRUD 往復、REST と同一の検証エラー、関係名／方向ラベル／疑似デバイス規則、
 YAML 往復を検証します。実 HTTP メッセージと公式SDKクライアントを使う

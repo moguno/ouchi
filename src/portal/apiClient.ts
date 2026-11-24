@@ -1,13 +1,11 @@
 import {
-  ACCENT_TONES,
-  type AccentTone,
   type PortalApiData,
   type PortalApiDevice,
   type PortalApiService,
   type PortalDataV2,
   type PortalDeviceInput,
-  type PortalDeviceNetwork,
-  type PortalMembershipInput,
+  type PortalInterface,
+  type PortalInterfaceInput,
   type PortalNetworkInput,
   type PortalRelationInput,
   type PortalRelationNameInput,
@@ -17,6 +15,7 @@ import {
   type ValidationIssue,
 } from "./types";
 import { normalizeServiceIconReference } from "./iconCatalog";
+import { normalizeNetworkAccent } from "./colorValue";
 
 export class PortalApiError extends Error {
   readonly status: number;
@@ -70,26 +69,25 @@ async function request<T>(
   return payload as T;
 }
 
-function normalizeAccent(value: string): AccentTone {
-  return ACCENT_TONES.includes(value as AccentTone)
-    ? (value as AccentTone)
-    : "slate";
+function normalizeAccent(value: string): string {
+  return normalizeNetworkAccent(value);
 }
 
 function normalizeIconKey(value: string | null) {
   return normalizeServiceIconReference(value, undefined, "favicon");
 }
 
-function deviceNetworksFrom(
+function interfacesFrom(
   devices: PortalApiDevice[],
-): PortalDeviceNetwork[] {
+): PortalInterface[] {
   return devices.flatMap((device) =>
-    device.memberships.map((membership) => ({
-      id: String(membership.id),
-      deviceId: String(membership.deviceId),
-      networkId: String(membership.networkId),
-      ip: membership.ip ?? "",
-      label: membership.label ?? undefined,
+    device.interfaces.map((iface) => ({
+      id: String(iface.id),
+      deviceId: String(iface.deviceId),
+      name: iface.name,
+      networkId: iface.networkId === null ? null : String(iface.networkId),
+      ip: iface.ip ?? "",
+      mac: iface.mac ?? undefined,
     })),
   );
 }
@@ -97,7 +95,7 @@ function deviceNetworksFrom(
 function serviceFrom(service: PortalApiService) {
   return {
     id: String(service.id),
-    deviceNetworkId: String(service.deviceNetworkId),
+    interfaceId: String(service.interfaceId),
     subdomain: service.subdomain,
     petname: service.petname ?? undefined,
     description: service.description ?? undefined,
@@ -143,13 +141,11 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
             }
           : undefined,
     })),
-    deviceNetworks: deviceNetworksFrom(data.devices),
+    interfaces: interfacesFrom(data.devices),
     relationNames: data.relationNames.map((relationName) => ({
       id: String(relationName.id),
       name: relationName.name,
       color: relationName.color,
-      fromLabel: relationName.fromLabel ?? undefined,
-      toLabel: relationName.toLabel ?? undefined,
       relationCount: relationName.relationCount,
     })),
     relations: data.relations.map((relation) => ({
@@ -158,8 +154,8 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       relationName: relation.relationName,
       fromDeviceId: String(relation.fromDeviceId),
       toDeviceId: String(relation.toDeviceId),
-      fromPlaceholder: relation.fromPlaceholder,
-      toPlaceholder: relation.toPlaceholder,
+      fromInterfaceId: String(relation.fromInterfaceId),
+      toInterfaceId: String(relation.toInterfaceId),
       fromLabel: relation.fromLabel,
       toLabel: relation.toLabel,
       color: relation.color,
@@ -192,7 +188,7 @@ export interface LedgerImportResult {
   imported: {
     networks: number;
     devices: number;
-    memberships: number;
+    interfaces: number;
     relationNames: number;
     relations: number;
     services: number;
@@ -293,29 +289,29 @@ export function deleteDevice(baseUrl: string, id: string) {
   });
 }
 
-export function createMembership(
+export function createInterface(
   baseUrl: string,
-  input: PortalMembershipInput,
+  input: PortalInterfaceInput,
 ) {
-  return request(baseUrl, "/api/memberships", {
+  return request(baseUrl, "/api/interfaces", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export function updateMembership(
+export function updateInterface(
   baseUrl: string,
   id: string,
-  input: PortalMembershipInput,
+  input: PortalInterfaceInput,
 ) {
-  return request(baseUrl, `/api/memberships/${encodeURIComponent(id)}`, {
+  return request(baseUrl, `/api/interfaces/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(input),
   });
 }
 
-export function deleteMembership(baseUrl: string, id: string) {
-  return request(baseUrl, `/api/memberships/${encodeURIComponent(id)}`, {
+export function deleteInterface(baseUrl: string, id: string) {
+  return request(baseUrl, `/api/interfaces/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }

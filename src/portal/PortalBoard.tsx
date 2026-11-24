@@ -6,7 +6,7 @@ import {
   DEVICE_CATEGORY_LABELS,
   PORTAL_DEVICE_CATEGORIES,
   type PortalDataV2,
-  type PortalDeviceNetwork,
+  type PortalInterface,
   type PortalNetwork,
   type PortalService,
 } from "./types";
@@ -41,21 +41,31 @@ function NetworkCard({
   allowRemoteIcons: boolean;
   onDemoServiceClick: () => void;
 }) {
-  const memberships = data.deviceNetworks.filter(
-    (membership) => membership.networkId === network.id,
+  const interfaces = data.interfaces.filter(
+    (iface) => iface.networkId === network.id,
   );
-  const membershipCounts = new Map<string, number>();
-  for (const membership of data.deviceNetworks) {
-    membershipCounts.set(
-      membership.deviceId,
-      (membershipCounts.get(membership.deviceId) ?? 0) + 1,
+  const interfaceCounts = new Map<string, number>();
+  for (const iface of data.interfaces) {
+    if (iface.networkId === null) {
+      continue;
+    }
+    interfaceCounts.set(
+      iface.deviceId,
+      (interfaceCounts.get(iface.deviceId) ?? 0) + 1,
     );
   }
 
   return (
     <article
       aria-labelledby={`network-${network.id}`}
-      className={`ouchi-network-card ouchi-accent-scope--${network.accent}`}
+      className="ouchi-network-card"
+      style={
+        {
+          "--network-color": network.accent,
+          "--network-bg": `color-mix(in srgb, ${network.accent} 8%, transparent)`,
+          "--network-line": `color-mix(in srgb, ${network.accent} 50%, transparent)`,
+        } as CSSProperties
+      }
     >
       <header className="ouchi-network-header">
         <span className="ouchi-network-label">
@@ -67,26 +77,26 @@ function NetworkCard({
         <span className="ouchi-network-meta">
           {network.cidr && <code>{network.cidr}</code>}
           <small>
-            {new Set(memberships.map((item) => item.deviceId)).size}台 / IP{" "}
-            {memberships.length}件
+            {new Set(interfaces.map((item) => item.deviceId)).size}台 / I/F{" "}
+            {interfaces.length}件
           </small>
         </span>
       </header>
 
-      {memberships.length > 0 && (
+      {interfaces.length > 0 && (
         <div className="ouchi-device-category-stack">
           {PORTAL_DEVICE_CATEGORIES.filter((category) =>
-            memberships.some(
-              (membership) =>
+            interfaces.some(
+              (iface) =>
                 data.devices.find(
-                  (device) => device.id === membership.deviceId,
+                  (device) => device.id === iface.deviceId,
                 )?.category === category,
             ),
           ).map((category) => {
-            const categoryMemberships = memberships.filter(
-              (membership) =>
+            const categoryInterfaces = interfaces.filter(
+              (iface) =>
                 data.devices.find(
-                  (device) => device.id === membership.deviceId,
+                  (device) => device.id === iface.deviceId,
                 )?.category === category,
             );
             return (
@@ -99,35 +109,35 @@ function NetworkCard({
                   <h3 id={`category-${network.id}-${category}`}>
                     {DEVICE_CATEGORY_LABELS[category]}
                   </h3>
-                  <span>{categoryMemberships.length}</span>
+                  <span>{categoryInterfaces.length}</span>
                 </header>
-                {categoryMemberships.length === 0 ? (
+                {categoryInterfaces.length === 0 ? (
                   <p className="ouchi-device-category-empty">登録なし</p>
                 ) : (
                   <div className="ouchi-node-grid">
-                    {categoryMemberships.map((membership) => {
+                    {categoryInterfaces.map((iface) => {
                       const device = data.devices.find(
-                        (item) => item.id === membership.deviceId,
+                        (item) => item.id === iface.deviceId,
                       );
                       if (!device) {
                         return null;
                       }
                       const services = data.services.filter(
                         (service) =>
-                          service.deviceNetworkId === membership.id,
+                          service.interfaceId === iface.id,
                       );
                       return (
                         <DeviceCard
-                          key={membership.id}
+                          key={iface.id}
                           demoMode={demoMode}
                           device={device}
                           allowRemoteIcons={allowRemoteIcons}
                           iconBaseUrl={iconBaseUrl}
-                          membership={membership}
+                          iface={iface}
                           onDemoServiceClick={onDemoServiceClick}
                           onSelect={onSelect}
                           sameDevice={
-                            (membershipCounts.get(device.id) ?? 0) > 1
+                            (interfaceCounts.get(device.id) ?? 0) > 1
                           }
                           selectedDeviceId={selectedDeviceId}
                           services={services}
@@ -135,6 +145,7 @@ function NetworkCard({
                             device.id,
                             selectedDeviceId,
                             data.relations,
+                            iface.id,
                           )}
                         />
                       );
@@ -188,12 +199,12 @@ export function IconBoard({
 
 function ListService({
   service,
-  membership,
+  iface,
   demoMode,
   onDemoClick,
 }: {
   service: PortalService;
-  membership: PortalDeviceNetwork;
+  iface: PortalInterface;
   demoMode: boolean;
   onDemoClick: () => void;
 }) {
@@ -202,7 +213,7 @@ function ListService({
     <>
       <span className="ouchi-list-service-name">{serviceName(service)}</span>
       <small>
-        {serviceDescription(service) || membership.ip || "IP未登録"}
+        {serviceDescription(service) || iface.ip || "IP未登録"}
       </small>
       {href && <ExternalLinkIcon size={14} />}
     </>
@@ -247,25 +258,35 @@ export function ListBoard({
   demoMode: boolean;
   onDemoServiceClick: () => void;
 }) {
-  const membershipCounts = new Map<string, number>();
-  for (const membership of data.deviceNetworks) {
-    membershipCounts.set(
-      membership.deviceId,
-      (membershipCounts.get(membership.deviceId) ?? 0) + 1,
+  const interfaceCounts = new Map<string, number>();
+  for (const iface of data.interfaces) {
+    if (iface.networkId === null) {
+      continue;
+    }
+    interfaceCounts.set(
+      iface.deviceId,
+      (interfaceCounts.get(iface.deviceId) ?? 0) + 1,
     );
   }
 
   return (
     <div className="ouchi-list-stack">
       {sortNetworksForDisplay(data.networks).map((network) => {
-        const memberships = data.deviceNetworks.filter(
-          (membership) => membership.networkId === network.id,
+        const interfaces = data.interfaces.filter(
+          (iface) => iface.networkId === network.id,
         );
 
         return (
           <section
-            className={`ouchi-list-network ouchi-accent-scope--${network.accent}`}
+            className="ouchi-list-network"
             key={network.id}
+            style={
+                    {
+                      "--network-color": network.accent,
+                      "--network-bg": `color-mix(in srgb, ${network.accent} 8%, transparent)`,
+                      "--network-line": `color-mix(in srgb, ${network.accent} 50%, transparent)`,
+                    } as CSSProperties
+                  }
           >
             <header className="ouchi-list-network-header">
               <div>
@@ -279,25 +300,25 @@ export function ListBoard({
               </div>
               <span className="ouchi-list-count">
                 デバイス{" "}
-                {new Set(memberships.map((item) => item.deviceId)).size}台 / IP{" "}
-                {memberships.length}件
+                {new Set(interfaces.map((item) => item.deviceId)).size}台 / I/F{" "}
+                {interfaces.length}件
               </span>
             </header>
 
-            {memberships.length > 0 && (
+            {interfaces.length > 0 && (
               <div className="ouchi-list-category-stack">
                 {PORTAL_DEVICE_CATEGORIES.filter((category) =>
-                  memberships.some(
-                    (membership) =>
+                  interfaces.some(
+                    (iface) =>
                       data.devices.find(
-                        (device) => device.id === membership.deviceId,
+                        (device) => device.id === iface.deviceId,
                       )?.category === category,
                   ),
                 ).map((category) => {
-                  const categoryMemberships = memberships.filter(
-                    (membership) =>
+                  const categoryInterfaces = interfaces.filter(
+                    (iface) =>
                       data.devices.find(
-                        (device) => device.id === membership.deviceId,
+                        (device) => device.id === iface.deviceId,
                       )?.category === category,
                   );
                   return (
@@ -308,15 +329,15 @@ export function ListBoard({
                       <header className="ouchi-list-category-header">
                         <DeviceCategoryIcon category={category} />
                         <strong>{DEVICE_CATEGORY_LABELS[category]}</strong>
-                        <span>{categoryMemberships.length}</span>
+                        <span>{categoryInterfaces.length}</span>
                       </header>
-                      {categoryMemberships.length === 0 ? (
+                      {categoryInterfaces.length === 0 ? (
                         <p className="ouchi-list-category-empty">登録なし</p>
                       ) : (
                         <div className="ouchi-list-node-list">
-                          {categoryMemberships.map((membership) => {
+                          {categoryInterfaces.map((iface) => {
                             const device = data.devices.find(
-                              (item) => item.id === membership.deviceId,
+                              (item) => item.id === iface.deviceId,
                             );
                             if (!device) {
                               return null;
@@ -325,10 +346,11 @@ export function ListBoard({
                               device.id,
                               selectedDeviceId,
                               data.relations,
+                              iface.id,
                             );
                             const services = data.services.filter(
                               (service) =>
-                                service.deviceNetworkId === membership.id,
+                                service.interfaceId === iface.id,
                             );
                             const selected =
                               device.id === selectedDeviceId;
@@ -344,7 +366,8 @@ export function ListBoard({
                                   .filter(Boolean)
                                   .join(" ")}
                                 data-device-id={device.id}
-                                key={membership.id}
+                                data-interface-id={iface.id}
+                                key={iface.id}
                                 onClick={(event) => {
                                   if (
                                     event.target instanceof Element &&
@@ -381,17 +404,15 @@ export function ListBoard({
                                       </span>
                                     )}
                                     {selected &&
-                                      (membershipCounts.get(device.id) ?? 0) >
+                                      (interfaceCounts.get(device.id) ?? 0) >
                                         1 && (
                                         <span className="ouchi-same-device-badge">
                                           同一デバイス
                                         </span>
                                       )}
-                                    <code>{membership.ip || "IP未登録"}</code>
+                                    <code>{iface.ip || "IP未登録"}</code>
                                     {petname && <small>{device.name}</small>}
-                                    <small>
-                                      {DEVICE_CATEGORY_LABELS[device.category]}
-                                    </small>
+                                    <small>{iface.name}</small>
                                     {visual.mode === "related" &&
                                       visual.tags.map((tag, index) => (
                                         <span
@@ -418,7 +439,7 @@ export function ListBoard({
                                         <ListService
                                           demoMode={demoMode}
                                           key={service.id}
-                                          membership={membership}
+                                          iface={iface}
                                           onDemoClick={onDemoServiceClick}
                                           service={service}
                                         />

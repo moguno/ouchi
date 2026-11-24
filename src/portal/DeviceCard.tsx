@@ -4,10 +4,9 @@ import type { CSSProperties } from "react";
 import { GenericServiceMark } from "./genericIcons";
 import { ServiceIcon } from "./icons";
 import {
-  DEVICE_CATEGORY_LABELS,
   type PortalDevice,
   type PortalDeviceCategory,
-  type PortalDeviceNetwork,
+  type PortalInterface,
   type PortalGenericIconKey,
   type PortalService,
 } from "./types";
@@ -68,14 +67,14 @@ function RelationBadges({ visual }: { visual: DeviceVisual }) {
 
 function ServiceTile({
   service,
-  membership,
+  iface,
   demoMode,
   iconBaseUrl,
   allowRemoteIcons,
   onDemoClick,
 }: {
   service: PortalService;
-  membership: PortalDeviceNetwork;
+  iface: PortalInterface;
   demoMode: boolean;
   iconBaseUrl: string;
   allowRemoteIcons: boolean;
@@ -95,7 +94,7 @@ function ServiceTile({
       <span className="ouchi-service-copy">
         <strong>{serviceName(service)}</strong>
         <small>
-          {serviceDescription(service) || membership.ip || "IP未登録"}
+          {serviceDescription(service) || iface.ip || "IP未登録"}
         </small>
       </span>
     </>
@@ -128,7 +127,7 @@ function ServiceTile({
 }
 
 export function DeviceCard({
-  membership,
+  iface,
   device,
   services,
   visual,
@@ -140,7 +139,7 @@ export function DeviceCard({
   allowRemoteIcons,
   onDemoServiceClick,
 }: {
-  membership: PortalDeviceNetwork;
+  iface: PortalInterface;
   device: PortalDevice;
   services: PortalService[];
   visual: DeviceVisual;
@@ -162,7 +161,7 @@ export function DeviceCard({
 
   return (
     <article
-      aria-labelledby={`device-${membership.id}`}
+      aria-labelledby={`device-${iface.id}`}
       className={[
         "ouchi-node-card",
         device.isVm ? "ouchi-device-card--vm" : "",
@@ -171,6 +170,7 @@ export function DeviceCard({
         .filter(Boolean)
         .join(" ")}
       data-device-id={device.id}
+      data-interface-id={iface.id}
       onClick={(event) => {
         if (
           event.target instanceof Element &&
@@ -192,16 +192,16 @@ export function DeviceCard({
         >
           <span className="ouchi-node-radio" aria-hidden="true" />
           <span className="ouchi-device-title">
-            <span id={`device-${membership.id}`}>{displayName}</span>
+            <span id={`device-${iface.id}`}>{displayName}</span>
             {device.isVm && <span className="ouchi-vm-badge">VM</span>}
             {sameDevice && selected && (
               <span className="ouchi-same-device-badge">同一デバイス</span>
             )}
           </span>
           <span className="ouchi-node-address">
-            {membership.ip || "IP未登録"}
+            {iface.ip || "IP未登録"}
             {petname ? ` / ${device.name}` : ""}
-            {` / ${DEVICE_CATEGORY_LABELS[device.category]}`}
+            {` / ${iface.name}`}
           </span>
         </button>
         <div className="ouchi-node-header-side">
@@ -216,7 +216,7 @@ export function DeviceCard({
           {services.map((service) => (
             <ServiceTile
               key={service.id}
-              membership={membership}
+              iface={iface}
               service={service}
               demoMode={demoMode}
               iconBaseUrl={iconBaseUrl}

@@ -12,8 +12,46 @@ const sampleYaml = readFileSync(
   "utf8",
 );
 
+// The /4 sample converted back to the /3 shape (memberships, string
+// relation endpoints, service network names) for legacy-format tests.
+function downgradeToV3(doc: Record<string, any>): Record<string, any> {
+  const networkByInterface = new Map<string, string>();
+  for (const device of doc.devices ?? []) {
+    for (const iface of device.interfaces ?? []) {
+      networkByInterface.set(
+        `${device.hostname}\u0000${iface.name}`,
+        iface.network,
+      );
+    }
+  }
+  for (const device of doc.devices ?? []) {
+    device.memberships = (device.interfaces ?? []).map(
+      (iface: Record<string, unknown>) => {
+        const { name, ...rest } = iface;
+        return rest;
+      },
+    );
+    delete device.interfaces;
+  }
+  for (const relation of doc.relations ?? []) {
+    if (typeof relation.from === "object") {
+      relation.from = relation.from.device;
+    }
+    if (typeof relation.to === "object") {
+      relation.to = relation.to.device;
+    }
+  }
+  for (const service of doc.services ?? []) {
+    service.network = networkByInterface.get(
+      `${service.device}\u0000${service.interface}`,
+    );
+    delete service.interface;
+  }
+  return doc;
+}
+
 describe("YAML data source", () => {
-  it("converts the ouchi-ledger/2 natural-key export to portal data", () => {
+  it("converts the ouchi-ledger/4 natural-key export to portal data", () => {
     const data = ledgerYamlToPortalData(sampleYaml);
 
     expect(data.version).toBe(2);
@@ -23,7 +61,7 @@ describe("YAML data source", () => {
     });
     expect(data.networks).toHaveLength(4);
     expect(data.devices).toHaveLength(19);
-    expect(data.deviceNetworks).toHaveLength(21);
+    expect(data.interfaces).toHaveLength(21);
     expect(data.relations).toHaveLength(5);
     expect(data.services).toHaveLength(16);
     expect(data.devices.every((device) => Boolean(device.petname))).toBe(true);
@@ -68,10 +106,9 @@ describe("YAML data source", () => {
     const l3Switch = data.devices.find(
       (device) => device.name === "l3-switch",
     );
-    const homeLanMembership = data.deviceNetworks.find(
-      (membership) =>
-        membership.deviceId === l3Switch?.id &&
-        membership.networkId === "network-2",
+    const homeLanInterface = data.interfaces.find(
+      (iface) =>
+        iface.deviceId === l3Switch?.id && iface.networkId === "network-2",
     );
     const atlasLab = data.devices.find(
       (device) => device.name === "atlas-lab",
@@ -80,9 +117,9 @@ describe("YAML data source", () => {
       (relation) => relation.toDeviceId === atlasLab?.id,
     );
 
-    expect(home?.deviceNetworkId).toBe(homeLanMembership?.id);
+    expect(home?.interfaceId).toBe(homeLanInterface?.id);
     expect(home?.url).toBe("http://198.51.100.1:80/");
-    expect(homeLanMembership?.ip).toBe("198.51.100.1");
+    expect(homeLanInterface?.ip).toBe("198.51.100.1");
     expect(atlasRelation).toEqual(
       expect.objectContaining({
         relationName: "VM",
@@ -95,37 +132,41 @@ describe("YAML data source", () => {
     ).toEqual(["#d48a2f"]);
   });
 
-  it("loads relation placeholders and applies the label templates", () => {
-    const document = parse(sampleYaml) as {
+  it("upgrades ouchi-ledger/2 documents by expanding label templates", () => {
+    const document = downgradeToV3(parse(sampleYaml)) as {
+      format: string;
       relationNames: Array<Record<string, unknown>>;
       relations: Array<Record<string, unknown>>;
     };
+    document.format = "ouchi-ledger/2";
     document.relationNames[0].fromLabel = "ホスト{}";
     document.relationNames[0].toLabel = "VM{}";
+    for (const relation of document.relations) {
+      delete relation.fromLabel;
+      delete relation.toLabel;
+    }
     document.relations[0].fromPlaceholder = "cedar";
     document.relations[0].toPlaceholder = "01";
     document.relations[1].fromPlaceholder = "cedar";
     document.relations[1].toPlaceholder = "02";
 
     const data = ledgerYamlToPortalData(stringify(document));
+    expect(data.relationNames[0]).toEqual(
+      expect.objectContaining({ name: "VM", color: "#d48a2f" }),
+    );
     expect(data.relations[0]).toEqual(
       expect.objectContaining({
-        fromPlaceholder: "cedar",
-        toPlaceholder: "01",
         fromLabel: "ホストcedar",
         toLabel: "VM01",
       }),
     );
     expect(data.relations[1]).toEqual(
       expect.objectContaining({
-        toPlaceholder: "02",
         toLabel: "VM02",
       }),
     );
     expect(data.relations[2]).toEqual(
       expect.objectContaining({
-        fromPlaceholder: "",
-        toPlaceholder: "",
         fromLabel: "ホスト-",
         toLabel: "VM-",
       }),
@@ -216,7 +257,7 @@ describe("YAML data source", () => {
     }
   });
 
-  it("allows distinct placeholder pairs and rejects an exact duplicate", () => {
+  it("allows distinct label pairs and rejects an exact duplicate", () => {
     const document = parse(sampleYaml) as {
       relations: Array<Record<string, unknown>>;
     };
@@ -224,8 +265,8 @@ describe("YAML data source", () => {
       from: document.relations[0].from,
       to: document.relations[0].to,
       relationName: document.relations[0].relationName,
-      fromPlaceholder: "host",
-      toPlaceholder: "8",
+      fromLabel: "別ホスト",
+      toLabel: "8",
     };
     document.relations.push(base);
     expect(() =>
@@ -239,7 +280,10 @@ describe("YAML data source", () => {
   });
 
   it("converts legacy tagged relations in one YAML migration step", () => {
-    const parsed = parse(sampleYaml) as Record<string, unknown> & {
+    const parsed = downgradeToV3(parse(sampleYaml)) as Record<
+      string,
+      unknown
+    > & {
       relationNames?: unknown;
       relations: Array<Record<string, unknown>>;
     };
@@ -269,11 +313,18 @@ describe("YAML data source", () => {
       expect.objectContaining({
         name: "旧VM",
         color: "#112233",
-        fromLabel: "旧ホスト",
-        toLabel: "旧VM",
         relationCount: 2,
       }),
     ]);
+    expect(data.relations[0]).toEqual(
+      expect.objectContaining({ fromLabel: "旧ホスト", toLabel: "旧VM" }),
+    );
+    expect(data.relations[1]).toEqual(
+      expect.objectContaining({
+        fromLabel: "無視されるラベル",
+        toLabel: "無視されるVM",
+      }),
+    );
     expect(data.relations.every((relation) => relation.relationName === "旧VM"))
       .toBe(true);
   });
@@ -301,12 +352,12 @@ describe("YAML data source", () => {
       const device = data.devices.find(
         (candidate) => candidate.name === deviceName,
       );
-      const membership = data.deviceNetworks.find(
+      const iface = data.interfaces.find(
         (candidate) =>
           candidate.deviceId === device?.id &&
           candidate.networkId === personalNetwork?.id,
       );
-      expect(membership?.ip).toBe(ip);
+      expect(iface?.ip).toBe(ip);
     }
 
     const host = data.devices.find(
@@ -334,7 +385,7 @@ describe("YAML data source", () => {
 
     expect(external).toEqual(
       expect.objectContaining({
-        deviceNetworkId: expect.any(String),
+        interfaceId: expect.any(String),
         subdomain: "lumen-notes",
         petname: "Google Drive",
         description: "Google のクラウドストレージサービス",
@@ -346,9 +397,7 @@ describe("YAML data source", () => {
       }),
     );
     expect(
-      data.deviceNetworks.find(
-        (membership) => membership.id === external?.deviceNetworkId,
-      )?.ip,
+      data.interfaces.find((iface) => iface.id === external?.interfaceId)?.ip,
     ).toBe("");
   });
 
@@ -360,13 +409,13 @@ describe("YAML data source", () => {
     const pagesDevice = data.devices.find(
       (device) => device.name === "ouchi-pages",
     );
-    const pagesMembership = data.deviceNetworks.find(
-      (membership) => membership.deviceId === pagesDevice?.id,
+    const pagesInterface = data.interfaces.find(
+      (iface) => iface.deviceId === pagesDevice?.id,
     );
 
     expect(pagesService).toEqual(
       expect.objectContaining({
-        deviceNetworkId: pagesMembership?.id,
+        interfaceId: pagesInterface?.id,
         subdomain: "ouchi-pages",
         petname: "GitHub",
         description: "GitHub Pages で公開するこのポータル自身",
@@ -377,7 +426,7 @@ describe("YAML data source", () => {
         monitorUrl: "https://moguno.github.io/ouchi/",
       }),
     );
-    expect(pagesMembership).toEqual(
+    expect(pagesInterface).toEqual(
       expect.objectContaining({
         networkId: "network-1",
         ip: "",
@@ -425,8 +474,8 @@ describe("YAML data source", () => {
 
   it("reports invalid natural-key references", () => {
     const invalid = sampleYaml.replace(
-      "    device: harbor-core\n    network: ホームラボ\n    petname: 工房Git",
-      "    device: missing-host\n    network: ホームラボ\n    petname: 工房Git",
+      "    device: harbor-core\n    interface: eth0\n    petname: 工房Git",
+      "    device: missing-host\n    interface: eth0\n    petname: 工房Git",
     );
 
     expect(() => ledgerYamlToPortalData(invalid)).toThrow(
@@ -440,21 +489,32 @@ describe("YAML data source", () => {
         expect.arrayContaining([
           expect.objectContaining({
             path: "services[1]",
-            message: "missing-host の ホームラボ 所属が存在しません",
+            message: "missing-host のインターフェース eth0 が存在しません",
           }),
         ]),
       );
     }
   });
 
+  it("converts legacy accent tone names when upgrading from /6", () => {
+    const data = ledgerYamlToPortalData(
+      sampleYaml
+        .replace("format: ouchi-ledger/7", "format: ouchi-ledger/6")
+        .replace('accent: "#5b9bd6"', "accent: blue"),
+    );
+    expect(
+      data.networks.find((network) => network.name === "家族用LAN")?.accent,
+    ).toBe("#5b9bd6");
+  });
+
   it("rejects unknown ledger format versions", () => {
     expect(() =>
       ledgerYamlToPortalData(
         sampleYaml.replace(
-          "format: ouchi-ledger/2",
+          "format: ouchi-ledger/7",
           "format: ouchi-ledger/9",
         ),
       ),
-    ).toThrow(/formatは「ouchi-ledger\/2」/);
+    ).toThrow(/formatは「ouchi-ledger\/7」/);
   });
 });

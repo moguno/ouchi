@@ -52,14 +52,6 @@ export function CommonSettingsTab({
         <form onSubmit={onSavePortalTitle}>
           <div className="ouchi-setting-fields">
             <label>
-              <span>ドメイン</span>
-              <input
-                aria-label="ポータルドメイン"
-                readOnly
-                value={data.settings?.domain ?? "ouchi.local"}
-              />
-            </label>
-            <label>
               <span>ポータルタイトル</span>
               <input
                 aria-label="ポータルタイトル"

@@ -3,13 +3,11 @@ import {
   type FormEvent,
   type RefObject,
 } from "react";
-import {
-  ACCENT_LABELS,
-  ACCENT_TONES,
-  type AccentTone,
-  type PortalNetwork,
-  type ValidationIssue,
+import type {
+  PortalNetwork,
+  ValidationIssue,
 } from "./types";
+import { ColorField } from "./ColorField";
 import {
   generateId,
   validateNetworkInput,
@@ -32,9 +30,7 @@ export function NetworkEntityDialog({
 }: EntityFormProps<PortalNetwork>) {
   const [name, setName] = useState(editing?.name ?? "");
   const [cidr, setCidr] = useState(editing?.cidr ?? "");
-  const [accent, setAccent] = useState<AccentTone>(
-    editing?.accent ?? "blue",
-  );
+  const [accent, setAccent] = useState(editing?.accent ?? "#5b9bd6");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formIssues, setFormIssues] = useState<ValidationIssue[]>([]);
 
@@ -57,7 +53,7 @@ export function NetworkEntityDialog({
       id: editing?.id ?? generateId("network"),
       name: name.trim(),
       cidr: cidr.trim() || undefined,
-      accent,
+      accent: accent.trim(),
     });
   }
 
@@ -96,19 +92,17 @@ export function NetworkEntityDialog({
         <FieldError id="network-cidr-error">{errors.cidr}</FieldError>
       </label>
 
-      <label className="ouchi-field">
-        <span>アクセント色</span>
-        <select
-          onChange={(event) => setAccent(event.target.value as AccentTone)}
-          value={accent}
-        >
-          {ACCENT_TONES.map((tone) => (
-            <option key={tone} value={tone}>
-              {ACCENT_LABELS[tone]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ColorField
+        label="アクセント色"
+        value={accent}
+        onChange={setAccent}
+        error={errors.accent}
+        errorId="network-accent-error"
+        colorAriaLabel="ネットワークのアクセント色"
+        codeAriaLabel="ネットワークのアクセント色コード"
+        placeholder="#5b9bd6"
+        fieldClassName="ouchi-field"
+      />
 
       <FormActions
         disabled={saveDisabled}

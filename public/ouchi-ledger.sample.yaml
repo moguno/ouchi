@@ -1,4 +1,4 @@
-format: ouchi-ledger/2
+format: ouchi-ledger/7
 exportedAt: "2026-11-21T09:00:00.000Z"
 settings:
   domain: ouchi.example
@@ -6,19 +6,19 @@ settings:
 networks:
   - name: インターネット
     cidr: 192.0.2.0/24
-    accent: violet
+    accent: "#7467a8"
     note: RFC 5737 TEST-NET-1。WAN と外部サービス用
   - name: 家族用LAN
     cidr: 198.51.100.0/24
-    accent: blue
+    accent: "#5b9bd6"
     note: RFC 5737 TEST-NET-2。自宅端末用
   - name: ホームラボ
     cidr: 203.0.113.0/24
-    accent: green
+    accent: "#4ba755"
     note: RFC 5737 TEST-NET-3。仮想化基盤とサーバー用
   - name: 個人ネットワーク
     cidr: 198.18.0.0/24
-    accent: orange
+    accent: "#d69132"
     note: RFC 2544 ベンチマーク用。個人向け端末と検証用ホストの架空ネットワーク
 devices:
   - hostname: l3-switch
@@ -29,16 +29,16 @@ devices:
     sshPort: null
     meterEnabled: false
     note: 3つの内部ネットワークを接続する架空のL3スイッチ
-    memberships:
-      - network: 家族用LAN
+    interfaces:
+      - name: eth0
+        network: 家族用LAN
         ip: 198.51.100.1
-        label: LAN
-      - network: ホームラボ
+      - name: eth1
+        network: ホームラボ
         ip: 203.0.113.1
-        label: Server
-      - network: 個人ネットワーク
+      - name: eth2
+        network: 個人ネットワーク
         ip: 198.18.0.1
-        label: Personal
   - hostname: cedar-host
     petname: Alicia
     category: physical
@@ -47,10 +47,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: ホームラボで3台のVMを抱える架空の物理ホスト
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.10
-        label: VMホスト
   - hostname: birch-print
     petname: Akari
     category: physical
@@ -59,10 +59,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の家庭向けプリントサーバー
-    memberships:
-      - network: 家族用LAN
+    interfaces:
+      - name: eth0
+        network: 家族用LAN
         ip: 198.51.100.20
-        label: Print
   - hostname: maple-nas
     petname: Aika
     category: physical
@@ -71,10 +71,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の家庭用ファイル保管庫
-    memberships:
-      - network: 家族用LAN
+    interfaces:
+      - name: eth0
+        network: 家族用LAN
         ip: 198.51.100.21
-        label: NAS
   - hostname: willow-weather
     petname: Alice
     category: physical
@@ -83,10 +83,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の気象センサー集約機
-    memberships:
-      - network: 家族用LAN
+    interfaces:
+      - name: eth0
+        network: 家族用LAN
         ip: 198.51.100.22
-        label: Sensors
   - hostname: clover-cam
     petname: Aria
     category: physical
@@ -95,10 +95,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の家庭内カメラ録画機
-    memberships:
-      - network: 家族用LAN
+    interfaces:
+      - name: eth0
+        network: 家族用LAN
         ip: 198.51.100.23
-        label: Cameras
   - hostname: granite-backup
     petname: Akira
     category: physical
@@ -107,10 +107,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空のオフライン世代バックアップ機
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.40
-        label: Backup
   - hostname: slate-mail
     petname: Athena
     category: physical
@@ -119,10 +119,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の宅内メールサーバー
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.41
-        label: Mail
   - hostname: juniper-dns
     petname: Hime
     category: physical
@@ -131,10 +131,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空のプライマリDNSサーバー
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.42
-        label: DNS
   - hostname: amber-vault
     petname: Maa
     category: physical
@@ -143,10 +143,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の長期アーカイブ保管庫
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.43
-        label: Archive
   - hostname: harbor-core
     petname: VM201
     category: vm
@@ -155,10 +155,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空のアプリ基盤
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.31
-        label: apps
   - hostname: atlas-lab
     petname: VM202
     category: vm
@@ -167,10 +167,10 @@ devices:
     sshPort: 2222
     meterEnabled: true
     note: 架空の検証環境
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.32
-        label: lab
   - hostname: forge-ci
     petname: VM203
     category: vm
@@ -179,10 +179,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の継続的インテグレーション環境
-    memberships:
-      - network: ホームラボ
+    interfaces:
+      - name: eth0
+        network: ホームラボ
         ip: 203.0.113.33
-        label: ci
   - hostname: l2-switch
     petname: L2 Switch
     category: network
@@ -191,10 +191,10 @@ devices:
     sshPort: null
     meterEnabled: false
     note: 個人ネットワークを収容する架空のL2スイッチ
-    memberships:
-      - network: 個人ネットワーク
+    interfaces:
+      - name: eth0
+        network: 個人ネットワーク
         ip: 198.18.0.2
-        label: Access
   - hostname: akari
     petname: Atra
     category: physical
@@ -203,10 +203,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 個人ネットワークで2台のVMを抱える架空の物理ホスト
-    memberships:
-      - network: 個人ネットワーク
+    interfaces:
+      - name: eth0
+        network: 個人ネットワーク
         ip: 198.18.0.10
-        label: VMホスト
   - hostname: acorn-notes
     petname: VM301
     category: vm
@@ -215,10 +215,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の個人用ノート環境
-    memberships:
-      - network: 個人ネットワーク
+    interfaces:
+      - name: eth0
+        network: 個人ネットワーク
         ip: 198.18.0.31
-        label: notes
   - hostname: fern-gallery
     petname: VM302
     category: vm
@@ -227,10 +227,10 @@ devices:
     sshPort: 22
     meterEnabled: true
     note: 架空の個人向け写真ギャラリー
-    memberships:
-      - network: 個人ネットワーク
+    interfaces:
+      - name: eth0
+        network: 個人ネットワーク
         ip: 198.18.0.32
-        label: gallery
   - hostname: lumen-notes
     petname: Google Drive
     category: service
@@ -239,10 +239,10 @@ devices:
     sshPort: null
     meterEnabled: false
     note: Google のクラウドストレージを表す架空のサービス端末
-    memberships:
-      - network: インターネット
+    interfaces:
+      - name: eth0
+        network: インターネット
         ip: null
-        label: SaaS
   - hostname: ouchi-pages
     petname: GitHub
     category: service
@@ -251,35 +251,63 @@ devices:
     sshPort: null
     meterEnabled: false
     note: GitHub Pages で公開するこのポータル自身
-    memberships:
-      - network: インターネット
+    interfaces:
+      - name: eth0
+        network: インターネット
         ip: null
-        label: Static hosting
 relationNames:
   - name: VM
     color: "#d48a2f"
+relations:
+  - from:
+      device: cedar-host
+      interface: eth0
+    to:
+      device: harbor-core
+      interface: eth0
+    relationName: VM
     fromLabel: 親ホスト
     toLabel: VM
-relations:
-  - from: cedar-host
-    to: harbor-core
+  - from:
+      device: cedar-host
+      interface: eth0
+    to:
+      device: atlas-lab
+      interface: eth0
     relationName: VM
-  - from: cedar-host
-    to: atlas-lab
+    fromLabel: 親ホスト
+    toLabel: VM
+  - from:
+      device: cedar-host
+      interface: eth0
+    to:
+      device: forge-ci
+      interface: eth0
     relationName: VM
-  - from: cedar-host
-    to: forge-ci
+    fromLabel: 親ホスト
+    toLabel: VM
+  - from:
+      device: akari
+      interface: eth0
+    to:
+      device: acorn-notes
+      interface: eth0
     relationName: VM
-  - from: akari
-    to: acorn-notes
+    fromLabel: 親ホスト
+    toLabel: VM
+  - from:
+      device: akari
+      interface: eth0
+    to:
+      device: fern-gallery
+      interface: eth0
     relationName: VM
-  - from: akari
-    to: fern-gallery
-    relationName: VM
+    fromLabel: 親ホスト
+    toLabel: VM
 services:
   - subdomain: home
     device: l3-switch
-    network: 家族用LAN
+    interface: eth0
     petname: ホームダッシュボード
     description: 架空の家庭内ダッシュボード
     port: 80
@@ -292,7 +320,7 @@ services:
     enabled: true
   - subdomain: workshop
     device: harbor-core
-    network: ホームラボ
+    interface: eth0
     petname: 工房Git
     description: 架空のソースコード置き場
     port: 3000
@@ -305,7 +333,7 @@ services:
     enabled: true
   - subdomain: media-vault
     device: cedar-host
-    network: ホームラボ
+    interface: eth0
     petname: メディア倉庫
     description: 架空の写真・映像ライブラリ
     port: 8096
@@ -318,7 +346,7 @@ services:
     enabled: true
   - subdomain: atlas
     device: atlas-lab
-    network: ホームラボ
+    interface: eth0
     petname: 実験卓
     description: 架空の仮想化コンソール
     port: 8006
@@ -331,7 +359,7 @@ services:
     enabled: true
   - subdomain: forge
     device: forge-ci
-    network: ホームラボ
+    interface: eth0
     petname: 工房CI
     description: 架空のビルドランナー
     port: 8080
@@ -344,7 +372,7 @@ services:
     enabled: true
   - subdomain: edge-admin
     device: l3-switch
-    network: ホームラボ
+    interface: eth1
     petname: 境界管理
     description: 架空のルーター管理画面
     port: 443
@@ -357,7 +385,7 @@ services:
     enabled: true
   - subdomain: lumen-notes
     device: lumen-notes
-    network: インターネット
+    interface: eth0
     petname: Google Drive
     description: Google のクラウドストレージサービス
     port: 443
@@ -370,7 +398,7 @@ services:
     enabled: true
   - subdomain: ouchi-pages
     device: ouchi-pages
-    network: インターネット
+    interface: eth0
     petname: GitHub
     description: GitHub Pages で公開するこのポータル自身
     port: 443
@@ -383,7 +411,7 @@ services:
     enabled: true
   - subdomain: birch-print
     device: birch-print
-    network: 家族用LAN
+    interface: eth0
     petname: 樺の家プリント
     description: 架空の文書印刷キュー
     port: 631
@@ -396,7 +424,7 @@ services:
     enabled: true
   - subdomain: maple-files
     device: maple-nas
-    network: 家族用LAN
+    interface: eth0
     petname: メープル保管庫
     description: 架空の家庭用ファイル共有
     port: 9000
@@ -409,7 +437,7 @@ services:
     enabled: true
   - subdomain: willow-weather
     device: willow-weather
-    network: 家族用LAN
+    interface: eth0
     petname: ウィロー気象台
     description: 架空の室温・気象ダッシュボード
     port: 8081
@@ -422,7 +450,7 @@ services:
     enabled: true
   - subdomain: clover-cam
     device: clover-cam
-    network: 家族用LAN
+    interface: eth0
     petname: クローバー見守り
     description: 架空の家庭内カメラコンソール
     port: 8888
@@ -435,7 +463,7 @@ services:
     enabled: true
   - subdomain: granite-restore
     device: granite-backup
-    network: ホームラボ
+    interface: eth0
     petname: 花崗岩リストア
     description: 架空の世代バックアップ管理画面
     port: 8082
@@ -448,7 +476,7 @@ services:
     enabled: true
   - subdomain: slate-post
     device: slate-mail
-    network: ホームラボ
+    interface: eth0
     petname: スレート郵便局
     description: 架空の宅内Webメール
     port: 8443
@@ -461,7 +489,7 @@ services:
     enabled: true
   - subdomain: juniper-dns
     device: juniper-dns
-    network: ホームラボ
+    interface: eth0
     petname: ジュニパー名前札
     description: 架空のDNSゾーン管理画面
     port: 5380
@@ -474,7 +502,7 @@ services:
     enabled: true
   - subdomain: amber-index
     device: amber-vault
-    network: ホームラボ
+    interface: eth0
     petname: 琥珀アーカイブ
     description: 架空の長期アーカイブ検索画面
     port: 8083
