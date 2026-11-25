@@ -24,16 +24,11 @@ export type {
   ValidationResult,
 } from "./types";
 export {
-  DASHBOARD_ICON_INDEX,
-  DEFAULT_ICON_REFERENCE,
   FAVICON_ICON_REFERENCE,
-  dashboardIconCount,
   iconReferenceKind,
   iconReferenceLabel,
-  normalizeIconReference,
   normalizeServiceIconReference,
-  searchBuiltInIcons,
-  searchDashboardIcons,
+  parseIconReference,
 } from "./iconCatalog";
 export {
   isCidr,

@@ -11,7 +11,7 @@ import {
   type PortalServiceScheme,
   type ValidationIssue,
 } from "./types";
-import { normalizeIconReference } from "./iconCatalog";
+import { FAVICON_ICON_REFERENCE } from "./iconCatalog";
 import {
   generateId,
   validateServiceInput,
@@ -51,8 +51,10 @@ export function ServiceEntityDialog({
   // 監視パスは後のマイルストーンのためUIを持たない。保存時は既存値を保持する。
   const monitorPath = editing?.monitorPath ?? "/";
   const [serviceUrl, setServiceUrl] = useState(editing?.serviceUrl ?? "");
-  const [iconKey, setIconKey] = useState<PortalIconReference>(
-    normalizeIconReference(editing?.iconKey, "favicon"),
+  // アイコンはアイコンダイアログが所有する。ここでは既存値を保持し、
+  // 新規作成時のみ既定の favicon を入れる。
+  const [iconKey, setIconKey] = useState<PortalIconReference | null>(
+    editing ? editing.iconKey : FAVICON_ICON_REFERENCE,
   );
   const [enabled, setEnabled] = useState(editing?.enabled ?? true);
   const [errors, setErrors] = useState<Record<string, string>>({});

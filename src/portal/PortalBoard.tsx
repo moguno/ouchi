@@ -21,6 +21,65 @@ import {
   serviceDescription,
   serviceName,
 } from "./portalPresentation";
+import {
+  RELATION_DISPLAY_MODE_LABELS,
+  relationDisplayMode,
+  type RelationDisplayModes,
+} from "./relationDisplay";
+import type { PortalRelationName } from "./types";
+
+export function RelationFilterBar({
+  modes,
+  onCycle,
+  relationNames,
+}: {
+  modes?: RelationDisplayModes;
+  onCycle: (relationName: string) => void;
+  relationNames: PortalRelationName[];
+}) {
+  if (relationNames.length === 0) {
+    return null;
+  }
+  return (
+    <div aria-label="関係フィルター" className="ouchi-relation-filter" role="group">
+      {relationNames.map((relationName) => {
+        const mode = relationDisplayMode(modes, relationName.name);
+        return (
+          <button
+            aria-label={`関係フィルター ${relationName.name}（${RELATION_DISPLAY_MODE_LABELS[mode]}）`}
+            className={`ouchi-relation-filter-chip ouchi-relation-filter-chip--${mode}`}
+            key={relationName.id}
+            onClick={() => onCycle(relationName.name)}
+            style={
+              {
+                "--ouchi-relation-color": relationName.color,
+              } as CSSProperties
+            }
+            title={`${relationName.name}: ${RELATION_DISPLAY_MODE_LABELS[mode]}（クリックで切り替え）`}
+            type="button"
+          >
+            <span className="ouchi-relation-filter-dot" />
+            {relationName.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function visibleData(
+  data: PortalDataV2,
+  relationModes?: RelationDisplayModes,
+): PortalDataV2 {
+  return {
+    ...data,
+    relations: data.relations.filter(
+      (relation) =>
+        relationDisplayMode(relationModes, relation.relationName) !==
+        "hidden",
+    ),
+  };
+}
 
 function NetworkCard({
   network,
@@ -145,7 +204,6 @@ function NetworkCard({
                             device.id,
                             selectedDeviceId,
                             data.relations,
-                            iface.id,
                           )}
                         />
                       );
@@ -163,6 +221,7 @@ function NetworkCard({
 
 export function IconBoard({
   data,
+  relationModes,
   selectedDeviceId,
   onSelect,
   demoMode,
@@ -171,6 +230,7 @@ export function IconBoard({
   onDemoServiceClick,
 }: {
   data: PortalDataV2;
+  relationModes?: RelationDisplayModes;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
   demoMode: boolean;
@@ -182,7 +242,7 @@ export function IconBoard({
     <div className="ouchi-network-stack">
       {sortNetworksForDisplay(data.networks).map((network) => (
         <NetworkCard
-          data={data}
+          data={visibleData(data, relationModes)}
           demoMode={demoMode}
           allowRemoteIcons={allowRemoteIcons}
           iconBaseUrl={iconBaseUrl}
@@ -247,12 +307,14 @@ function ListService({
 
 export function ListBoard({
   data,
+  relationModes,
   selectedDeviceId,
   onSelect,
   demoMode,
   onDemoServiceClick,
 }: {
   data: PortalDataV2;
+  relationModes?: RelationDisplayModes;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
   demoMode: boolean;
@@ -345,8 +407,7 @@ export function ListBoard({
                             const visual = deviceVisual(
                               device.id,
                               selectedDeviceId,
-                              data.relations,
-                              iface.id,
+                              visibleData(data, relationModes).relations,
                             );
                             const services = data.services.filter(
                               (service) =>
@@ -360,7 +421,7 @@ export function ListBoard({
                               <div
                                 className={[
                                   "ouchi-list-node",
-                                  device.isVm ? "ouchi-list-node--vm" : "",
+                                  device.category === "vm" ? "ouchi-list-node--vm" : "",
                                   `ouchi-list-node--${visual.mode}`,
                                 ]
                                   .filter(Boolean)
@@ -398,11 +459,6 @@ export function ListBoard({
                                     >
                                       <strong>{displayName}</strong>
                                     </button>
-                                    {device.isVm && (
-                                      <span className="ouchi-vm-badge">
-                                        VM
-                                      </span>
-                                    )}
                                     {selected &&
                                       (interfaceCounts.get(device.id) ?? 0) >
                                         1 && (
@@ -413,21 +469,6 @@ export function ListBoard({
                                     <code>{iface.ip || "IP未登録"}</code>
                                     {petname && <small>{device.name}</small>}
                                     <small>{iface.name}</small>
-                                    {visual.mode === "related" &&
-                                      visual.tags.map((tag, index) => (
-                                        <span
-                                          className="ouchi-relation-badge"
-                                          key={`${tag.label}-${index}`}
-                                          style={
-                                            {
-                                              "--ouchi-relation-color":
-                                                tag.color,
-                                            } as CSSProperties
-                                          }
-                                        >
-                                          {tag.label}
-                                        </span>
-                                      ))}
                                   </div>
                                   <div className="ouchi-list-services">
                                     {services.length === 0 ? (

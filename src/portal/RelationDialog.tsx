@@ -51,6 +51,8 @@ export function RelationDialog({
           fromLabel: "",
           toLabel: "",
           color: firstRelationName?.color ?? "#d5a22b",
+          lineStart: firstRelationName?.lineStart ?? "circle",
+          lineEnd: firstRelationName?.lineEnd ?? "circle",
         },
   );
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
@@ -67,6 +69,8 @@ export function RelationDialog({
             ? {
                 relationNameId: definition.id,
                 color: definition.color,
+                lineStart: definition.lineStart,
+                lineEnd: definition.lineEnd,
           }
         : {}),
     }));

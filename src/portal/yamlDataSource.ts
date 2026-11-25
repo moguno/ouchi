@@ -4,6 +4,7 @@ import {
   type PortalDevice,
   type PortalDeviceCategory,
   type PortalInterface,
+  type PortalLineEndpointShape,
   type PortalNetwork,
   type PortalRelation,
   type PortalRelationName,
@@ -19,12 +20,15 @@ import {
 } from "./colorValue";
 import { buildMonitorUrl, buildServiceUrl } from "./urls";
 import {
+  isLineEndpointShape,
   normalizeProperties,
   validatePortalData,
   validatePropertiesPayload,
 } from "./validation";
 
-export const LEDGER_FORMAT = "ouchi-ledger/7";
+export const LEDGER_FORMAT = "ouchi-ledger/9";
+export const V8_LEDGER_FORMAT = "ouchi-ledger/8";
+export const V7_LEDGER_FORMAT = "ouchi-ledger/7";
 export const V6_LEDGER_FORMAT = "ouchi-ledger/6";
 export const V5_LEDGER_FORMAT = "ouchi-ledger/5";
 export const V4_LEDGER_FORMAT = "ouchi-ledger/4";
@@ -390,8 +394,56 @@ function upgradeV6Document(
   );
   return {
     ...root,
-    format: LEDGER_FORMAT,
+    format: V7_LEDGER_FORMAT,
     networks,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/7: devices drop the derived isVm
+ * flag (the category alone says whether a device is a VM), so the key
+ * is stripped from every device.
+ */
+/**
+ * One-step upgrade from ouchi-ledger/8: relation names gain endpoint
+ * shapes. Documents without them validate against the defaults, so
+ * this step only advances the format.
+ */
+function upgradeV8Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V8_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
+  };
+}
+
+function lineEndpointShape(value: unknown): PortalLineEndpointShape {
+  return isLineEndpointShape(value) ? value : "circle";
+}
+
+function upgradeV7Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V7_LEDGER_FORMAT) {
+    return root;
+  }
+  const devices = (Array.isArray(root.devices) ? root.devices : []).map(
+    (item) => {
+      if (!isRecord(item)) {
+        return item;
+      }
+      const { isVm: _isVm, ...rest } = item;
+      return rest;
+    },
+  );
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
+    devices,
   };
 }
 
@@ -424,12 +476,16 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     );
   }
 
-  const root = upgradeV6Document(
-    upgradeV5Document(
-      upgradeV4Document(
-        upgradeV3Document(
-          upgradeV2Document(upgradeLegacyDocument(parsed)),
+  const root = upgradeV8Document(
+    upgradeV7Document(
+    upgradeV6Document(
+      upgradeV5Document(
+        upgradeV4Document(
+          upgradeV3Document(
+            upgradeV2Document(upgradeLegacyDocument(parsed)),
+          ),
         ),
+      ),
       ),
     ),
   );
@@ -513,7 +569,6 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       petname: nullableText(device.petname),
       properties: normalizeProperties(device.properties),
       category: text(device.category) as PortalDeviceCategory,
-      isVm: device.isVm === true,
       meterEnabled: device.meterEnabled === true,
       note: nullableText(device.note),
     };
@@ -613,6 +668,8 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
         id: `relation-name-${index + 1}`,
         name,
         color: text(relationName.color),
+        lineStart: lineEndpointShape(relationName.lineStart),
+        lineEnd: lineEndpointShape(relationName.lineEnd),
         relationCount: 0,
       };
       if (name && !relationNameByName.has(name)) {
@@ -694,6 +751,8 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       fromLabel,
       toLabel,
       color: relationName?.color ?? "",
+      lineStart: relationName?.lineStart ?? "circle",
+      lineEnd: relationName?.lineEnd ?? "circle",
     };
   });
   for (const relationName of relationNames) {
@@ -752,7 +811,6 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       iconKey: normalizeServiceIconReference(
         service.iconKey,
         service.faviconUrl,
-        "favicon",
       ),
       enabled: service.enabled === true,
       url: null,

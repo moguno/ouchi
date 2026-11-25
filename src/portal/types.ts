@@ -50,18 +50,16 @@ export type PortalGenericIconKey =
 
 export type PortalIconKey = PortalLegacyPresetIconKey;
 
-export type PortalIconKind = "generic" | "favicon" | "url";
+export type PortalIconKind = "favicon" | "url" | "unset";
 
 /**
- * Canonical icon references are all bundled generic keys, the service URL
- * origin's favicon, or an explicit HTTP(S) image URL. Legacy `preset:key` and
- * bare preset keys normalize to `generic:key`; legacy `dashboard:slug` values
- * normalize to the corresponding jsDelivr SVG URL.
+ * A service icon is the service URL origin's favicon, an explicit
+ * HTTP(S) image URL, or unset (null), which renders one bundled
+ * placeholder icon. Legacy `generic:` / `preset:` references normalize
+ * to unset; legacy `dashboard:slug` values normalize to the
+ * corresponding jsDelivr SVG URL.
  */
-export type PortalIconReference =
-  | `generic:${PortalGenericIconKey}`
-  | "favicon"
-  | `url:${string}`;
+export type PortalIconReference = "favicon" | `url:${string}`;
 
 export interface PortalNetwork {
   id: string;
@@ -87,7 +85,6 @@ export interface PortalDevice {
   petname?: string;
   properties?: PortalProperties;
   category: PortalDeviceCategory;
-  isVm: boolean;
   meterEnabled?: boolean;
   note?: string;
   ssh?: PortalSshInfo;
@@ -103,10 +100,19 @@ export interface PortalInterface {
   mac?: string;
 }
 
+export type PortalLineEndpointShape =
+  | "none"
+  | "arrow"
+  | "circle"
+  | "square"
+  | "diamond";
+
 export interface PortalRelationName {
   id: string;
   name: string;
   color: string;
+  lineStart: PortalLineEndpointShape;
+  lineEnd: PortalLineEndpointShape;
   relationCount: number;
 }
 
@@ -121,6 +127,8 @@ export interface PortalRelation {
   fromLabel: string;
   toLabel: string;
   color: string;
+  lineStart: PortalLineEndpointShape;
+  lineEnd: PortalLineEndpointShape;
 }
 
 export interface PortalService {
@@ -136,7 +144,7 @@ export interface PortalService {
   topPath: string;
   monitorPath: string;
   serviceUrl?: string;
-  iconKey: PortalIconReference;
+  iconKey: PortalIconReference | null;
   enabled: boolean;
   url?: string | null;
   monitorUrl?: string | null;
@@ -213,7 +221,6 @@ export interface PortalApiDevice {
   petname: string | null;
   properties: PortalProperties;
   category: PortalDeviceCategory;
-  isVm: boolean;
   sshUser: string | null;
   sshPort: number | null;
   meterEnabled: boolean;
@@ -225,6 +232,8 @@ export interface PortalApiRelationName {
   id: number;
   name: string;
   color: string;
+  lineStart: PortalLineEndpointShape;
+  lineEnd: PortalLineEndpointShape;
   relationCount: number;
 }
 
@@ -241,6 +250,8 @@ export interface PortalApiRelation {
   fromLabel: string;
   toLabel: string;
   color: string;
+  lineStart: PortalLineEndpointShape;
+  lineEnd: PortalLineEndpointShape;
 }
 
 export interface PortalApiService {
@@ -289,7 +300,6 @@ export interface PortalDeviceInput {
   petname?: string | null;
   properties?: PortalProperties;
   category: PortalDeviceCategory;
-  isVm: boolean;
   sshUser?: string | null;
   sshPort?: number | null;
   meterEnabled: boolean;
@@ -315,6 +325,8 @@ export interface PortalRelationInput {
 export interface PortalRelationNameInput {
   name: string;
   color: string;
+  lineStart?: PortalLineEndpointShape;
+  lineEnd?: PortalLineEndpointShape;
 }
 
 export interface PortalServiceInput {
@@ -399,49 +411,4 @@ export const DEVICE_CATEGORY_LABELS: Record<PortalDeviceCategory, string> = {
   physical: "物理マシン",
   vm: "VM",
   service: "サービス",
-};
-
-export const ICON_LABELS: Record<PortalIconKey, string> = {
-  gitea: "Gitea",
-  gatus: "Gatus",
-  proxmox: "Proxmox",
-  omv: "OpenMediaVault",
-  server: "サーバー",
-  database: "データベース",
-  monitor: "監視",
-  container: "コンテナ",
-  globe: "インターネット",
-};
-
-export const GENERIC_ICON_LABELS: Record<PortalGenericIconKey, string> = {
-  applications: "アプリケーション",
-  bookmark: "ブックマーク",
-  calendar: "カレンダー",
-  camera: "カメラ",
-  chart: "グラフ",
-  chat: "チャット",
-  cloud: "クラウド",
-  code: "コード",
-  download: "ダウンロード",
-  folder: "フォルダ",
-  home: "ホーム",
-  key: "キー",
-  lock: "ロック",
-  mail: "メール",
-  music: "音楽",
-  printer: "プリンター",
-  shield: "シールド",
-  terminal: "ターミナル",
-  upload: "アップロード",
-  users: "ユーザー",
-  video: "動画",
-  gitea: "Gitea",
-  gatus: "Gatus",
-  proxmox: "Proxmox",
-  omv: "OpenMediaVault",
-  server: "サーバー",
-  database: "データベース",
-  monitor: "監視",
-  container: "コンテナ",
-  globe: "インターネット",
 };

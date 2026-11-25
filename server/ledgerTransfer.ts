@@ -3,6 +3,7 @@ import { parse, stringify } from "yaml";
 import type {
   PortalDeviceInput,
   PortalInterfaceInput,
+  PortalLineEndpointShape,
   PortalNetworkInput,
   PortalProperties,
   PortalRelationInput,
@@ -13,6 +14,7 @@ import type {
 import {
   isCidr,
   isIpWithinCidr,
+  isLineEndpointShape,
   normalizeProperties,
   validateDevicePayload,
   validateInterfacePayload,
@@ -25,7 +27,9 @@ import {
 import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 import { LEGACY_ACCENT_COLORS } from "../src/portal/colorValue";
 
-export const LEDGER_FORMAT = "ouchi-ledger/7";
+export const LEDGER_FORMAT = "ouchi-ledger/9";
+export const V8_LEDGER_FORMAT = "ouchi-ledger/8";
+export const V7_LEDGER_FORMAT = "ouchi-ledger/7";
 export const V6_LEDGER_FORMAT = "ouchi-ledger/6";
 export const V5_LEDGER_FORMAT = "ouchi-ledger/5";
 export const V4_LEDGER_FORMAT = "ouchi-ledger/4";
@@ -44,7 +48,6 @@ export interface LedgerDevice {
   hostname: string;
   petname: string | null;
   category: PortalDeviceInput["category"];
-  isVm: boolean;
   sshUser: string | null;
   sshPort: number | null;
   meterEnabled: boolean;
@@ -76,6 +79,8 @@ export interface LedgerRelation {
 export interface LedgerRelationName {
   name: string;
   color: string;
+  lineStart?: PortalLineEndpointShape;
+  lineEnd?: PortalLineEndpointShape;
 }
 
 export interface LedgerService {
@@ -162,7 +167,6 @@ type DeviceRow = {
   hostname: string;
   petname: string | null;
   category: PortalDeviceInput["category"];
-  is_vm: number;
   ssh_user: string | null;
   ssh_port: number | null;
   meter_enabled: number;
@@ -181,6 +185,8 @@ type InterfaceRow = {
 type RelationNameRow = {
   name: string;
   color: string;
+  line_start: PortalLineEndpointShape;
+  line_end: PortalLineEndpointShape;
 };
 
 type RelationRow = {
@@ -621,8 +627,50 @@ export function upgradeV6LedgerDocument(
   });
   return {
     ...root,
-    format: LEDGER_FORMAT,
+    format: V7_LEDGER_FORMAT,
     networks,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/7: devices drop the derived isVm
+ * flag (the category alone says whether a device is a VM), so the key
+ * is stripped from every device.
+ */
+export function upgradeV7LedgerDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V7_LEDGER_FORMAT) {
+    return root;
+  }
+  const devices = arrayValue(root.devices).map((item) => {
+    if (!isRecord(item)) {
+      return item;
+    }
+    const { isVm: _isVm, ...rest } = item;
+    return rest;
+  });
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
+    devices,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/8: relation names gain endpoint
+ * shapes. Documents without them validate against the defaults, so
+ * this step only advances the format.
+ */
+export function upgradeV8LedgerDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V8_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
+    format: LEDGER_FORMAT,
   };
 }
 
@@ -795,7 +843,6 @@ function validateDocument(root: RecordValue): LedgerDocument {
       hostname: textValue(item.hostname),
       petname: nullablePetname(item.petname),
       category: item.category as PortalDeviceInput["category"],
-      isVm: item.isVm as boolean,
       sshUser: nullableText(item.sshUser),
       sshPort:
         typeof item.sshPort === "number" ? item.sshPort : null,
@@ -824,6 +871,10 @@ function validateDocument(root: RecordValue): LedgerDocument {
     relationNames.push({
       name: textValue(item.name),
       color: textValue(item.color),
+      lineStart: isLineEndpointShape(item.lineStart)
+        ? item.lineStart
+        : "circle",
+      lineEnd: isLineEndpointShape(item.lineEnd) ? item.lineEnd : "circle",
     });
   });
 
@@ -900,7 +951,6 @@ function validateDocument(root: RecordValue): LedgerDocument {
     const iconKey = normalizeServiceIconReference(
       item.iconKey,
       item.faviconUrl,
-      "favicon",
     );
     const synthetic: PortalServiceInput = {
       interfaceId: index + 1,
@@ -1230,12 +1280,16 @@ function validateDocument(root: RecordValue): LedgerDocument {
 
 export function parseLedgerYaml(input: string): LedgerDocument {
   return validateDocument(
-    upgradeV6LedgerDocument(
-      upgradeV5LedgerDocument(
-        upgradeV4LedgerDocument(
-          upgradeV3LedgerDocument(
-            upgradeV2LedgerDocument(
-              upgradeLegacyLedgerDocument(parseYamlRoot(input)),
+    upgradeV8LedgerDocument(
+      upgradeV7LedgerDocument(
+        upgradeV6LedgerDocument(
+          upgradeV5LedgerDocument(
+            upgradeV4LedgerDocument(
+              upgradeV3LedgerDocument(
+                upgradeV2LedgerDocument(
+                  upgradeLegacyLedgerDocument(parseYamlRoot(input)),
+                ),
+              ),
             ),
           ),
         ),
@@ -1258,7 +1312,7 @@ export function createLedgerDocument(
     .all() as NetworkRow[];
   const devices = database
     .prepare(
-      `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
+      `SELECT id, hostname, petname, category, ssh_user, ssh_port,
               meter_enabled, note, properties
        FROM devices ORDER BY id`,
     )
@@ -1273,7 +1327,7 @@ export function createLedgerDocument(
     .all() as InterfaceRow[];
   const relationNames = database
     .prepare(
-      `SELECT name, color
+      `SELECT name, color, line_start, line_end
        FROM relation_names ORDER BY id`,
     )
     .all() as RelationNameRow[];
@@ -1350,7 +1404,6 @@ export function createLedgerDocument(
       hostname: device.hostname,
       petname: device.petname,
       category: device.category,
-      isVm: Boolean(device.is_vm),
       sshUser: device.ssh_user,
       sshPort: device.ssh_port,
       meterEnabled: Boolean(device.meter_enabled),
@@ -1361,6 +1414,12 @@ export function createLedgerDocument(
     relationNames: relationNames.map((relationName) => ({
       name: relationName.name,
       color: relationName.color,
+      ...(relationName.line_start !== "circle"
+        ? { lineStart: relationName.line_start }
+        : {}),
+      ...(relationName.line_end !== "circle"
+        ? { lineEnd: relationName.line_end }
+        : {}),
     })),
     relations: relations.map((relation) => ({
       from: {
@@ -1394,7 +1453,6 @@ export function createLedgerDocument(
       iconKey: normalizeServiceIconReference(
         service.icon_key,
         service.favicon_url,
-        "favicon",
       ),
       properties: parseStoredProperties(service.properties),
       enabled: Boolean(service.enabled),
@@ -1492,16 +1550,15 @@ export function importLedgerYaml(
     const deviceIds = new Map<string, number>();
     const insertDevice = database.prepare(
       `INSERT INTO devices
-        (hostname, petname, category, is_vm, ssh_user, ssh_port,
+        (hostname, petname, category, ssh_user, ssh_port,
          meter_enabled, note, properties)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const device of document.devices) {
       const result = insertDevice.run(
         device.hostname,
         device.petname,
         device.category,
-        device.isVm ? 1 : 0,
         device.sshUser,
         device.sshPort,
         device.meterEnabled ? 1 : 0,
@@ -1536,13 +1593,15 @@ export function importLedgerYaml(
 
     const relationNameIds = new Map<string, number>();
     const insertRelationName = database.prepare(
-      `INSERT INTO relation_names (name, color)
-       VALUES (?, ?)`,
+      `INSERT INTO relation_names (name, color, line_start, line_end)
+       VALUES (?, ?, ?, ?)`,
     );
     for (const relationName of document.relationNames) {
       const result = insertRelationName.run(
         relationName.name,
         relationName.color,
+        relationName.lineStart ?? "circle",
+        relationName.lineEnd ?? "circle",
       );
       relationNameIds.set(
         relationName.name,

@@ -37,7 +37,8 @@
   opacity: 1;
 }
 
-.ouchi-relation-connector circle {
+.ouchi-relation-connector circle,
+.ouchi-relation-connector .ouchi-relation-endpoint {
   fill: var(--ouchi-relation-color);
   stroke: #fff;
   stroke-width: 2;

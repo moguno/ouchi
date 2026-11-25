@@ -6,6 +6,7 @@ import {
   type PortalDevice,
   type PortalDeviceCategory,
   type PortalInterface,
+  type PortalLineEndpointShape,
   type PortalNetwork,
   type PortalProperties,
   type PortalRelation,
@@ -261,6 +262,36 @@ export function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value.trim());
 }
 
+export const LINE_ENDPOINT_SHAPES = [
+  "none",
+  "arrow",
+  "circle",
+  "square",
+  "diamond",
+] as const;
+
+export function isLineEndpointShape(
+  value: unknown,
+): value is PortalLineEndpointShape {
+  return (
+    typeof value === "string" &&
+    (LINE_ENDPOINT_SHAPES as readonly string[]).includes(value)
+  );
+}
+
+function lineEndpointShapeIssue(
+  value: unknown,
+  path: string,
+  label: string,
+): ValidationIssue | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return isLineEndpointShape(value)
+    ? undefined
+    : { path, message: `${label}が不正です` };
+}
+
 function relationColorIssue(
   value: unknown,
   path: string,
@@ -317,8 +348,8 @@ function accentColorIssue(
   return undefined;
 }
 
-export function isIconKey(value: unknown): value is string {
-  return isIconReference(value);
+export function isIconKey(value: unknown): boolean {
+  return value === undefined || value === null || isIconReference(value);
 }
 
 export function isStatus(value: unknown): value is PortalStatus {
@@ -417,21 +448,10 @@ function validateDevice(
   ) {
     issues.push({ path: `${path}.petname`, message: "名前が不正です" });
   }
-  if (typeof input.isVm !== "boolean") {
-    issues.push({ path: `${path}.isVm`, message: "VMフラグが不正です" });
-  }
   if (!isDeviceCategory(input.category)) {
     issues.push({
       path: `${path}.category`,
       message: "デバイスカテゴリーが不正です",
-    });
-  } else if (
-    typeof input.isVm === "boolean" &&
-    input.isVm !== (input.category === "vm")
-  ) {
-    issues.push({
-      path: `${path}.category`,
-      message: "カテゴリーとVMフラグが一致していません",
     });
   }
   if (input.ssh !== undefined) {
@@ -586,6 +606,18 @@ function validateRelationName(
   const colorIssue = relationColorIssue(input.color, `${path}.color`);
   if (colorIssue) {
     issues.push(colorIssue);
+  }
+  if (!isLineEndpointShape(input.lineStart)) {
+    issues.push({
+      path: `${path}.lineStart`,
+      message: "始点の形が不正です",
+    });
+  }
+  if (!isLineEndpointShape(input.lineEnd)) {
+    issues.push({
+      path: `${path}.lineEnd`,
+      message: "終点の形が不正です",
+    });
   }
   if (
     typeof input.relationCount !== "number" ||
@@ -1010,7 +1042,6 @@ export function validateDeviceInput(
     | "name"
     | "petname"
     | "category"
-    | "isVm"
     | "ssh"
     | "resources"
     | "meterEnabled"
@@ -1184,7 +1215,10 @@ export function validateRelationInput(
 }
 
 export function validateRelationNameInput(
-  input: Pick<PortalRelationNameInput, "name" | "color">,
+  input: Pick<
+    PortalRelationNameInput,
+    "name" | "color" | "lineStart" | "lineEnd"
+  >,
   data: PortalDataV2,
   editingId?: string,
 ): ValidationIssue[] {
@@ -1202,6 +1236,18 @@ export function validateRelationNameInput(
   }
   const colorIssue = relationColorIssue(input.color, "color");
   if (colorIssue) issues.push(colorIssue);
+  const lineStartIssue = lineEndpointShapeIssue(
+    input.lineStart,
+    "lineStart",
+    "始点の形",
+  );
+  if (lineStartIssue) issues.push(lineStartIssue);
+  const lineEndIssue = lineEndpointShapeIssue(
+    input.lineEnd,
+    "lineEnd",
+    "終点の形",
+  );
+  if (lineEndIssue) issues.push(lineEndIssue);
   return issues;
 }
 
@@ -1339,17 +1385,6 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
   if (!isDeviceCategory(input.category)) {
     issues.push({ path: "category", message: "デバイスカテゴリーが不正です" });
   }
-  if (typeof input.isVm !== "boolean") {
-    issues.push({ path: "isVm", message: "VMフラグが不正です" });
-  } else if (
-    isDeviceCategory(input.category) &&
-    input.isVm !== (input.category === "vm")
-  ) {
-    issues.push({
-      path: "category",
-      message: "カテゴリーとVMフラグが一致していません",
-    });
-  }
   if (input.sshUser !== undefined && !isNullableString(input.sshUser)) {
     issues.push({ path: "sshUser", message: "SSHユーザーが不正です" });
   }
@@ -1366,13 +1401,10 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
   if (input.note !== undefined && !isNullableString(input.note)) {
     issues.push({ path: "note", message: "メモが不正です" });
   }
-  if (
-    input.category === "service" &&
-    (input.isVm === true || input.meterEnabled === true)
-  ) {
+  if (input.category === "service" && input.meterEnabled === true) {
     issues.push({
       path: "category",
-      message: "サービスカテゴリーはVM・メーターを有効にできません",
+      message: "サービスカテゴリーはメーターを有効にできません",
     });
   }
   if (Object.hasOwn(input, "properties")) {
@@ -1459,6 +1491,22 @@ export function validateRelationNamePayload(
   const colorIssue = relationColorIssue(input.color, "color");
   if (colorIssue) {
     issues.push(colorIssue);
+  }
+  const lineStartIssue = lineEndpointShapeIssue(
+    input.lineStart,
+    "lineStart",
+    "始点の形",
+  );
+  if (lineStartIssue) {
+    issues.push(lineStartIssue);
+  }
+  const lineEndIssue = lineEndpointShapeIssue(
+    input.lineEnd,
+    "lineEnd",
+    "終点の形",
+  );
+  if (lineEndIssue) {
+    issues.push(lineEndIssue);
   }
   return issues;
 }

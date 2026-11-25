@@ -10,6 +10,7 @@ import {
 } from "./EntityFormParts";
 import type {
   PortalDataV2,
+  PortalLineEndpointShape,
   PortalRelationName,
   ValidationIssue,
 } from "./types";
@@ -36,6 +37,12 @@ export function RelationNameDialog({
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(editing?.name ?? "");
   const [color, setColor] = useState(editing?.color ?? "#d5a22b");
+  const [lineStart, setLineStart] = useState<PortalLineEndpointShape>(
+    editing?.lineStart ?? "circle",
+  );
+  const [lineEnd, setLineEnd] = useState<PortalLineEndpointShape>(
+    editing?.lineEnd ?? "circle",
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [issues, setFormIssues] = useState<ValidationIssue[]>([]);
   const [saving, setSaving] = useState(false);
@@ -49,6 +56,8 @@ export function RelationNameDialog({
       id: editing?.id ?? generateId("relation-name"),
       name: name.trim(),
       color: color.trim(),
+      lineStart,
+      lineEnd,
       relationCount: editing?.relationCount ?? 0,
     };
     const nextIssues = validateRelationNameInput(
@@ -103,6 +112,36 @@ export function RelationNameDialog({
             codeAriaLabel="関係名の色コード"
             placeholder="#d5a22b"
           />
+          <label className="ouchi-manage-field">
+            <span>始点の形</span>
+            <select
+              onChange={(event) =>
+                setLineStart(event.target.value as PortalLineEndpointShape)
+              }
+              value={lineStart}
+            >
+              <option value="none">なし</option>
+              <option value="arrow">矢印</option>
+              <option value="circle">丸</option>
+              <option value="square">四角</option>
+              <option value="diamond">ひし形</option>
+            </select>
+          </label>
+          <label className="ouchi-manage-field">
+            <span>終点の形</span>
+            <select
+              onChange={(event) =>
+                setLineEnd(event.target.value as PortalLineEndpointShape)
+              }
+              value={lineEnd}
+            >
+              <option value="none">なし</option>
+              <option value="arrow">矢印</option>
+              <option value="circle">丸</option>
+              <option value="square">四角</option>
+              <option value="diamond">ひし形</option>
+            </select>
+          </label>
         </div>
         <FormActions
           disabled={saveDisabled}

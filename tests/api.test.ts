@@ -88,9 +88,14 @@ describe("REST API v1", () => {
     const legacySchema = readFileSync(
       resolve(process.cwd(), "contract-v1/schema.sql"),
       "utf8",
-    ).replaceAll("  properties TEXT NOT NULL DEFAULT '{}',\n", "");
+    )
+      .replace(/,\n  properties TEXT NOT NULL DEFAULT '\{\}'\n/g, "\n")
+      .replace(/  properties TEXT NOT NULL DEFAULT '\{\}',\n/g, "");
     expect(legacySchema).not.toContain("properties TEXT");
     legacyDatabase.exec(legacySchema);
+    legacyDatabase.exec(
+      "ALTER TABLE devices ADD COLUMN is_vm INTEGER NOT NULL DEFAULT 0",
+    );
     legacyDatabase.exec(`
       INSERT INTO networks (id, name, cidr, accent, note)
       VALUES (1, '既存LAN', '192.168.77.0/24', 'blue', 'legacy');
@@ -145,7 +150,6 @@ describe("REST API v1", () => {
         hostname: "legacy-host",
         petname: "旧ホスト",
         category: "physical",
-        isVm: false,
         sshUser: null,
         sshPort: null,
         meterEnabled: false,
@@ -194,6 +198,9 @@ describe("REST API v1", () => {
         );\n`,
       );
     legacyDatabase.exec(legacySchema);
+    legacyDatabase.exec(
+      "ALTER TABLE devices ADD COLUMN is_vm INTEGER NOT NULL DEFAULT 0",
+    );
     legacyDatabase.exec(`
       INSERT INTO networks (id, name, accent)
       VALUES (1, '旧LAN', 'blue');
@@ -290,6 +297,9 @@ describe("REST API v1", () => {
       );\n`,
       );
     legacyDatabase.exec(prePlaceholderSchema);
+    legacyDatabase.exec(
+      "ALTER TABLE devices ADD COLUMN is_vm INTEGER NOT NULL DEFAULT 0",
+    );
     legacyDatabase.exec(`
       INSERT INTO networks (id, name, accent)
       VALUES (1, '既存LAN', 'blue');
@@ -324,7 +334,7 @@ describe("REST API v1", () => {
       .all() as Array<{ name: string }>;
     expect(
       relationNameColumns.map((column) => column.name),
-    ).toEqual(["id", "name", "color"]);
+    ).toEqual(["id", "name", "color", "line_start", "line_end"]);
     expect(migrated.relations).toEqual([
       expect.objectContaining({
         id: 7,
@@ -432,6 +442,56 @@ describe("REST API v1", () => {
         }),
       ]),
     );
+  });
+
+  it("stores relation-name endpoint shapes and exports them to YAML", async () => {
+    const created = await app.request("/api/relation-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "マウント",
+        color: "#0ea5e9",
+        lineStart: "square",
+        lineEnd: "arrow",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const portal = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(
+      portal.relationNames.find((item) => item.name === "マウント"),
+    ).toEqual(
+      expect.objectContaining({ lineStart: "square", lineEnd: "arrow" }),
+    );
+
+    const exported = await app.request("/api/export");
+    const document = parseYaml(await exported.text()) as {
+      relationNames: Array<Record<string, unknown>>;
+    };
+    expect(
+      document.relationNames.find((item) => item.name === "マウント"),
+    ).toEqual({
+      name: "マウント",
+      color: "#0ea5e9",
+      lineStart: "square",
+      lineEnd: "arrow",
+    });
+    // Default-shaped names stay out of the YAML, as before.
+    expect(
+      document.relationNames.find((item) => item.name === "ホストOS"),
+    ).toEqual({ name: "ホストOS", color: expect.any(String) });
+
+    const invalid = await app.request("/api/relation-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "不正な形",
+        color: "#0ea5e9",
+        lineEnd: "star",
+      }),
+    });
+    expect(invalid.status).toBe(400);
   });
 
   it("supports relation-name CRUD and relation edges with their own labels", async () => {
@@ -705,7 +765,7 @@ describe("REST API v1", () => {
       format: string;
       relations: Array<Record<string, unknown>>;
     };
-    expect(document.format).toBe("ouchi-ledger/7");
+    expect(document.format).toBe("ouchi-ledger/9");
     expect(document.relations).toContainEqual(
       expect.objectContaining({
         relationName: "ポート接続",
@@ -830,7 +890,6 @@ describe("REST API v1", () => {
         hostname: "delete-cascade-device",
         petname: "削除回帰機",
         category: "physical",
-        isVm: false,
         sshUser: null,
         sshPort: null,
         meterEnabled: false,
@@ -986,7 +1045,6 @@ describe("REST API v1", () => {
         hostname: "delete-childless-device",
         petname: "子要素なし",
         category: "physical",
-        isVm: false,
         sshUser: null,
         sshPort: null,
         meterEnabled: false,
@@ -1025,7 +1083,6 @@ describe("REST API v1", () => {
         hostname: "api-test",
         petname: "  API 検証機  ",
         category: "vm",
-        isVm: true,
         sshUser: "monitor",
         sshPort: 22,
         meterEnabled: true,
@@ -1043,7 +1100,6 @@ describe("REST API v1", () => {
         hostname: "api-test",
         petname: "  更新後  ",
         category: "vm",
-        isVm: true,
         sshUser: "monitor",
         sshPort: 22,
         meterEnabled: true,
@@ -1062,7 +1118,6 @@ describe("REST API v1", () => {
         hostname: "api-test",
         petname: "   ",
         category: "vm",
-        isVm: true,
         sshUser: "monitor",
         sshPort: 22,
         meterEnabled: true,
@@ -1172,7 +1227,6 @@ describe("REST API v1", () => {
       hostname: "properties-device",
       petname: "プロパティ検証機",
       category: "physical",
-      isVm: false,
       sshUser: null,
       sshPort: null,
       meterEnabled: false,
@@ -1336,7 +1390,6 @@ describe("REST API v1", () => {
       hostname: "invalid-properties-device",
       petname: null,
       category: "physical",
-      isVm: false,
       sshUser: null,
       sshPort: null,
       meterEnabled: false,
@@ -1487,7 +1540,7 @@ describe("REST API v1", () => {
       deviceKeys: unknown[];
     };
 
-    expect(document.format).toBe("ouchi-ledger/7");
+    expect(document.format).toBe("ouchi-ledger/9");
     expect(document.relationNames).toHaveLength(2);
     expect(document.relationNames[0]).toEqual(
       expect.objectContaining({
@@ -1925,8 +1978,8 @@ describe("REST API v1", () => {
         "dashboard:plex",
         "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg",
       ],
-      ["legacy-preset", "preset:gitea", "generic:gitea"],
       ["favicon-icon", "favicon", "favicon"],
+      ["unset-icon", null, null],
       [
         "url-icon",
         "url:https://icons.example/custom.svg",
@@ -1956,12 +2009,35 @@ describe("REST API v1", () => {
         expect.objectContaining({ iconKey: expected }),
       );
     }
+    // Retired generic / preset references canonicalize to unset on write.
+    const legacy = await app.request("/api/services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        interfaceId: iface.id,
+        subdomain: "legacy-preset",
+        petname: "legacy-preset",
+        description: null,
+        port: 8080,
+        protocol: "tcp",
+        scheme: "http",
+        topPath: "/",
+        monitorPath: "/",
+        serviceUrl: null,
+        iconKey: "preset:gitea",
+        enabled: true,
+      }),
+    });
+    expect(legacy.status).toBe(201);
+    expect(await json<PortalApiService>(legacy)).toEqual(
+      expect.objectContaining({ iconKey: null }),
+    );
     expect(
       (await app.request("/api/icons/dashboard/plex")).status,
     ).toBe(404);
   });
 
-  it("round-trips generic, favicon, and URL references through YAML", async () => {
+  it("round-trips unset, favicon, and URL references through YAML", async () => {
     const services = database.listServices();
     database.database
       .prepare("UPDATE services SET icon_key = ? WHERE id = ?")
@@ -1989,15 +2065,17 @@ describe("REST API v1", () => {
     expect(exported.services.map((service) => service.iconKey)).toEqual(
       expect.arrayContaining([
         "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg",
-        "generic:mail",
-        "generic:gitea",
+        null,
+        null,
         "favicon",
         "url:https://icons.example/custom.svg",
       ]),
     );
     expect(
-      exported.services.every((service) =>
-        /^(?:generic:|url:|favicon$)/.test(service.iconKey ?? ""),
+      exported.services.every(
+        (service) =>
+          service.iconKey === null ||
+          /^(?:url:|favicon$)/.test(service.iconKey),
       ),
     ).toBe(true);
 
@@ -2015,7 +2093,8 @@ describe("REST API v1", () => {
     legacyImport.services[1].iconKey = "preset:gitea";
     legacyImport.services[2].iconKey = "generic:mail";
     legacyImport.services[3].iconKey = "favicon";
-    legacyImport.services[4].iconKey = null;
+    // A legacy file carries only faviconUrl, with no iconKey field at all.
+    delete (legacyImport.services[4] as { iconKey?: string | null }).iconKey;
     legacyImport.services[4].faviconUrl =
       "https://icons.example/legacy-favicon.png";
     try {
@@ -2035,15 +2114,17 @@ describe("REST API v1", () => {
       expect(reExported.services.map((service) => service.iconKey)).toEqual(
         expect.arrayContaining([
           "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg",
-          "generic:mail",
-          "generic:gitea",
+          null,
+          null,
           "favicon",
           "url:https://icons.example/legacy-favicon.png",
         ]),
       );
       expect(
-        reExported.services.every((service) =>
-          /^(?:generic:|url:|favicon$)/.test(service.iconKey ?? ""),
+        reExported.services.every(
+          (service) =>
+            service.iconKey === null ||
+            /^(?:url:|favicon$)/.test(service.iconKey),
         ),
       ).toBe(true);
       expect(

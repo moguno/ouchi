@@ -16,15 +16,20 @@
 - サービスは `interface_id` で I/F を参照する
 - REST は `/api/interfaces` の CRUD（旧 `/api/memberships` は廃止）。
   MCP ツールも `*_interface` に改名（総数38は不変）
-- YAML は `format: ouchi-ledger/7`。/3→/4 変換は移行007と同じ規則
+- YAML は `format: ouchi-ledger/9`。/3→/4 変換は移行007と同じ規則
   （所属→ eth0, eth1, …、関係端点は共有ネットワークのヒューリスティクス）、
   /4→/5 は I/F への MAC アドレス（任意）追加に伴う形式だけの前進、
   /5→/6 は I/F の表示ラベル削除（項目を取り除く）、
   /6→/7 はネットワークのアクセントをトーン名から自由色へ
-  （トーン名はパレットの hex 値に変換）
+  （トーン名はパレットの hex 値に変換）、
+  /7→/8 は VM フラグ廃止（デバイスから `isVm` を取り除く）、
+  /8→/9 は関係名の端点形状追加に伴う形式だけの前進
 - 起動時移行007が所属を I/F 化し、関係端点を付け替える。
   移行008は I/F に `mac`（NULL可）を追加し、移行009は I/F の `label` を削除、
-  移行010はネットワークの `accent` のトーン名を hex 値に変換する
+  移行010はネットワークの `accent` のトーン名を hex 値に変換、
+  移行011は devices を再構築して `is_vm` を削除、
+  移行012は関係名に端点形状 `line_start` / `line_end`
+  （none / arrow / circle / square / diamond、既定は circle）を追加する
 
 ## 前の優先仕様: ラベルは関係側（2026-11-23、もぐの決定）
 
@@ -32,7 +37,9 @@
 `ADDENDUM-24-SUPPLEMENT-1.md`、`schema.sql` v0.6 より、`schema.sql` v0.7
 と移行006を優先する。
 
-- 関係名 `relation_names(id, name, color)` は名前と色だけのカテゴリー
+- 関係名 `relation_names(id, name, color, line_start, line_end)` は
+  名前・色・線の端点形状だけのカテゴリー。端点形状は始点・終点ごとに
+  none / arrow / circle / square / diamond から選ぶ（既定は circle）
 - 始点／終点ラベルは関係ごとに自由文で持つ。空のラベルは表示しない
   （関係名へのフォールバックはしない。`{}` テンプレートと
   プレースホルダーは廃止）
@@ -40,11 +47,14 @@
   from_label, to_label)` は（関係名、始点I/F、終点I/F、始点ラベル、終点ラベル）を
   一意とする
 - 使用中の関係名削除は409。同じI/Fペアに異なる関係名を併存できる
-- YAML は `format: ouchi-ledger/7` と `relationNames` を使う。旧形式は
+- YAML は `format: ouchi-ledger/9` と `relationNames` を使う。旧形式は
   1段ずつの変換で取り込む（/1→/2 はタグのグルーピング、/2→/3 は
   テンプレートを各関係のラベルへ展開、/3→/4 は所属のI/F化、
   /4→/5 は I/F の MAC 追加に伴う形式の前進、/5→/6 は I/F の表示ラベル削除、
-  /6→/7 はネットワークのアクセントのトーン名→ hex 変換）
+  /6→/7 はネットワークのアクセントのトーン名→ hex 変換、
+  /7→/8 は VM フラグ廃止、/8→/9 は端点形状追加に伴う形式の前進）。
+  端点形状は `lineStart` / `lineEnd` として、既定（circle）でない
+  端点だけを書き出す
 - REST は `/api/relation-names` の CRUD と、関係名を名前で指定する関係 CRUD
   を使う。旧 `PUT /api/relations/tags/:tag/color` は廃止
 - 起動時移行004が旧関係をタグでグルーピングし、最初の関係から色・ラベルを
@@ -74,10 +84,10 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 
 ## 2. 契約：台帳 v0.4 の要点
 
-- 階層：ネットワーク → デバイス（物理/VM 統合、category network / physical / vm / service、`is_vm` は CHECK で category と一致）→ サービス。**category=service は外部SaaSの疑似デバイス**：所属の IP は持たず（NULL）、SSH・メーター対象外で、配下サービスの `service_url` が完全な URL。インターネットを特別視しないための汎用化（2026-11-21 決定、スキーマ v0.4 が契約）
+- 階層：ネットワーク → デバイス（物理/VM 統合、category network / physical / vm / service）→ サービス。**category=service は外部SaaSの疑似デバイス**：所属の IP は持たず（NULL）、SSH・メーター対象外で、配下サービスの `service_url` が完全な URL。インターネットを特別視しないための汎用化（2026-11-21 決定、スキーマ v0.4 が契約）
 - **IP はデバイス本体に持たない**。所属（device_networks）に `id / ip / label` を持たせ、サービスは `device_network_id` で所属を参照する。同じデバイスが複数ネットワークに顔を出す（FortiGate はインターネット側 IP 未登録＋おうちLAN 192.168.0.1）のはこの多対多で表す
 - 関係性は汎用モデル：`relations`（from_device_id / to_device_id / tag / from_label / to_label / color）。固定の種別なし。タグは自由文字列で、同じタグを持つ関係は全件同じ色でなければならない。色を変える場合はタグ単位で全関係へ反映する。1デバイスに複数関係可、同じ相手に複数タグ可。表示ラベルの解決は、注目デバイスが from 側なら `from_label ?? tag`、to 側なら `to_label ?? tag`。`parent_device_id` は廃止済み
-- サービス：`subdomain`（リダイレクタのパス名）、`scheme`（http/https）、`port`、`protocol`（tcp/udp）、`top_path`（空＝`/`）、`monitor_path`（空＝ top_path で代用）、`service_url`（完全 URL の上書き、通常は空）、`icon_key`（`generic:<key>` / `favicon` / `url:<http(s)-image-url>`）、`enabled`
+- サービス：`subdomain`（リダイレクタのパス名）、`scheme`（http/https）、`port`、`protocol`（tcp/udp）、`top_path`（空＝`/`）、`monitor_path`（空＝ top_path で代用）、`service_url`（完全 URL の上書き、通常は空）、`icon_key`（未設定＝NULL / `favicon` / `url:<http(s)-image-url>`）、`enabled`
 - サービスの稼働状態は **DB に持たない**。状態は外部プロバイダから読む差し込み式にする（第一候補は Gatus API）。**2026-11-21 決定で Gatus 連携はオプションに降格**：v1 のポータルは Gatus なしでも成立させ、プロバイダ未接続時は status を付けない
 - メーター：メモリ % と `/` のディスク % のみ。**CPU は対象外**。取得は SSH＋Linux コマンド（`free` / `df -P /`）。`meter_enabled=0` の機器（スイッチ・AP・FortiGate）は対象外。収集専用キーペアの秘密鍵は SOPS 経由で供給し、DB には入れない
 - 削除ルール：デバイス削除は、紐づくサービスが残っていたら**削除不可**（連鎖削除しない。先にサービスの移動か削除が必要）。relations の削除は行単位
@@ -107,7 +117,7 @@ GUI のモック脱出。v1 としてリリースする **GUI表示＋GUI設定�
 モックの PortalDataV2 の形に、DB の内容を組み立てて返す。生のテーブルをそのまま返さない。
 
 - networks：`id, name, cidr, accent, note`
-- devices：`id, hostname, petname, category, isVm, sshUser, sshPort, meterEnabled, interfaces: [{ id, name, networkId, ip, label }]`
+- devices：`id, hostname, petname, category, sshUser, sshPort, meterEnabled, interfaces: [{ id, name, networkId, ip, label }]`
 - services：`id, interfaceId, subdomain, petname, description, port, protocol, scheme, topPath, monitorPath, serviceUrl, iconKey, enabled` に加え、組み立て済みの `url`（リダイレクト先）と `monitorUrl` を含める
 - relations：`id, fromDeviceId, toDeviceId, fromInterfaceId, toInterfaceId, fromInterfaceName, toInterfaceName, relationName, fromLabel, toLabel, color`
 - status：状態プロバイダ（Gatus 等）が接続されている場合のみ、サービスごとに `status: up / down / maintenance` を付ける。未接続時は status 自体を付けない（下記 3.4）

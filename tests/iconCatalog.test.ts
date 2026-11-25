@@ -1,119 +1,127 @@
 import { describe, expect, it } from "vitest";
 import {
-  DASHBOARD_ICON_INDEX,
-  dashboardIconReference,
-  dashboardIconCount,
   iconReferenceId,
   iconReferenceKind,
   iconReferenceLabel,
   isIconReference,
-  normalizeIconReference,
+  isLegacyGenericIconReference,
   normalizeServiceIconReference,
-  searchBuiltInIcons,
-  searchDashboardIcons,
+  parseIconReference,
+  tryNormalizeIconReference,
 } from "../src/portal/iconCatalog";
 
+const DASHBOARD_CDN =
+  "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg";
+
 describe("icon catalog", () => {
-  it("bundles an offline dashboard-icons index with slug and display name", () => {
-    expect(dashboardIconCount()).toBeGreaterThanOrEqual(200);
-    expect(DASHBOARD_ICON_INDEX.icons).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ slug: "grafana", name: "Grafana" }),
-        expect.objectContaining({ slug: "plex", name: "Plex" }),
-      ]),
+  it("accepts exactly favicon and URL references", () => {
+    expect(tryNormalizeIconReference("favicon")).toBe("favicon");
+    expect(tryNormalizeIconReference("https://example.com/icon.svg")).toBe(
+      "url:https://example.com/icon.svg",
     );
-  });
-
-  it("searches the bundled dashboard index without network access", () => {
-    expect(searchDashboardIcons("grafana")).toEqual([
-      expect.objectContaining({ slug: "grafana", name: "Grafana" }),
-    ]);
-    expect(searchDashboardIcons("home assistant")).toEqual([
-      expect.objectContaining({
-        slug: "home-assistant",
-        name: "Home Assistant",
-      }),
-    ]);
-    expect(searchDashboardIcons("does-not-exist")).toEqual([]);
-  });
-
-  it("filters all bundled generic icons in one group", () => {
-    expect(searchBuiltInIcons("メール")).toEqual([
-      expect.objectContaining({
-        reference: "generic:mail",
-        kind: "generic",
-      }),
-    ]);
-    expect(searchBuiltInIcons("proxmox")).toEqual([
-      expect.objectContaining({
-        reference: "generic:proxmox",
-        kind: "generic",
-      }),
-    ]);
-  });
-
-  it("keeps all legacy preset keys in the generic catalog", () => {
-    const options = searchBuiltInIcons("");
-    for (const key of [
-      "gitea",
-      "gatus",
-      "proxmox",
-      "omv",
-      "server",
-      "database",
-      "monitor",
-      "container",
-      "globe",
-    ]) {
-      expect(normalizeIconReference(key)).toBe(`generic:${key}`);
-      expect(options).toContainEqual(
-        expect.objectContaining({
-          reference: `generic:${key}`,
-          kind: "generic",
-        }),
-      );
-    }
-  });
-
-  it("normalizes generic, favicon, URL, and legacy references", () => {
-    expect(normalizeIconReference("gitea")).toBe("generic:gitea");
-    expect(normalizeIconReference("preset:gitea")).toBe("generic:gitea");
-    expect(normalizeIconReference("generic:mail")).toBe("generic:mail");
-    expect(normalizeIconReference("favicon")).toBe("favicon");
     expect(
-      normalizeIconReference("url:https://example.com/icon.svg"),
+      tryNormalizeIconReference("url:https://example.com/icon.svg"),
     ).toBe("url:https://example.com/icon.svg");
-    expect(normalizeIconReference("dashboard:Plex")).toBe(
-      dashboardIconReference("plex"),
-    );
-    expect(iconReferenceKind("dashboard:plex")).toBe("url");
-    expect(iconReferenceLabel("dashboard:plex")).toBe("Plex");
-    expect(iconReferenceKind("favicon")).toBe("favicon");
-    expect(iconReferenceId("url:https://example.com/icon.svg")).toBe(
-      "https://example.com/icon.svg",
-    );
-    expect(normalizeIconReference("not-valid")).toBe(
-      "generic:applications",
-    );
     expect(isIconReference("favicon")).toBe(true);
     expect(isIconReference("url:https://example.com/a:b.svg")).toBe(true);
     expect(isIconReference("url:not-a-url")).toBe(false);
+    expect(isIconReference(null)).toBe(false);
+    expect(isIconReference("not-valid")).toBe(false);
+  });
+
+  it("converts legacy dashboard references to their CDN image URL", () => {
+    expect(tryNormalizeIconReference("dashboard:Plex")).toBe(
+      `url:${DASHBOARD_CDN}/plex.svg`,
+    );
+    expect(normalizeServiceIconReference("dashboard:grafana")).toBe(
+      `url:${DASHBOARD_CDN}/grafana.svg`,
+    );
+    expect(iconReferenceKind("dashboard:plex")).toBe("url");
+  });
+
+  it("retires generic and preset references to unset", () => {
+    for (const legacy of [
+      "generic:mail",
+      "generic:gitea",
+      "preset:gitea",
+      "gitea",
+      "globe",
+    ]) {
+      expect(isLegacyGenericIconReference(legacy)).toBe(true);
+      expect(tryNormalizeIconReference(legacy)).toBeUndefined();
+      expect(isIconReference(legacy)).toBe(false);
+      expect(normalizeServiceIconReference(legacy)).toBeNull();
+      expect(iconReferenceKind(legacy)).toBe("unset");
+    }
+    expect(isLegacyGenericIconReference("favicon")).toBe(false);
+    expect(isLegacyGenericIconReference("url:https://example.com/x.svg")).toBe(
+      false,
+    );
+    expect(isLegacyGenericIconReference(null)).toBe(false);
+  });
+
+  it("parses kinds, ids, and labels for the three choices", () => {
+    expect(parseIconReference(null)).toEqual({
+      kind: "unset",
+      id: "",
+      reference: null,
+    });
+    expect(parseIconReference("favicon")).toEqual({
+      kind: "favicon",
+      id: "",
+      reference: "favicon",
+    });
+    expect(parseIconReference("url:https://example.com/icon.svg")).toEqual({
+      kind: "url",
+      id: "https://example.com/icon.svg",
+      reference: "url:https://example.com/icon.svg",
+    });
+    expect(iconReferenceId("url:https://example.com/icon.svg")).toBe(
+      "https://example.com/icon.svg",
+    );
+    expect(iconReferenceId("favicon")).toBe("");
+    expect(iconReferenceId(null)).toBe("");
+    expect(iconReferenceLabel("favicon")).toBe("favicon");
+    expect(iconReferenceLabel("url:https://example.com/icon.svg")).toBe(
+      "URLアイコン",
+    );
+    expect(iconReferenceLabel(null)).toBe("未設定");
+    expect(iconReferenceLabel("generic:mail")).toBe("未設定");
   });
 
   it("uses a legacy faviconUrl only when no icon reference exists", () => {
     expect(
       normalizeServiceIconReference(
-        null,
+        undefined,
         "https://service.example/icon.png",
-        "generic:applications",
       ),
     ).toBe("url:https://service.example/icon.png");
+    // An explicit unset wins over the legacy URL.
+    expect(
+      normalizeServiceIconReference(null, "https://service.example/icon.png"),
+    ).toBeNull();
+    // A retired generic reference becomes unset, not the legacy URL.
     expect(
       normalizeServiceIconReference(
         "generic:mail",
         "https://service.example/icon.png",
-        "generic:applications",
       ),
-    ).toBe("generic:mail");
+    ).toBeNull();
+    // A valid reference wins over the legacy URL.
+    expect(
+      normalizeServiceIconReference(
+        "favicon",
+        "https://service.example/icon.png",
+      ),
+    ).toBe("favicon");
+  });
+
+  it("falls back only for absent or unknown values", () => {
+    expect(normalizeServiceIconReference(undefined)).toBeNull();
+    expect(normalizeServiceIconReference("not-valid")).toBeNull();
+    expect(normalizeServiceIconReference(undefined, undefined, "favicon")).toBe(
+      "favicon",
+    );
+    expect(normalizeServiceIconReference(null, undefined, "favicon")).toBeNull();
   });
 });

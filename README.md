@@ -13,7 +13,7 @@ v1 は LAN 内利用を前提とした認証なしの構成です。
   両端のラベルは関係ごとに自由文で付けられる（空なら関係名を表示）
 - 管理画面からネットワーク／デバイス／サービス／関係を追加・編集・削除
 - デバイス／サービス本体へ任意のキーバリュー `properties` を保存
-- dashboard-icons と同梱汎用アイコンを文字列検索してサービスへ設定
+- サービスアイコンは未設定／favicon／画像 URL の3択から設定
 - 外部 SaaS（Notion など）もサービスとして登録可能
 - ポータルのタイトルを管理画面から変更可能
 - 設定一式を YAML でエクスポート／インポート（バックアップとバージョン移行用）
@@ -93,7 +93,11 @@ eth1, … と名付けたインターフェースになり、所属のなかっ�
 移行008はインターフェースに MAC アドレス（任意、NULL可）を追加します。
 移行009はインターフェースの表示ラベルを削除します（表示箇所がなく、
 端点のメモは関係のラベルが担います）。
-YAML 形式は `ouchi-ledger/7` で、旧形式からは1段ずつの変換で取り込みます。
+移行010はネットワークのアクセント色を自由色に変え、移行011は
+デバイスの VM フラグを廃止します（カテゴリーで判別）。
+移行012は関係名に線の端点形状を追加します。始点・終点ごとに
+なし／矢印／●／■／◆ から選べます（既定は ●）。
+YAML 形式は `ouchi-ledger/9` で、旧形式からは1段ずつの変換で取り込みます。
 
 バックアップは稼働中に `sqlite3 .backup` を使ってください。
 
@@ -255,7 +259,7 @@ HTTP 409 も同様です。（関係名、始点、終点、始点ラベル、
 `GET /api/portal` は次の表示用データを返します。
 
 - ネットワーク: `id, name, cidr, accent, note`
-- デバイス: `id, hostname, petname, properties, category, isVm, sshUser,
+- デバイス: `id, hostname, petname, properties, category, sshUser,
   sshPort, meterEnabled, interfaces`
 - インターフェース: `id, deviceId, name, networkId, ip, label`
 - サービス: DB列と `properties` に組み立て済みの `url` / `monitorUrl` を追加
@@ -366,36 +370,22 @@ HTTP 400 で拒否します。
 
 ### サービスアイコン
 
-アイコン参照は次の3形式だけです。
+アイコンは次の3つの選択肢だけです。ビルトインのアイコンカタログは
+持ちません。
 
-- `generic:<key>`: アプリ同梱の汎用アイコン。既存9キー
-  （`gitea`、`gatus`、`proxmox`、`omv`、`server`、`database`、
-  `monitor`、`container`、`globe`）も含みます。
+- 未設定（`null`）: アプリが抱える専用アイコン（1つだけ）を表示します。
 - `favicon`: サービス URL の origin にある `/favicon.ico` を使います。
 - `url:<http(s)-image-url>`: 明示した画像 URL を使います。
 
-旧 YAML の `gitea` などは `generic:gitea`、`preset:gitea` は
-`generic:gitea` に正規化します。`dashboard:plex` は
+管理画面のアイコンピッカーもこの3択で、URL は直接入力します。
+`favicon` または `url:` の画像読み込みに失敗した場合も、未設定と同じ
+専用アイコンを代替表示します。
+
+旧形式の参照は読み込み／インポート時に正規化します。`dashboard:plex` は
 `url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg`
-へ正規化します。読み込み／インポート時に正規化し、エクスポートでは3形式だけを
-出力します。
-
-管理画面の検索ピッカーは、同梱索引
-`src/data/dashboard-icons-index.json` をローカル検索するため、オフラインでも
-候補名と slug を絞り込めます。索引は次のコマンドで jsDelivr の
-dashboard-icons メタデータから再生成できます。
-
-```bash
-npm run generate:icon-index
-```
-
-検索候補を選ぶと、対応する
-`https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/<slug>.svg` を
-`url:` 参照として保存します。ローカル SVG キャッシュは使用しません。
-`favicon` または `url:` の画像読み込みに失敗した場合は
-`generic:applications` を代替表示します。読み取り専用デモは同梱 generic
-アイコンだけで描画します。全30キーの汎用アイコンは本プロジェクトで作成した
-Apache-2.0 の独自 SVG です。
+へ、廃止した同梱汎用アイコン（`generic:<key>`、`preset:<key>`、旧キーの
+ベア名）は未設定（`null`）へ変換します。エクスポートでは3つの選択肢だけを
+出力します。DB は移行013で保存済みの旧参照を同じ規則で変換します。
 
 ### URL 組み立て
 

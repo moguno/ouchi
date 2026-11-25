@@ -18,38 +18,21 @@ function relation(partial: Partial<PortalRelation>): PortalRelation {
   } as PortalRelation;
 }
 
-describe("deviceVisual endpoint tags", () => {
-  // Device 10 is selected; device 20 has two interfaces (200, 201) and
-  // one relation each. A card must show only its own interface's tag.
+describe("deviceVisual", () => {
   const relations = [
-    relation({ id: "1", toInterfaceId: "200", toLabel: "PD" }),
-    relation({
-      id: "2",
-      toInterfaceId: "201",
-      toLabel: "PD2",
-      relationName: "L2",
-      color: "green",
-    }),
+    relation({ id: "1" }),
+    relation({ id: "2", relationName: "L2", color: "green" }),
   ];
 
-  it("shows every tag when no interface is given", () => {
+  it("marks devices related to the selection with the first relation color", () => {
     const visual = deviceVisual("20", "10", relations);
     expect(visual.mode).toBe("related");
-    expect(visual.tags.map((tag) => tag.label)).toEqual(["PD", "PD2"]);
+    expect(visual.color).toBe("red");
   });
 
-  it("filters tags to the card's interface", () => {
-    expect(
-      deviceVisual("20", "10", relations, "200").tags.map((t) => t.label),
-    ).toEqual(["PD"]);
-    expect(
-      deviceVisual("20", "10", relations, "201").tags.map((t) => t.label),
-    ).toEqual(["PD2"]);
-  });
-
-  it("keeps the related highlight even when the card has no tag", () => {
-    const visual = deviceVisual("20", "10", relations, "999");
-    expect(visual.mode).toBe("related");
-    expect(visual.tags).toEqual([]);
+  it("marks the selected device itself and unrelated devices", () => {
+    expect(deviceVisual("10", "10", relations).mode).toBe("selected");
+    expect(deviceVisual("30", "10", relations).mode).toBe("neutral");
+    expect(deviceVisual("20", undefined, relations).mode).toBe("neutral");
   });
 });

@@ -58,7 +58,14 @@ import {
   PortalConnectorLayer,
   usePortalConnectors,
 } from "./PortalConnectorLayer";
-import { IconBoard, ListBoard } from "./PortalBoard";
+import { IconBoard, ListBoard, RelationFilterBar } from "./PortalBoard";
+import {
+  loadRelationDisplayModes,
+  nextRelationDisplayMode,
+  relationDisplayMode,
+  saveRelationDisplayModes,
+  type RelationDisplayModes,
+} from "./relationDisplay";
 import { RelationDialog } from "./RelationDialog";
 import type { EntityKind, ManageTab } from "./managementTypes";
 import {
@@ -120,7 +127,6 @@ function toDeviceInput(device: PortalDevice): PortalDeviceInput {
     petname: device.petname?.trim() || null,
     properties: device.properties ?? {},
     category: device.category,
-    isVm: device.isVm,
     sshUser: device.ssh?.user || null,
     sshPort: device.ssh?.port ?? null,
     meterEnabled: device.meterEnabled ?? false,
@@ -194,6 +200,21 @@ export function OuchiPortal({
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(
     initialSelectedDeviceId,
   );
+  const [relationModes, setRelationModes] = useState<RelationDisplayModes>(
+    loadRelationDisplayModes,
+  );
+  const cycleRelationMode = (relationName: string) => {
+    setRelationModes((previous) => {
+      const next = {
+        ...previous,
+        [relationName]: nextRelationDisplayMode(
+          relationDisplayMode(previous, relationName),
+        ),
+      };
+      saveRelationDisplayModes(next);
+      return next;
+    });
+  };
   const portalRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [demoServiceNoticeOpen, setDemoServiceNoticeOpen] = useState(false);
@@ -205,6 +226,7 @@ export function OuchiPortal({
     canvasRef,
     data: portalData,
     layoutMode: viewMode,
+    relationModes,
     selectedDeviceId,
   });
 
@@ -715,6 +737,8 @@ export function OuchiPortal({
       const input = {
         name: relationName.name,
         color: relationName.color,
+        lineStart: relationName.lineStart,
+        lineEnd: relationName.lineEnd,
       };
       if (
         portalData.relationNames.some(
@@ -741,7 +765,9 @@ export function OuchiPortal({
   }
 
 
-  const vmCount = portalData.devices.filter((device) => device.isVm).length;
+  const vmCount = portalData.devices.filter(
+    (device) => device.category === "vm",
+  ).length;
   const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.interfaces.length}インターフェース、${portalData.relations.length}関係、${portalData.services.length}サービス`;
   const memoDevice = deviceMemoId
     ? portalData.devices.find((item) => item.id === deviceMemoId)
@@ -985,6 +1011,12 @@ export function OuchiPortal({
         </div>
       </header>
 
+      <RelationFilterBar
+        modes={relationModes}
+        onCycle={cycleRelationMode}
+        relationNames={portalData.relationNames}
+      />
+
       <div className="ouchi-canvas" ref={canvasRef}>
         <PortalConnectorLayer
           connectors={relationConnectors}
@@ -1032,6 +1064,7 @@ export function OuchiPortal({
         ) : viewMode === "icons" ? (
           <IconBoard
             data={portalData}
+            relationModes={relationModes}
             demoMode={isReadOnly}
             allowRemoteIcons={!isReadOnly}
             iconBaseUrl={apiBaseUrl}
@@ -1042,6 +1075,7 @@ export function OuchiPortal({
         ) : (
           <ListBoard
             data={portalData}
+            relationModes={relationModes}
             demoMode={isReadOnly}
             onDemoServiceClick={() => setDemoServiceNoticeOpen(true)}
             onSelect={toggleSelection}

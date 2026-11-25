@@ -1,4 +1,11 @@
--- ouchi.local ledger schema v0.11 (2026-11-24)
+-- ouchi.local ledger schema v0.14 (2026-11-25)
+-- v0.14 shrinks service icons to three choices (migration 013): the
+-- service's favicon, an explicit image URL, or unset (NULL). Stored
+-- generic / preset references become unset; dashboard references
+-- become their CDN image URL.
+-- v0.13 gives relation names endpoint shapes (migration 012): each end
+-- of a relation line is one of none / arrow / circle / square / diamond,
+-- defaulting to the circle dots the portal has always drawn.
 -- v0.11 turns the network accent into a free CSS color (migration 010):
 -- the five tone names become their palette hex values, and the portal
 -- derives its accent shades from the stored color. v0.10 drops the
@@ -15,7 +22,8 @@
 -- logical interfaces (ポート1-1, ポート1-2), one network context each.
 -- Migration 007 converts existing ledgers.
 -- Addendum 24 separates reusable relation definitions from relation edges.
---  * relation_names is a pure category: natural key + colour only.
+--  * relation_names is a pure category: natural key, colour, and the
+--    endpoint shapes of its lines (line_start / line_end).
 --  * relations stores the relation-name reference, both devices and both
 --    endpoint labels as free text.
 --  * the same device pair may have multiple relation names, while
@@ -40,7 +48,8 @@
 --  * IPs live on memberships (device_networks.ip), not on devices;
 --    services reference a membership (device_network_id), matching the
 --    Codex mock's PortalDataV2 shape so the GUI can escape the mock.
---  * devices.category (network/physical/vm); is_vm kept consistent by CHECK.
+--  * devices.category (network/physical/vm/service). v0.12 dropped the
+--    derived is_vm flag; the category alone says whether a device is a VM.
 -- This file is a DRAFT: app/schema.sql (v0.1) stays the live vertical
 -- slice until this is reviewed and deployed.
 CREATE TABLE IF NOT EXISTS networks (
@@ -56,13 +65,11 @@ CREATE TABLE IF NOT EXISTS devices (
   petname TEXT,
   category TEXT NOT NULL DEFAULT 'physical'
     CHECK (category IN ('network', 'physical', 'vm', 'service')),
-  is_vm INTEGER NOT NULL DEFAULT 0 CHECK (is_vm IN (0, 1)),
   ssh_user TEXT,
   ssh_port INTEGER CHECK (ssh_port BETWEEN 1 AND 65535),
   meter_enabled INTEGER NOT NULL DEFAULT 1,
   note TEXT,
-  properties TEXT NOT NULL DEFAULT '{}',
-  CHECK (is_vm = (category = 'vm'))
+  properties TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS interfaces (
   id INTEGER PRIMARY KEY,
@@ -76,7 +83,11 @@ CREATE TABLE IF NOT EXISTS interfaces (
 CREATE TABLE IF NOT EXISTS relation_names (
   id INTEGER PRIMARY KEY,
   name TEXT UNIQUE NOT NULL,
-  color TEXT NOT NULL
+  color TEXT NOT NULL,
+  line_start TEXT NOT NULL DEFAULT 'circle'
+    CHECK (line_start IN ('none', 'arrow', 'circle', 'square', 'diamond')),
+  line_end TEXT NOT NULL DEFAULT 'circle'
+    CHECK (line_end IN ('none', 'arrow', 'circle', 'square', 'diamond'))
 );
 CREATE TABLE IF NOT EXISTS relations (
   id INTEGER PRIMARY KEY,
@@ -106,7 +117,7 @@ CREATE TABLE IF NOT EXISTS services (
   service_url TEXT,
   top_path TEXT,
   monitor_path TEXT,
-  -- Canonical values: generic:<key>, favicon, url:<http(s)-image-url>.
+  -- Canonical values: NULL (unset), favicon, url:<http(s)-image-url>.
   -- favicon_url remains only as a legacy import/read compatibility column.
   icon_key TEXT,
   favicon_url TEXT,

@@ -59,18 +59,20 @@ describe("YAML data source", () => {
       domain: "ouchi.example",
       title: "あなたのおうち環境",
     });
-    expect(data.networks).toHaveLength(4);
-    expect(data.devices).toHaveLength(19);
-    expect(data.interfaces).toHaveLength(21);
-    expect(data.relations).toHaveLength(5);
-    expect(data.services).toHaveLength(16);
+    expect(data.networks).toHaveLength(6);
+    expect(data.devices).toHaveLength(25);
+    expect(data.interfaces).toHaveLength(29);
+    expect(data.relations).toHaveLength(10);
+    expect(data.services).toHaveLength(22);
     expect(data.devices.every((device) => Boolean(device.petname))).toBe(true);
     expect(
       data.devices.find((device) => device.name === "cedar-host")?.petname,
     ).toBe("Alicia");
     expect(
-      data.services.every((service) =>
-        /^(?:generic:|url:|favicon$)/.test(service.iconKey),
+      data.services.every(
+        (service) =>
+          service.iconKey === null ||
+          /^(?:url:|favicon$)/.test(service.iconKey),
       ),
     ).toBe(true);
     expect(data.networks.map((network) => network.id)).toEqual([
@@ -78,12 +80,16 @@ describe("YAML data source", () => {
       "network-2",
       "network-3",
       "network-4",
+      "network-5",
+      "network-6",
     ]);
     expect(data.networks.map((network) => network.name)).toEqual([
       "インターネット",
       "家族用LAN",
       "ホームラボ",
       "個人ネットワーク",
+      "データ基盤",
+      "アプリ基盤",
     ]);
     expect(data.devices.find((device) => device.name === "l3-switch")).toEqual(
       expect.objectContaining({
@@ -129,7 +135,7 @@ describe("YAML data source", () => {
     );
     expect(
       data.relationNames.map((relationName) => relationName.color),
-    ).toEqual(["#d48a2f"]);
+    ).toEqual(["#d48a2f", "#c2185b", "#0277bd", "#f4511e", "#558b2f"]);
   });
 
   it("upgrades ouchi-ledger/2 documents by expanding label templates", () => {
@@ -446,28 +452,36 @@ describe("YAML data source", () => {
 
   it("normalizes generic, favicon, URL, and legacy dashboard references", () => {
     const yaml = sampleYaml
-      .replace("    iconKey: generic:server", "    iconKey: generic:mail")
-      .replace("    iconKey: generic:gitea", "    iconKey: dashboard:gitea")
-      .replace("    iconKey: generic:database", "    iconKey: favicon")
+      .replace("    iconKey: favicon", "    iconKey: generic:mail")
       .replace(
-        "    iconKey: generic:proxmox",
+        "    iconKey: url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/google-drive.svg",
+        "    iconKey: dashboard:gitea",
+      )
+      .replace(
+        "    iconKey: favicon",
         "    iconKey: url:https://icons.example/proxmox.svg",
       );
     const data = ledgerYamlToPortalData(yaml);
+    const bySubdomain = new Map(
+      data.services.map((service) => [service.subdomain, service.iconKey]),
+    );
 
+    // Retired generic references become unset.
+    expect(bySubdomain.get("home")).toBeNull();
+    // Legacy dashboard references become their CDN image URL.
+    expect(bySubdomain.get("lumen-notes")).toBe(
+      "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gitea.svg",
+    );
+    // Explicit URL and favicon references pass through unchanged.
+    expect(bySubdomain.get("workshop")).toBe(
+      "url:https://icons.example/proxmox.svg",
+    );
+    expect(bySubdomain.get("atlas")).toBe("favicon");
     expect(
-      data.services.filter(
+      data.services.every(
         (service) =>
-          service.iconKey === "generic:mail" ||
-          service.iconKey ===
-            "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gitea.svg" ||
-          service.iconKey === "favicon" ||
-          service.iconKey === "url:https://icons.example/proxmox.svg",
-      ),
-    ).toHaveLength(4);
-    expect(
-      data.services.every((service) =>
-        /^(?:generic:|url:|favicon$)/.test(service.iconKey),
+          service.iconKey === null ||
+          /^(?:url:|favicon$)/.test(service.iconKey),
       ),
     ).toBe(true);
   });
@@ -499,7 +513,7 @@ describe("YAML data source", () => {
   it("converts legacy accent tone names when upgrading from /6", () => {
     const data = ledgerYamlToPortalData(
       sampleYaml
-        .replace("format: ouchi-ledger/7", "format: ouchi-ledger/6")
+        .replace("format: ouchi-ledger/9", "format: ouchi-ledger/6")
         .replace('accent: "#5b9bd6"', "accent: blue"),
     );
     expect(
@@ -507,14 +521,32 @@ describe("YAML data source", () => {
     ).toBe("#5b9bd6");
   });
 
+  it("upgrades /8 documents and keeps relation-name endpoint shapes", () => {
+    const data = ledgerYamlToPortalData(
+      sampleYaml
+        .replace("format: ouchi-ledger/9", "format: ouchi-ledger/8")
+        .replace(
+          '  - name: VM\n    color: "#d48a2f"',
+          '  - name: VM\n    color: "#d48a2f"\n    lineEnd: arrow',
+        ),
+    );
+    const vm = data.relationNames.find((item) => item.name === "VM");
+    expect(vm?.lineStart).toBe("circle");
+    expect(vm?.lineEnd).toBe("arrow");
+    const relation = data.relations.find(
+      (item) => item.relationName === "VM",
+    );
+    expect(relation?.lineEnd).toBe("arrow");
+  });
+
   it("rejects unknown ledger format versions", () => {
     expect(() =>
       ledgerYamlToPortalData(
         sampleYaml.replace(
-          "format: ouchi-ledger/7",
           "format: ouchi-ledger/9",
+          "format: ouchi-ledger/10",
         ),
       ),
-    ).toThrow(/formatは「ouchi-ledger\/7」/);
+    ).toThrow(/formatは「ouchi-ledger\/9」/);
   });
 });

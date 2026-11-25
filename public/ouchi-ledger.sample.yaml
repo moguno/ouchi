@@ -1,4 +1,4 @@
-format: ouchi-ledger/7
+format: ouchi-ledger/9
 exportedAt: "2026-11-21T09:00:00.000Z"
 settings:
   domain: ouchi.example
@@ -20,15 +20,22 @@ networks:
     cidr: 198.18.0.0/24
     accent: "#d69132"
     note: RFC 2544 ベンチマーク用。個人向け端末と検証用ホストの架空ネットワーク
+  - name: データ基盤
+    cidr: 198.18.1.0/24
+    accent: "#b0483e"
+    note: RFC 2544 ベンチマーク用範囲。DB専用の架空ネットワーク（アプリ基盤からL3スイッチ経由で到達）
+  - name: アプリ基盤
+    cidr: 198.18.2.0/24
+    accent: "#00838f"
+    note: RFC 2544 ベンチマーク用範囲。アプリケーションサーバー用の架空ネットワーク
 devices:
   - hostname: l3-switch
     petname: L3 Switch
     category: network
-    isVm: false
     sshUser: null
     sshPort: null
     meterEnabled: false
-    note: 3つの内部ネットワークを接続する架空のL3スイッチ
+    note: 5つの内部ネットワークを接続する架空のL3スイッチ
     interfaces:
       - name: eth0
         network: 家族用LAN
@@ -39,10 +46,15 @@ devices:
       - name: eth2
         network: 個人ネットワーク
         ip: 198.18.0.1
+      - name: eth3
+        network: データ基盤
+        ip: 198.18.1.1
+      - name: eth4
+        network: アプリ基盤
+        ip: 198.18.2.1
   - hostname: cedar-host
     petname: Alicia
     category: physical
-    isVm: false
     sshUser: deploy
     sshPort: 22
     meterEnabled: true
@@ -54,7 +66,6 @@ devices:
   - hostname: birch-print
     petname: Akari
     category: physical
-    isVm: false
     sshUser: print
     sshPort: 22
     meterEnabled: true
@@ -66,7 +77,6 @@ devices:
   - hostname: maple-nas
     petname: Aika
     category: physical
-    isVm: false
     sshUser: archive
     sshPort: 22
     meterEnabled: true
@@ -78,7 +88,6 @@ devices:
   - hostname: willow-weather
     petname: Alice
     category: physical
-    isVm: false
     sshUser: sensor
     sshPort: 22
     meterEnabled: true
@@ -90,7 +99,6 @@ devices:
   - hostname: clover-cam
     petname: Aria
     category: physical
-    isVm: false
     sshUser: camera
     sshPort: 22
     meterEnabled: true
@@ -102,7 +110,6 @@ devices:
   - hostname: granite-backup
     petname: Akira
     category: physical
-    isVm: false
     sshUser: backup
     sshPort: 22
     meterEnabled: true
@@ -114,7 +121,6 @@ devices:
   - hostname: slate-mail
     petname: Athena
     category: physical
-    isVm: false
     sshUser: postmaster
     sshPort: 22
     meterEnabled: true
@@ -126,7 +132,6 @@ devices:
   - hostname: juniper-dns
     petname: Hime
     category: physical
-    isVm: false
     sshUser: resolver
     sshPort: 22
     meterEnabled: true
@@ -138,7 +143,6 @@ devices:
   - hostname: amber-vault
     petname: Maa
     category: physical
-    isVm: false
     sshUser: vault
     sshPort: 22
     meterEnabled: true
@@ -150,7 +154,6 @@ devices:
   - hostname: harbor-core
     petname: VM201
     category: vm
-    isVm: true
     sshUser: lab
     sshPort: 22
     meterEnabled: true
@@ -162,7 +165,6 @@ devices:
   - hostname: atlas-lab
     petname: VM202
     category: vm
-    isVm: true
     sshUser: lab
     sshPort: 2222
     meterEnabled: true
@@ -174,7 +176,6 @@ devices:
   - hostname: forge-ci
     petname: VM203
     category: vm
-    isVm: true
     sshUser: runner
     sshPort: 22
     meterEnabled: true
@@ -186,7 +187,6 @@ devices:
   - hostname: l2-switch
     petname: L2 Switch
     category: network
-    isVm: false
     sshUser: null
     sshPort: null
     meterEnabled: false
@@ -198,7 +198,6 @@ devices:
   - hostname: akari
     petname: Atra
     category: physical
-    isVm: false
     sshUser: owner
     sshPort: 22
     meterEnabled: true
@@ -210,7 +209,6 @@ devices:
   - hostname: acorn-notes
     petname: VM301
     category: vm
-    isVm: true
     sshUser: owner
     sshPort: 22
     meterEnabled: true
@@ -222,7 +220,6 @@ devices:
   - hostname: fern-gallery
     petname: VM302
     category: vm
-    isVm: true
     sshUser: viewer
     sshPort: 22
     meterEnabled: true
@@ -234,7 +231,6 @@ devices:
   - hostname: lumen-notes
     petname: Google Drive
     category: service
-    isVm: false
     sshUser: null
     sshPort: null
     meterEnabled: false
@@ -246,7 +242,6 @@ devices:
   - hostname: ouchi-pages
     petname: GitHub
     category: service
-    isVm: false
     sshUser: null
     sshPort: null
     meterEnabled: false
@@ -255,9 +250,91 @@ devices:
       - name: eth0
         network: インターネット
         ip: null
+  - hostname: basalt-db
+    petname: DB1
+    category: physical
+    sshUser: dbadmin
+    sshPort: 22
+    meterEnabled: true
+    note: 架空のプライマリDBサーバー（PostgreSQL）
+    interfaces:
+      - name: eth0
+        network: データ基盤
+        ip: 198.18.1.11
+  - hostname: onyx-db
+    petname: DB2
+    category: physical
+    sshUser: dbadmin
+    sshPort: 22
+    meterEnabled: true
+    note: 架空のレプリカDBサーバー（PostgreSQL、ストリーミングレプリケーション）
+    interfaces:
+      - name: eth0
+        network: データ基盤
+        ip: 198.18.1.12
+  - hostname: app1
+    petname: アプリケーション1
+    category: physical
+    sshUser: app
+    sshPort: 22
+    meterEnabled: true
+    note: 架空のアプリケーションサーバー1号機（業務Webアプリ）
+    interfaces:
+      - name: eth0
+        network: アプリ基盤
+        ip: 198.18.2.11
+  - hostname: app2
+    petname: アプリケーション2
+    category: physical
+    sshUser: app
+    sshPort: 22
+    meterEnabled: true
+    note: 架空のアプリケーションサーバー2号機（業務Webアプリ）
+    interfaces:
+      - name: eth0
+        network: アプリ基盤
+        ip: 198.18.2.12
+  - hostname: app3
+    petname: アプリケーション3
+    category: physical
+    sshUser: app
+    sshPort: 22
+    meterEnabled: true
+    note: 架空のアプリケーションサーバー3号機（業務Webアプリ、Webhook受信）
+    interfaces:
+      - name: eth0
+        network: アプリ基盤
+        ip: 198.18.2.13
+  - hostname: quartz-nas
+    petname: ファイルサーバ
+    category: physical
+    sshUser: files
+    sshPort: 22
+    meterEnabled: true
+    note: 架空のファイルサーバー（アプリ向けNFSエクスポート）
+    interfaces:
+      - name: eth0
+        network: データ基盤
+        ip: 198.18.1.21
 relationNames:
   - name: VM
     color: "#d48a2f"
+  - name: レプリケーション
+    color: "#c2185b"
+    lineStart: none
+    lineEnd: arrow
+  - name: DB
+    color: "#0277bd"
+    lineStart: none
+    lineEnd: arrow
+  - name: Webhook
+    color: "#f4511e"
+    lineStart: none
+    lineEnd: arrow
+  - name: NFS
+    color: "#558b2f"
+    lineStart: none
+    lineEnd: arrow
 relations:
   - from:
       device: cedar-host
@@ -304,6 +381,47 @@ relations:
     relationName: VM
     fromLabel: 親ホスト
     toLabel: VM
+  - from:
+      device: basalt-db
+      interface: eth0
+    to:
+      device: onyx-db
+      interface: eth0
+    relationName: レプリケーション
+    fromLabel: プライマリ
+    toLabel: レプリカ
+  - from:
+      device: app1
+      interface: eth0
+    to:
+      device: basalt-db
+      interface: eth0
+    relationName: DB
+  - from:
+      device: app2
+      interface: eth0
+    to:
+      device: basalt-db
+      interface: eth0
+    relationName: DB
+  - from:
+      device: app1
+      interface: eth0
+    to:
+      device: app3
+      interface: eth0
+    relationName: Webhook
+    fromLabel: データ到着
+    toLabel: /api/v1/hook
+  - from:
+      device: quartz-nas
+      interface: eth0
+    to:
+      device: app2
+      interface: eth0
+    relationName: NFS
+    fromLabel: /var/exports/data
+    toLabel: /mnt/data
 services:
   - subdomain: home
     device: l3-switch
@@ -316,7 +434,7 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: generic:server
+    iconKey: favicon
     enabled: true
   - subdomain: workshop
     device: harbor-core
@@ -329,7 +447,7 @@ services:
     topPath: /
     monitorPath: /api/v1/version
     serviceUrl: null
-    iconKey: generic:gitea
+    iconKey: favicon
     enabled: true
   - subdomain: media-vault
     device: cedar-host
@@ -342,7 +460,7 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: generic:database
+    iconKey: favicon
     enabled: true
   - subdomain: atlas
     device: atlas-lab
@@ -355,7 +473,7 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: generic:proxmox
+    iconKey: favicon
     enabled: true
   - subdomain: forge
     device: forge-ci
@@ -368,7 +486,7 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: generic:container
+    iconKey: favicon
     enabled: true
   - subdomain: edge-admin
     device: l3-switch
@@ -381,7 +499,7 @@ services:
     topPath: /
     monitorPath: /
     serviceUrl: null
-    iconKey: generic:globe
+    iconKey: favicon
     enabled: true
   - subdomain: lumen-notes
     device: lumen-notes
@@ -420,7 +538,7 @@ services:
     topPath: /
     monitorPath: /printers
     serviceUrl: null
-    iconKey: generic:server
+    iconKey: favicon
     enabled: true
   - subdomain: maple-files
     device: maple-nas
@@ -433,7 +551,7 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: generic:database
+    iconKey: favicon
     enabled: true
   - subdomain: willow-weather
     device: willow-weather
@@ -446,7 +564,7 @@ services:
     topPath: /
     monitorPath: /status
     serviceUrl: null
-    iconKey: generic:monitor
+    iconKey: favicon
     enabled: true
   - subdomain: clover-cam
     device: clover-cam
@@ -459,7 +577,7 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: generic:monitor
+    iconKey: favicon
     enabled: true
   - subdomain: granite-restore
     device: granite-backup
@@ -472,7 +590,7 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: generic:database
+    iconKey: favicon
     enabled: true
   - subdomain: slate-post
     device: slate-mail
@@ -485,7 +603,7 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: generic:globe
+    iconKey: favicon
     enabled: true
   - subdomain: juniper-dns
     device: juniper-dns
@@ -498,7 +616,7 @@ services:
     topPath: /
     monitorPath: /api/health
     serviceUrl: null
-    iconKey: generic:server
+    iconKey: favicon
     enabled: true
   - subdomain: amber-index
     device: amber-vault
@@ -511,7 +629,85 @@ services:
     topPath: /
     monitorPath: /health
     serviceUrl: null
-    iconKey: generic:database
+    iconKey: favicon
+    enabled: true
+  - subdomain: basalt-db
+    device: basalt-db
+    interface: eth0
+    petname: 玄武岩DB管理
+    description: 架空のプライマリDB管理画面（pgAdmin）
+    port: 5050
+    protocol: tcp
+    scheme: http
+    topPath: /
+    monitorPath: /misc/ping
+    serviceUrl: null
+    iconKey: favicon
+    enabled: true
+  - subdomain: onyx-db
+    device: onyx-db
+    interface: eth0
+    petname: オニキスDB管理
+    description: 架空のレプリカDB管理画面（pgAdmin）
+    port: 5050
+    protocol: tcp
+    scheme: http
+    topPath: /
+    monitorPath: /misc/ping
+    serviceUrl: null
+    iconKey: favicon
+    enabled: true
+  - subdomain: app1
+    device: app1
+    interface: eth0
+    petname: アプリ1号機
+    description: 架空の業務Webアプリケーション
+    port: 8080
+    protocol: tcp
+    scheme: http
+    topPath: /
+    monitorPath: /health
+    serviceUrl: null
+    iconKey: favicon
+    enabled: true
+  - subdomain: app2
+    device: app2
+    interface: eth0
+    petname: アプリ2号機
+    description: 架空の業務Webアプリケーション
+    port: 8080
+    protocol: tcp
+    scheme: http
+    topPath: /
+    monitorPath: /health
+    serviceUrl: null
+    iconKey: favicon
+    enabled: true
+  - subdomain: app3
+    device: app3
+    interface: eth0
+    petname: アプリ3号機
+    description: 架空の業務Webアプリケーション（Webhook受信エンドポイント付き）
+    port: 8080
+    protocol: tcp
+    scheme: http
+    topPath: /
+    monitorPath: /health
+    serviceUrl: null
+    iconKey: favicon
+    enabled: true
+  - subdomain: quartz-files
+    device: quartz-nas
+    interface: eth0
+    petname: ファイルサーバ管理
+    description: 架空のファイル共有・NFSエクスポート管理画面
+    port: 9000
+    protocol: tcp
+    scheme: http
+    topPath: /
+    monitorPath: /health
+    serviceUrl: null
+    iconKey: favicon
     enabled: true
 sshKeys: []
 deviceKeys: []

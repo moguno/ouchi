@@ -5,7 +5,6 @@ import type {
   PortalService,
 } from "./types";
 import { IconPicker } from "./IconPicker";
-import { normalizeIconReference } from "./iconCatalog";
 import { buildServiceUrl } from "./urls";
 import { FormActions } from "./EntityFormParts";
 import { ManageDialog } from "./ManageDialog";
@@ -14,7 +13,7 @@ interface ServiceIconDialogProps {
   data: PortalDataV2;
   service: PortalService;
   onClose: () => void;
-  onSave: (serviceId: string, iconKey: PortalIconReference) => void;
+  onSave: (serviceId: string, iconKey: PortalIconReference | null) => void;
   saveDisabled?: boolean;
 }
 
@@ -26,8 +25,8 @@ export function ServiceIconDialog({
   saveDisabled = false,
 }: ServiceIconDialogProps) {
   const displayName = service.petname?.trim() || service.subdomain;
-  const [iconKey, setIconKey] = useState<PortalIconReference>(
-    normalizeIconReference(service.iconKey, "favicon"),
+  const [iconKey, setIconKey] = useState<PortalIconReference | null>(
+    service.iconKey,
   );
 
   const iface = data.interfaces.find(

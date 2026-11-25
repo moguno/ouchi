@@ -17,24 +17,24 @@ INSERT INTO networks (id, name, cidr, accent) VALUES
   (3, 'OCIネットワーク', '192.168.253.0/24', '#d69132');
 
 INSERT INTO devices
-  (id, hostname, petname, category, is_vm, meter_enabled, note)
+  (id, hostname, petname, category, meter_enabled, note)
 VALUES
-  (1,  'nanopi-r2s', '門番',       'physical', 0, 1, 'NanoPi R2S'),
-  (2,  'acemagic',   '親機壱',     'physical', 0, 1, 'proxmox1'),
-  (3,  'beelink',    '親機弐',     'physical', 0, 1, 'proxmox2'),
-  (4,  'omv',        '蔵',         'vm',       1, 1, 'OpenMediaVault'),
-  (5,  'omv2',       '蔵弐',       'vm',       1, 1, NULL),
-  (6,  'sandbox',    '砂箱',       'vm',       1, 1, 'Codex host'),
-  (7,  'ouchi-test', '試し部屋',   'vm',       1, 1, 'ouchi.local test VM'),
-  (8,  'oci-kuro',   '黒雲',       'vm',       1, 1, 'OCI instance'),
-  (9,  'oci-shiro',  '白雲',       'vm',       1, 1, 'OCI instance'),
-  (10, 'fortigate',  '関所',       'network',  0, 0, 'FortiGate 50E: no SSH meter'),
-  (11, 'wac505',     '無線番',     'network',  0, 0, NULL),
-  (12, 'wac540',     '無線番弐',   'network',  0, 0, NULL),
-  (13, 'gs116ev2',   '線路盤',     'network',  0, 0, NULL),
-  (14, 'gs308ep',    '線路端',     'network',  0, 0, NULL),
-  (15, 'notion',     '思索帖',     'service',  0, 0, '外部SaaS: no IP, no SSH meter'),
-  (16, 'pcloud',     '雲庫',       'service',  0, 0, '外部SaaS: no IP, no SSH meter');
+  (1,  'nanopi-r2s', '門番',       'physical', 1, 'NanoPi R2S'),
+  (2,  'acemagic',   '親機壱',     'physical', 1, 'proxmox1'),
+  (3,  'beelink',    '親機弐',     'physical', 1, 'proxmox2'),
+  (4,  'omv',        '蔵',         'vm', 1, 'OpenMediaVault'),
+  (5,  'omv2',       '蔵弐',       'vm', 1, NULL),
+  (6,  'sandbox',    '砂箱',       'vm', 1, 'Codex host'),
+  (7,  'ouchi-test', '試し部屋',   'vm', 1, 'ouchi.local test VM'),
+  (8,  'oci-kuro',   '黒雲',       'vm', 1, 'OCI instance'),
+  (9,  'oci-shiro',  '白雲',       'vm', 1, 'OCI instance'),
+  (10, 'fortigate',  '関所',       'network', 0, 'FortiGate 50E: no SSH meter'),
+  (11, 'wac505',     '無線番',     'network', 0, NULL),
+  (12, 'wac540',     '無線番弐',   'network', 0, NULL),
+  (13, 'gs116ev2',   '線路盤',     'network', 0, NULL),
+  (14, 'gs308ep',    '線路端',     'network', 0, NULL),
+  (15, 'notion',     '思索帖',     'service', 0, '外部SaaS: no IP, no SSH meter'),
+  (16, 'pcloud',     '雲庫',       'service', 0, '外部SaaS: no IP, no SSH meter');
 
 -- Interfaces: (id, device, name, network, ip). One interface carries at
 -- most one IP; switch-style ports would be interfaces with ip NULL.

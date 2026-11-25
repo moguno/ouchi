@@ -73,14 +73,14 @@
 .ouchi-device-category-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding-left: 2px;
 }
 
 .ouchi-device-category-header h3 {
   margin: 0;
   color: #626b75;
-  font-size: 10px;
+  font-size: 15px;
   font-weight: 850;
   letter-spacing: 0.02em;
 }
@@ -88,15 +88,31 @@
 .ouchi-device-category-header span,
 .ouchi-list-category-header span {
   display: inline-grid;
-  min-width: 18px;
-  height: 17px;
+  min-width: 26px;
+  height: 24px;
   place-items: center;
-  padding: 0 5px;
+  padding: 0 8px;
   color: #7b848e;
   background: #eef1f5;
   border-radius: 999px;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 750;
+}
+
+.ouchi-device-category-header .ouchi-device-category-icon,
+.ouchi-list-category-header .ouchi-device-category-icon {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 5px;
+  border-radius: 50%;
+  background: #e2eaf1;
+}
+
+.ouchi-device-category-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .ouchi-device-category--network .ouchi-device-category-header h3 {
@@ -123,7 +139,7 @@
 
 .ouchi-node-grid {
   grid-template-columns: repeat(auto-fill, minmax(226px, 1fr));
-  gap: 11px;
+  gap: 20px;
 }
 
 .ouchi-node-card {
@@ -223,23 +239,6 @@
   white-space: nowrap;
 }
 
-.ouchi-node-header-side {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: flex-end;
-  gap: 7px;
-}
-
-.ouchi-vm-badge {
-  height: 18px;
-  min-width: 27px;
-  padding: 0 5px;
-  color: #707b86;
-  background: #e7ebf0;
-  border-radius: 999px;
-  font-size: 8px;
-}
-
 .ouchi-same-device-badge {
   display: inline-flex;
   height: 18px;
@@ -251,33 +250,6 @@
   border-radius: 999px;
   font-size: 8px;
   font-weight: 750;
-}
-
-.ouchi-relation-badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 3px;
-}
-
-.ouchi-relation-badge {
-  display: inline-flex;
-  min-height: 19px;
-  align-items: center;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 8px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.ouchi-relation-badge {
-  color: color-mix(in srgb, var(--ouchi-relation-color) 80%, #3a3321);
-  background: color-mix(
-    in srgb,
-    var(--ouchi-relation-color) 17%,
-    #fff
-  );
 }
 
 .ouchi-service-grid {

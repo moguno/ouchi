@@ -50,14 +50,12 @@ const data: PortalDataV2 = {
       id: "1",
       name: "fortigate",
       category: "network",
-      isVm: false,
       meterEnabled: false,
     },
     {
       id: "2",
       name: "nanopi-r2s",
       category: "physical",
-      isVm: false,
       meterEnabled: true,
       ssh: { user: "monitor", port: 22 },
     },
@@ -65,14 +63,12 @@ const data: PortalDataV2 = {
       id: "3",
       name: "omv",
       category: "vm",
-      isVm: true,
       meterEnabled: true,
     },
     {
       id: "4",
       name: "notion",
       category: "service",
-      isVm: false,
       meterEnabled: false,
     },
   ],
@@ -118,6 +114,8 @@ const data: PortalDataV2 = {
       id: "relation-name-1",
       name: "バックアップ先",
       color: "#3b82f6",
+      lineStart: "circle",
+      lineEnd: "circle",
       relationCount: 1,
     },
   ],
@@ -133,6 +131,8 @@ const data: PortalDataV2 = {
       fromLabel: "バックアップ先",
       toLabel: "バックアップ先",
       color: "#3b82f6",
+      lineStart: "circle",
+      lineEnd: "circle",
     },
   ],
   services: [
@@ -147,7 +147,7 @@ const data: PortalDataV2 = {
       protocol: "tcp",
       topPath: "",
       monitorPath: "/api/v1/version",
-      iconKey: "generic:gitea",
+      iconKey: "favicon",
       enabled: true,
     },
     {
@@ -161,7 +161,7 @@ const data: PortalDataV2 = {
       topPath: "",
       monitorPath: "/",
       serviceUrl: "https://www.notion.so/",
-      iconKey: "generic:globe",
+      iconKey: null,
       enabled: true,
     },
   ],
@@ -287,13 +287,12 @@ describe("shared REST validation", () => {
     });
   });
 
-  it("keeps device category and VM flag consistent", () => {
+  it("rejects meterEnabled for service category devices", () => {
     expect(
       validateDeviceInput(
         {
           name: "bad",
           category: "service",
-          isVm: false,
           meterEnabled: true,
         },
         undefined,
@@ -309,7 +308,6 @@ describe("shared REST validation", () => {
     const device = {
       hostname: "petname-test",
       category: "physical",
-      isVm: false,
       meterEnabled: false,
     };
     expect(
@@ -436,6 +434,8 @@ describe("shared REST validation", () => {
       id: "relation-name-2",
       name: "監視",
       color: "#22c55e",
+      lineStart: "circle",
+      lineEnd: "circle",
       relationCount: 1,
     });
     invalid.relations.push({
@@ -449,6 +449,8 @@ describe("shared REST validation", () => {
       fromLabel: "監視元",
       toLabel: "監視先",
       color: "#22c55e",
+      lineStart: "circle",
+      lineEnd: "circle",
     });
     expect(validatePortalData(invalid).issues).toEqual([]);
 
@@ -463,6 +465,8 @@ describe("shared REST validation", () => {
       fromLabel: "バックアップ先",
       toLabel: "バックアップ先",
       color: "#3b82f6",
+      lineStart: "circle",
+      lineEnd: "circle",
     });
     expect(validatePortalData(invalid).issues).toEqual(
       expect.arrayContaining([
@@ -514,7 +518,7 @@ describe("shared REST validation", () => {
 
   it("validates the v0.4 service form", () => {
     for (const iconKey of [
-      "generic:monitor",
+      null,
       "favicon",
       "url:https://icons.example/service.svg",
     ] as const) {
@@ -546,6 +550,23 @@ describe("shared REST validation", () => {
           topPath: "/",
           monitorPath: "/health",
           iconKey: "url:not-a-url" as never,
+          enabled: true,
+        },
+        data,
+      ),
+    ).toContainEqual({ path: "iconKey", message: "アイコンを選択してください" });
+    // 廃止した汎用アイコン参照はフォームでも受け付けない
+    expect(
+      validateServiceInput(
+        {
+          subdomain: "health",
+          interfaceId: "12",
+          scheme: "http",
+          port: 8080,
+          protocol: "tcp",
+          topPath: "/",
+          monitorPath: "/health",
+          iconKey: "generic:monitor" as never,
           enabled: true,
         },
         data,

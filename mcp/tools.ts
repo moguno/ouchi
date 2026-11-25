@@ -115,7 +115,6 @@ const deviceInputProperties = {
     type: "string",
     description: "network / physical / vm / service",
   },
-  isVm: { type: "boolean" },
   sshUser: { type: ["string", "null"] },
   sshPort: { type: ["integer", "null"] },
   meterEnabled: { type: "boolean" },
@@ -158,6 +157,14 @@ const relationInputProperties = {
 const relationNameInputProperties = {
   name: { type: "string" },
   color: { type: "string" },
+  lineStart: {
+    type: "string",
+    description: "始点の形: none / arrow / circle / square / diamond",
+  },
+  lineEnd: {
+    type: "string",
+    description: "終点の形: none / arrow / circle / square / diamond",
+  },
 };
 
 function collectionTool(
@@ -349,7 +356,7 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "device",
     "デバイス",
     deviceInputProperties,
-    ["hostname", "category", "isVm", "meterEnabled"],
+    ["hostname", "category", "meterEnabled"],
   ),
   updateTool(
     "device",
@@ -359,7 +366,6 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
       "hostname",
       "petname",
       "category",
-      "isVm",
       "sshUser",
       "sshPort",
       "meterEnabled",
@@ -720,7 +726,6 @@ function deviceBody(args: ToolArguments): PortalDeviceInput {
     petname: args.petname as string | null | undefined,
     category:
       args.category as PortalDeviceInput["category"],
-    isVm: args.isVm as boolean,
     sshUser: args.sshUser as string | null | undefined,
     sshPort: args.sshPort as number | null | undefined,
     meterEnabled: args.meterEnabled as boolean,
@@ -785,6 +790,8 @@ function relationNameBody(args: ToolArguments): PortalRelationNameInput {
   return {
     name: stringArgument(args, "name"),
     color: stringArgument(args, "color"),
+    lineStart: args.lineStart as PortalRelationNameInput["lineStart"],
+    lineEnd: args.lineEnd as PortalRelationNameInput["lineEnd"],
   };
 }
 

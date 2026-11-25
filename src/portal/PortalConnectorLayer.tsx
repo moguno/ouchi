@@ -14,17 +14,30 @@ import {
 } from "./connectors";
 import type {
   PortalDataV2,
+  PortalLineEndpointShape,
 } from "./types";
 import { relationTooltip } from "./portalPresentation";
 import { displayRelationLabel } from "./relationLabels";
+import {
+  relationDisplayMode,
+  type RelationDisplayModes,
+} from "./relationDisplay";
 
 export interface RelationConnector {
   id: string;
   kind: "same-device" | "relation";
   color: string;
   tooltip: string;
+  /** Drawn because its relation name is in "always" display mode:
+   * its endpoint labels stay visible without hovering. */
+  always?: boolean;
+  /** Drawn because one of its endpoints is the selected device:
+   * its endpoint labels stay visible while the selection lasts. */
+  selected?: boolean;
   startLabel?: string;
   endLabel?: string;
+  startShape?: PortalLineEndpointShape;
+  endShape?: PortalLineEndpointShape;
   d: string;
   startX: number;
   startY: number;
@@ -57,11 +70,13 @@ export function usePortalConnectors({
   canvasRef,
   data,
   layoutMode,
+  relationModes,
   selectedDeviceId,
 }: {
   canvasRef: RefObject<HTMLDivElement | null>;
   data: PortalDataV2;
   layoutMode: string;
+  relationModes?: RelationDisplayModes;
   selectedDeviceId?: string;
 }) {
   const [relationConnectors, setRelationConnectors] = useState<
@@ -72,7 +87,7 @@ export function usePortalConnectors({
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !selectedDeviceId) {
+    if (!canvas) {
       setRelationConnectors([]);
       return;
     }
@@ -118,10 +133,20 @@ export function usePortalConnectors({
         string,
         Pick<
           RelationConnector,
-          "kind" | "color" | "tooltip" | "startLabel" | "endLabel"
+          | "kind"
+          | "color"
+          | "tooltip"
+          | "always"
+          | "selected"
+          | "startLabel"
+          | "endLabel"
+          | "startShape"
+          | "endShape"
         >
       >();
-      const selectedCards = cardsFor(selectedDeviceId);
+      const selectedCards = selectedDeviceId
+        ? cardsFor(selectedDeviceId)
+        : [];
       selectedCards.forEach((selectedCard, selectedIndex) => {
         const sameDeviceCard = selectedCards[selectedIndex + 1];
         if (!sameDeviceCard) {
@@ -141,6 +166,12 @@ export function usePortalConnectors({
       });
 
       for (const relation of data.relations) {
+        if (
+          relationDisplayMode(relationModes, relation.relationName) ===
+          "hidden"
+        ) {
+          continue;
+        }
         if (
           relation.fromDeviceId !== selectedDeviceId &&
           relation.toDeviceId !== selectedDeviceId
@@ -200,8 +231,74 @@ export function usePortalConnectors({
               kind: "relation",
               color: relation.color,
               tooltip: relationTooltip(relation),
+              always:
+                relationDisplayMode(relationModes, relation.relationName) ===
+                "always",
+              selected: true,
               startLabel,
               endLabel,
+              startShape: selectedIsFrom
+                ? relation.lineStart
+                : relation.lineEnd,
+              endShape: selectedIsFrom
+                ? relation.lineEnd
+                : relation.lineStart,
+            });
+          });
+        });
+      }
+      // Relations whose display mode is "always" are drawn even with
+      // no selection (and for endpoints the selection does not touch),
+      // oriented from the relation's start to its end as stored.
+      for (const relation of data.relations) {
+        if (
+          relationDisplayMode(relationModes, relation.relationName) !==
+          "always"
+        ) {
+          continue;
+        }
+        if (
+          selectedDeviceId &&
+          (relation.fromDeviceId === selectedDeviceId ||
+            relation.toDeviceId === selectedDeviceId)
+        ) {
+          continue;
+        }
+        const fromEndpointCards = cardsFor(
+          relation.fromDeviceId,
+          relation.fromInterfaceId,
+        );
+        const fromTargets =
+          fromEndpointCards.length > 0
+            ? fromEndpointCards
+            : cardsFor(relation.fromDeviceId);
+        const toEndpointCards = cardsFor(
+          relation.toDeviceId,
+          relation.toInterfaceId,
+        );
+        const toTargets =
+          toEndpointCards.length > 0
+            ? toEndpointCards
+            : cardsFor(relation.toDeviceId);
+        const startLabel = displayRelationLabel(relation.fromLabel);
+        const endLabel = displayRelationLabel(relation.toLabel);
+        fromTargets.forEach((fromCard, fromIndex) => {
+          toTargets.forEach((toCard, toIndex) => {
+            const id = `always-${relation.id}-${fromIndex}-${toIndex}`;
+            links.push({
+              id,
+              from: fromCard.node,
+              to: toCard.node,
+            });
+            metadata.set(id, {
+              kind: "relation",
+              color: relation.color,
+              tooltip: relationTooltip(relation),
+              always: true,
+              startLabel,
+              endLabel,
+              startShape: relation.lineStart,
+              endShape: relation.lineEnd,
             });
           });
         });
@@ -234,7 +331,7 @@ export function usePortalConnectors({
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate, true);
     };
-  }, [canvasRef, data, layoutMode, selectedDeviceId]);
+  }, [canvasRef, data, layoutMode, relationModes, selectedDeviceId]);
 
   function updateConnectorTooltip(
     event: PointerEvent<SVGGElement>,
@@ -265,6 +362,59 @@ export function usePortalConnectors({
   };
 }
 
+/** One line endpoint, drawn in the relation name's shape. (ux, uy) is
+ * the unit vector pointing INTO the endpoint along the line, so an
+ * arrow's tip lands on the endpoint with its base inside the line. */
+function EndpointMark({
+  shape,
+  x,
+  y,
+  ux,
+  uy,
+}: {
+  shape: PortalLineEndpointShape;
+  x: number;
+  y: number;
+  ux: number;
+  uy: number;
+}) {
+  if (shape === "none") {
+    return null;
+  }
+  if (shape === "circle") {
+    return <circle cx={x} cy={y} r="5" />;
+  }
+  if (shape === "square") {
+    return (
+      <rect
+        className="ouchi-relation-endpoint"
+        height="10"
+        width="10"
+        x={x - 5}
+        y={y - 5}
+      />
+    );
+  }
+  if (shape === "diamond") {
+    return (
+      <polygon
+        className="ouchi-relation-endpoint"
+        points={`${x},${y - 8} ${x + 8},${y} ${x},${y + 8} ${x - 8},${y}`}
+      />
+    );
+  }
+  const baseX = x - ux * 16;
+  const baseY = y - uy * 16;
+  const perpX = -uy;
+  const perpY = ux;
+  return (
+    <polygon
+      className="ouchi-relation-endpoint"
+      points={`${x},${y} ${baseX + perpX * 7.5},${baseY + perpY * 7.5} ${baseX - perpX * 7.5},${baseY - perpY * 7.5}`}
+    />
+  );
+}
+
 export function PortalConnectorLayer({
   connectors,
   handlers,
@@ -277,25 +427,36 @@ export function PortalConnectorLayer({
   const activeConnector = tooltip
     ? connectors.find((connector) => connector.id === tooltip.id)
     : undefined;
-  const endpointLabels =
-    activeConnector?.kind === "relation"
-      ? [
-          {
-            key: "start",
-            label: activeConnector.startLabel,
-            side: activeConnector.startSide,
-            x: activeConnector.startX,
-            y: activeConnector.startY,
-          },
-          {
-            key: "end",
-            label: activeConnector.endLabel,
-            side: activeConnector.endSide,
-            x: activeConnector.endX,
-            y: activeConnector.endY,
-          },
-        ].filter((endpoint) => endpoint.label)
-      : [];
+  // Endpoint labels show for the hovered connector, and stay visible
+  // for connectors touching the selected device and for connectors
+  // whose relation name is in "always" display mode.
+  const labelConnectors = connectors.filter(
+    (connector) =>
+      connector.kind === "relation" &&
+      (connector.always ||
+        connector.selected ||
+        connector.id === activeConnector?.id),
+  );
+  const endpointLabels = labelConnectors.flatMap((connector) =>
+    [
+      {
+        key: `${connector.id}-start`,
+        label: connector.startLabel,
+        side: connector.startSide,
+        x: connector.startX,
+        y: connector.startY,
+        color: connector.color,
+      },
+      {
+        key: `${connector.id}-end`,
+        label: connector.endLabel,
+        side: connector.endSide,
+        x: connector.endX,
+        y: connector.endY,
+        color: connector.color,
+      },
+    ].filter((endpoint) => endpoint.label),
+  );
   return (
     <>
       {connectors.length > 0 && (
@@ -304,7 +465,13 @@ export function PortalConnectorLayer({
           className="ouchi-relation-connectors"
           focusable="false"
         >
-          {connectors.map((connector) => (
+          {connectors.map((connector) => {
+            const dx = connector.endX - connector.startX;
+            const dy = connector.endY - connector.startY;
+            const length = Math.hypot(dx, dy) || 1;
+            const ux = dx / length;
+            const uy = dy / length;
+            return (
             <g
               className={`ouchi-relation-connector ouchi-relation-connector--${connector.kind}`}
               key={connector.id}
@@ -329,18 +496,23 @@ export function PortalConnectorLayer({
                 className="ouchi-relation-visible"
                 d={connector.d}
               />
-              <circle
-                cx={connector.startX}
-                cy={connector.startY}
-                r="3.5"
+              <EndpointMark
+                shape={connector.startShape ?? "circle"}
+                ux={-ux}
+                uy={-uy}
+                x={connector.startX}
+                y={connector.startY}
               />
-              <circle
-                cx={connector.endX}
-                cy={connector.endY}
-                r="3.5"
+              <EndpointMark
+                shape={connector.endShape ?? "circle"}
+                ux={ux}
+                uy={uy}
+                x={connector.endX}
+                y={connector.endY}
               />
             </g>
-          ))}
+            );
+          })}
         </svg>
       )}
       {tooltip && (
@@ -355,22 +527,21 @@ export function PortalConnectorLayer({
           {tooltip.text}
         </div>
       )}
-      {activeConnector &&
-        endpointLabels.map((endpoint) => (
-          <div
-            className={`ouchi-relation-endpoint-label ouchi-relation-endpoint-label--${endpoint.side}`}
-            key={endpoint.key}
-            style={
-              {
-                left: endpoint.x,
-                top: endpoint.y,
-                "--ouchi-relation-color": activeConnector.color,
-              } as CSSProperties
-            }
-          >
-            {endpoint.label}
-          </div>
-        ))}
+      {endpointLabels.map((endpoint) => (
+        <div
+          className={`ouchi-relation-endpoint-label ouchi-relation-endpoint-label--${endpoint.side}`}
+          key={endpoint.key}
+          style={
+            {
+              left: endpoint.x,
+              top: endpoint.y,
+              "--ouchi-relation-color": endpoint.color,
+            } as CSSProperties
+          }
+        >
+          {endpoint.label}
+        </div>
+      ))}
     </>
   );
 }

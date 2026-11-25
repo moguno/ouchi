@@ -42,29 +42,6 @@ export function DeviceCategoryIcon({
   );
 }
 
-function RelationBadges({ visual }: { visual: DeviceVisual }) {
-  if (visual.mode === "related") {
-    return (
-      <div className="ouchi-relation-badges">
-        {visual.tags.map((tag, index) => (
-          <span
-            className="ouchi-relation-badge"
-            key={`${tag.label}-${index}`}
-            style={
-              {
-                "--ouchi-relation-color": tag.color,
-              } as CSSProperties
-            }
-          >
-            {tag.label}
-          </span>
-        ))}
-      </div>
-    );
-  }
-  return null;
-}
-
 function ServiceTile({
   service,
   iface,
@@ -164,7 +141,7 @@ export function DeviceCard({
       aria-labelledby={`device-${iface.id}`}
       className={[
         "ouchi-node-card",
-        device.isVm ? "ouchi-device-card--vm" : "",
+        device.category === "vm" ? "ouchi-device-card--vm" : "",
         `ouchi-device-card--${visual.mode}`,
       ]
         .filter(Boolean)
@@ -193,7 +170,6 @@ export function DeviceCard({
           <span className="ouchi-node-radio" aria-hidden="true" />
           <span className="ouchi-device-title">
             <span id={`device-${iface.id}`}>{displayName}</span>
-            {device.isVm && <span className="ouchi-vm-badge">VM</span>}
             {sameDevice && selected && (
               <span className="ouchi-same-device-badge">同一デバイス</span>
             )}
@@ -204,9 +180,6 @@ export function DeviceCard({
             {` / ${iface.name}`}
           </span>
         </button>
-        <div className="ouchi-node-header-side">
-          <RelationBadges visual={visual} />
-        </div>
       </header>
 
       {services.length === 0 ? (

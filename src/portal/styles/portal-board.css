@@ -159,21 +159,6 @@
   flex: 1;
 }
 
-.ouchi-vm-badge {
-  display: inline-grid;
-  min-width: 28px;
-  height: 22px;
-  flex: 0 0 auto;
-  place-items: center;
-  padding: 0 5px;
-  color: #fff;
-  background: #667d8c;
-  border-radius: 6px;
-  font-size: 8px;
-  font-weight: 850;
-  letter-spacing: 0.05em;
-}
-
 .ouchi-service-grid--vm {
   padding-top: 8px;
 }
@@ -341,14 +326,14 @@
 .ouchi-list-category-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 15px 6px;
   background: rgba(247, 249, 251, 0.74);
 }
 
 .ouchi-list-category-header strong {
   color: #626c76;
-  font-size: 9px;
+  font-size: 15px;
   font-weight: 850;
 }
 
@@ -503,3 +488,51 @@
   font-size: 12px;
 }
 
+
+.ouchi-relation-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 2px;
+}
+
+.ouchi-relation-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  color: #2f3a44;
+  background: #fff;
+  border: 1px solid #d5dde3;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ouchi-relation-filter-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  background: var(--ouchi-relation-color);
+  border-radius: 50%;
+}
+
+/* The mode is carried by appearance alone (no state label text), so a
+   chip's width depends only on the relation name and never changes
+   when the mode cycles. */
+.ouchi-relation-filter-chip--always {
+  background: color-mix(in srgb, var(--ouchi-relation-color) 16%, #fff);
+  border-color: var(--ouchi-relation-color);
+  box-shadow: inset 0 0 0 1px var(--ouchi-relation-color);
+}
+
+.ouchi-relation-filter-chip--hidden {
+  color: #78838c;
+  opacity: 0.55;
+}
+
+.ouchi-relation-filter-chip--hidden .ouchi-relation-filter-dot {
+  background: #aeb7be;
+}

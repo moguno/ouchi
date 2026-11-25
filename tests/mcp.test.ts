@@ -450,7 +450,6 @@ describe("MCP block", () => {
         source: "mcp-create",
       },
       category: "physical",
-      isVm: false,
       sshUser: "monitor",
       sshPort: 22,
       meterEnabled: false,
@@ -519,7 +518,7 @@ describe("MCP block", () => {
       topPath: "/",
       monitorPath: "/health",
       serviceUrl: null,
-      iconKey: "generic:monitor",
+      iconKey: "favicon",
       enabled: true,
     };
     const service = (await callMcpTool("create_service", serviceInput))
@@ -660,7 +659,6 @@ describe("MCP block", () => {
       hostname: "mcp-delete-cascade",
       petname: "MCP削除回帰機",
       category: "physical",
-      isVm: false,
       sshUser: null,
       sshPort: null,
       meterEnabled: false,
@@ -689,7 +687,7 @@ describe("MCP block", () => {
       topPath: "/",
       monitorPath: "/",
       serviceUrl: null,
-      iconKey: "generic:monitor",
+      iconKey: "favicon",
       enabled: true,
     })).structuredContent?.result as { id: number };
 
@@ -765,7 +763,6 @@ describe("MCP block", () => {
     const invalidDevice = await callMcpTool("create_device", {
       hostname: "invalid-service-node",
       category: "service",
-      isVm: true,
       meterEnabled: true,
     });
     expect(invalidDevice.isError).toBe(true);
@@ -783,7 +780,6 @@ describe("MCP block", () => {
     const serviceDevice = (await callMcpTool("create_device", {
       hostname: "service-node",
       category: "service",
-      isVm: false,
       meterEnabled: false,
     })).structuredContent?.result as { id: number };
     const invalidInterface = await callMcpTool("create_interface", {

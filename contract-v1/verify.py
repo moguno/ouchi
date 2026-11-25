@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Build the v0.11 ledger in memory and verify the design end to end.
+"""Build the v0.14 ledger in memory and verify the design end to end.
 
 Checks:
   1. schema + seed load with foreign keys on; foreign_key_check is clean
   2. row counts match the seed's intent
-  3. category / is_vm consistency holds
   4. relation traversal for omv works both directions across interfaces,
      with each relation's own endpoint labels
   5. redirect and monitor URLs assemble from scheme + interface IP +
      port + paths for every enabled service
-  6. category='service' pseudo-devices (external SaaS): is_vm=0,
+  6. category='service' pseudo-devices (external SaaS):
      meter_enabled=0, interface ip is NULL, and their services
      resolve to the service_url override
 """
@@ -43,10 +42,6 @@ check("row counts", counts == {"networks": 3, "devices": 16,
                                "relations": 5,
                                "services": 9}, str(counts))
 
-bad = cur.execute(
-    "SELECT COUNT(*) FROM devices WHERE is_vm <> (category = 'vm')").fetchone()[0]
-check("category/is_vm consistency", bad == 0, f"mismatch={bad}")
-
 relation_columns = [row[1] for row in cur.execute(
     "PRAGMA table_info(relations)").fetchall()]
 check("relation label columns",
@@ -56,7 +51,8 @@ check("relation label columns",
 relation_name_columns = [row[1] for row in cur.execute(
     "PRAGMA table_info(relation_names)").fetchall()]
 check("relation names are pure categories",
-      relation_name_columns == ["id", "name", "color"],
+      relation_name_columns == ["id", "name", "color",
+                                "line_start", "line_end"],
       str(relation_name_columns))
 
 # --- relation traversal for omv (both directions, labels resolved) ---
@@ -130,9 +126,9 @@ check("all service URLs assembled", all(
 # --- category='service' pseudo-devices (external SaaS) ---
 bad_svc = cur.execute(
     """SELECT COUNT(*) FROM devices
-       WHERE category = 'service' AND (is_vm <> 0 OR meter_enabled <> 0)"""
+       WHERE category = 'service' AND meter_enabled <> 0"""
 ).fetchone()[0]
-check("service-category invariants (is_vm=0, meter off)", bad_svc == 0,
+check("service-category invariants (meter off)", bad_svc == 0,
       f"violations={bad_svc}")
 
 bad_ip = cur.execute(

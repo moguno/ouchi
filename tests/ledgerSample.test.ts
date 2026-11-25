@@ -11,31 +11,59 @@ describe("Pages sample ledger", () => {
     );
     const ledger = parseLedgerYaml(yaml);
 
-    expect(ledger.format).toBe("ouchi-ledger/7");
+    expect(ledger.format).toBe("ouchi-ledger/9");
     expect(ledger.settings.title).toBe("あなたのおうち環境");
-    expect(ledger.networks).toHaveLength(4);
+    expect(ledger.networks).toHaveLength(6);
     expect(ledger.networks.map((network) => network.name)).toEqual([
       "インターネット",
       "家族用LAN",
       "ホームラボ",
       "個人ネットワーク",
+      "データ基盤",
+      "アプリ基盤",
     ]);
     expect(ledger.networks.map((network) => network.cidr)).toEqual([
       "192.0.2.0/24",
       "198.51.100.0/24",
       "203.0.113.0/24",
       "198.18.0.0/24",
+      "198.18.1.0/24",
+      "198.18.2.0/24",
     ]);
-    expect(ledger.devices).toHaveLength(19);
+    expect(ledger.devices).toHaveLength(25);
     expect(
       ledger.devices.flatMap((device) => device.interfaces),
-    ).toHaveLength(21);
-    expect(ledger.services).toHaveLength(16);
-    expect(ledger.relations).toHaveLength(5);
+    ).toHaveLength(29);
+    expect(ledger.services).toHaveLength(22);
+    expect(ledger.relations).toHaveLength(10);
     expect(ledger.relationNames).toEqual([
       expect.objectContaining({
         name: "VM",
         color: "#d48a2f",
+      }),
+      expect.objectContaining({
+        name: "レプリケーション",
+        color: "#c2185b",
+        lineStart: "none",
+        lineEnd: "arrow",
+      }),
+      expect.objectContaining({
+        name: "DB",
+        color: "#0277bd",
+        lineStart: "none",
+        lineEnd: "arrow",
+      }),
+      expect.objectContaining({
+        name: "Webhook",
+        color: "#f4511e",
+        lineStart: "none",
+        lineEnd: "arrow",
+      }),
+      expect.objectContaining({
+        name: "NFS",
+        color: "#558b2f",
+        lineStart: "none",
+        lineEnd: "arrow",
       }),
     ]);
     expect(ledger.relations[0]).toEqual(
@@ -110,7 +138,6 @@ describe("Pages sample ledger", () => {
       expect(device).toEqual(
         expect.objectContaining({
           category: "physical",
-          isVm: false,
           petname: expect.any(String),
           interfaces: [
             expect.objectContaining({
@@ -130,7 +157,7 @@ describe("Pages sample ledger", () => {
         .filter((device) => device.category === "physical")
         .map((device) => device.hostname),
     );
-    expect(physicalHostnames.size).toBe(10);
+    expect(physicalHostnames.size).toBe(16);
     expect(
       ledger.devices
         .filter((device) =>
@@ -155,6 +182,8 @@ describe("Pages sample ledger", () => {
         "家族用LAN",
         "ホームラボ",
         "個人ネットワーク",
+        "データ基盤",
+        "アプリ基盤",
       ].map(
         (network) =>
           ledger.devices.filter((device) =>
@@ -163,7 +192,7 @@ describe("Pages sample ledger", () => {
             ),
           ).length,
       ),
-    ).toEqual([2, 5, 9, 5]);
+    ).toEqual([2, 5, 9, 5, 4, 4]);
 
     const l3Switch = ledger.devices.find(
       (device) => device.hostname === "l3-switch",
@@ -183,6 +212,8 @@ describe("Pages sample ledger", () => {
       { network: "家族用LAN", ip: "198.51.100.1" },
       { network: "ホームラボ", ip: "203.0.113.1" },
       { network: "個人ネットワーク", ip: "198.18.0.1" },
+      { network: "データ基盤", ip: "198.18.1.1" },
+      { network: "アプリ基盤", ip: "198.18.2.1" },
     ]);
     expect(
       l3Switch?.interfaces.some(
@@ -221,7 +252,7 @@ describe("Pages sample ledger", () => {
     expect(
       vms.slice(3).every(
         (device) =>
-          device.isVm &&
+          device.category === "vm" &&
           device.interfaces.length === 1 &&
           device.interfaces[0].network === "個人ネットワーク",
       ),
@@ -234,7 +265,6 @@ describe("Pages sample ledger", () => {
         return {
           hostname,
           category: device?.category,
-          isVm: device?.isVm,
           network: device?.interfaces[0]?.network,
           ip: device?.interfaces[0]?.ip,
         };
@@ -243,14 +273,12 @@ describe("Pages sample ledger", () => {
       {
         hostname: "l2-switch",
         category: "network",
-        isVm: false,
         network: "個人ネットワーク",
         ip: "198.18.0.2",
       },
       {
         hostname: "akari",
         category: "physical",
-        isVm: false,
         network: "個人ネットワーク",
         ip: "198.18.0.10",
       },
@@ -263,7 +291,6 @@ describe("Pages sample ledger", () => {
         return {
           hostname,
           category: device?.category,
-          isVm: device?.isVm,
           network: device?.interfaces[0]?.network,
           ip: device?.interfaces[0]?.ip,
         };
@@ -272,14 +299,12 @@ describe("Pages sample ledger", () => {
       {
         hostname: "acorn-notes",
         category: "vm",
-        isVm: true,
         network: "個人ネットワーク",
         ip: "198.18.0.31",
       },
       {
         hostname: "fern-gallery",
         category: "vm",
-        isVm: true,
         network: "個人ネットワーク",
         ip: "198.18.0.32",
       },
@@ -326,6 +351,31 @@ describe("Pages sample ledger", () => {
         to: "fern-gallery",
         relationName: "VM",
       },
+      {
+        from: "basalt-db",
+        to: "onyx-db",
+        relationName: "レプリケーション",
+      },
+      {
+        from: "app1",
+        to: "basalt-db",
+        relationName: "DB",
+      },
+      {
+        from: "app2",
+        to: "basalt-db",
+        relationName: "DB",
+      },
+      {
+        from: "app1",
+        to: "app3",
+        relationName: "Webhook",
+      },
+      {
+        from: "quartz-nas",
+        to: "app2",
+        relationName: "NFS",
+      },
     ]);
 
     const deviceByHostname = new Map(
@@ -343,23 +393,67 @@ describe("Pages sample ledger", () => {
       expect(from).toEqual(
         expect.objectContaining({
           category: "physical",
-          isVm: false,
         }),
       );
-      expect(to).toEqual(
-        expect.objectContaining({
-          category: "vm",
-          isVm: true,
-        }),
-      );
+      if (relation.relationName === "VM") {
+        expect(to).toEqual(
+          expect.objectContaining({
+            category: "vm",
+          }),
+        );
+      }
       const sharedNetworks = [
         ...(networksByHostname.get(relation.from.device) ?? []),
       ].filter((network) =>
         networksByHostname.get(relation.to.device)?.has(network),
       );
-      expect(sharedNetworks).toHaveLength(1);
-      expect(sharedNetworks[0]).toBe(to?.interfaces[0]?.network);
+      if (relation.relationName === "DB" || relation.relationName === "NFS") {
+        // Routed across the L3 switch: the two devices share no
+        // network of their own.
+        expect(sharedNetworks).toHaveLength(0);
+        if (relation.relationName === "DB") {
+          expect(to?.hostname).toBe("basalt-db");
+        }
+      } else {
+        expect(sharedNetworks).toHaveLength(1);
+        expect(sharedNetworks[0]).toBe(to?.interfaces[0]?.network);
+      }
     }
+    const replication = ledger.relations.find(
+      (relation) => relation.relationName === "レプリケーション",
+    );
+    expect(replication).toEqual(
+      expect.objectContaining({
+        fromLabel: "プライマリ",
+        toLabel: "レプリカ",
+      }),
+    );
+    expect(
+      deviceByHostname.get(replication?.to.device ?? "")?.category,
+    ).toBe("physical");
+    expect(
+      ledger.services.filter((service) =>
+        ["basalt-db", "onyx-db"].includes(service.device),
+      ),
+    ).toHaveLength(2);
+    const webhook = ledger.relations.find(
+      (relation) => relation.relationName === "Webhook",
+    );
+    expect(webhook).toEqual(
+      expect.objectContaining({
+        fromLabel: "データ到着",
+        toLabel: "/api/v1/hook",
+      }),
+    );
+    const nfs = ledger.relations.find(
+      (relation) => relation.relationName === "NFS",
+    );
+    expect(nfs).toEqual(
+      expect.objectContaining({
+        fromLabel: "/var/exports/data",
+        toLabel: "/mnt/data",
+      }),
+    );
 
     expect(
       ledger.services.find(

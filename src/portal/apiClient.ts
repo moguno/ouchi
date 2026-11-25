@@ -74,7 +74,7 @@ function normalizeAccent(value: string): string {
 }
 
 function normalizeIconKey(value: string | null) {
-  return normalizeServiceIconReference(value, undefined, "favicon");
+  return normalizeServiceIconReference(value, undefined);
 }
 
 function interfacesFrom(
@@ -130,7 +130,6 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       petname: device.petname ?? undefined,
       properties: device.properties ?? {},
       category: device.category,
-      isVm: device.isVm,
       meterEnabled: device.meterEnabled,
       note: device.note ?? undefined,
       ssh:
@@ -146,6 +145,8 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       id: String(relationName.id),
       name: relationName.name,
       color: relationName.color,
+      lineStart: relationName.lineStart,
+      lineEnd: relationName.lineEnd,
       relationCount: relationName.relationCount,
     })),
     relations: data.relations.map((relation) => ({
@@ -159,6 +160,8 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       fromLabel: relation.fromLabel,
       toLabel: relation.toLabel,
       color: relation.color,
+      lineStart: relation.lineStart,
+      lineEnd: relation.lineEnd,
     })),
     services: data.services.map(serviceFrom),
     settings: {

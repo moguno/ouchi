@@ -223,13 +223,18 @@ function faviconSource(serviceUrl: string | undefined): string | undefined {
   }
 }
 
+/** The one bundled icon: shown for unset icons and failed loads. */
+export function UnsetServiceIcon() {
+  return <GenericServiceMark kind="applications" />;
+}
+
 export function ServiceIcon({
   iconKey,
   size = 58,
   allowRemoteAssets = true,
   serviceUrl,
 }: {
-  iconKey: PortalIconReference;
+  iconKey: PortalIconReference | null;
   size?: number;
   allowRemoteAssets?: boolean;
   serviceUrl?: string;
@@ -242,22 +247,16 @@ export function ServiceIcon({
         ? faviconSource(serviceUrl)
         : undefined;
   const remoteAllowed = allowRemoteAssets && Boolean(source);
-  let mark: React.ReactNode;
-  if (parsed.kind === "generic") {
-    mark = (
-      <GenericServiceMark kind={parsed.id as PortalGenericIconKey} />
+  const mark =
+    remoteAllowed && source ? (
+      <RemoteIconImage size={size} src={source} />
+    ) : (
+      <UnsetServiceIcon />
     );
-  } else if (remoteAllowed && source) {
-    mark = <RemoteIconImage size={size} src={source} />;
-  } else {
-    mark = <GenericServiceMark kind="applications" />;
-  }
 
   return (
     <span
-      className={`ouchi-service-mark ouchi-service-mark--${parsed.kind}${
-        parsed.id ? `-${parsed.id}` : ""
-      }`}
+      className={`ouchi-service-mark ouchi-service-mark--${parsed.kind}`}
       style={{ width: size, height: size }}
     >
       {mark}
@@ -279,7 +278,7 @@ function RemoteIconImage({
   }, [src]);
 
   if (failed) {
-    return <GenericServiceMark kind="applications" />;
+    return <UnsetServiceIcon />;
   }
 
   return (

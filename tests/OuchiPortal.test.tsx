@@ -59,7 +59,7 @@ const service = (
   protocol: "tcp",
   topPath: "/",
   monitorPath: "/api/v1/version",
-  iconKey: "generic:gitea",
+  iconKey: "favicon",
   enabled: true,
   url: "http://192.168.0.19:3000/",
   monitorUrl: "http://192.168.0.19:3000/api/v1/version",
@@ -88,14 +88,12 @@ const portalData: PortalDataV2 = {
       id: "1",
       name: "fortigate",
       category: "network",
-      isVm: false,
       meterEnabled: false,
     },
     {
       id: "2",
       name: "nanopi-r2s",
       category: "physical",
-      isVm: false,
       meterEnabled: true,
       ssh: { user: "monitor", port: 22 },
     },
@@ -103,14 +101,12 @@ const portalData: PortalDataV2 = {
       id: "3",
       name: "openmediavault",
       category: "vm",
-      isVm: true,
       meterEnabled: true,
     },
     {
       id: "4",
       name: "notion",
       category: "service",
-      isVm: false,
       meterEnabled: false,
     },
   ],
@@ -149,6 +145,8 @@ const portalData: PortalDataV2 = {
       id: "relation-name-1",
       name: "バックアップ先",
       color: "#3b82f6",
+      lineStart: "circle",
+      lineEnd: "circle",
       relationCount: 1,
     },
   ],
@@ -164,6 +162,8 @@ const portalData: PortalDataV2 = {
       fromLabel: "VM",
       toLabel: "親ホスト",
       color: "#3b82f6",
+      lineStart: "circle",
+      lineEnd: "circle",
     },
   ],
   services: [
@@ -177,7 +177,7 @@ const portalData: PortalDataV2 = {
       scheme: "https",
       port: 443,
       serviceUrl: "https://www.notion.so/",
-      iconKey: "generic:globe",
+      iconKey: "url:https://icons.example/notion.svg",
       url: "https://www.notion.so/",
       monitorUrl: "https://www.notion.so/",
     }),
@@ -203,7 +203,6 @@ const apiData: PortalApiData = {
     petname: device.petname ?? null,
     properties: device.properties ?? {},
     category: device.category,
-    isVm: device.isVm,
     sshUser: device.ssh?.user ?? null,
     sshPort: device.ssh?.port ?? null,
     meterEnabled: device.meterEnabled ?? false,
@@ -241,6 +240,8 @@ const apiData: PortalApiData = {
     id: index + 1,
     name: relationName.name,
     color: relationName.color,
+    lineStart: relationName.lineStart,
+    lineEnd: relationName.lineEnd,
     relationCount: relationName.relationCount,
   })),
   relations: portalData.relations.map((relation, index) => ({
@@ -261,6 +262,8 @@ const apiData: PortalApiData = {
     fromLabel: relation.fromLabel,
     toLabel: relation.toLabel,
     color: relation.color,
+    lineStart: relation.lineStart,
+    lineEnd: relation.lineEnd,
   })),
   settings: {
     domain: "ouchi.local",
@@ -490,7 +493,7 @@ describe("OuchiPortal", () => {
       name: "ホームダッシュボードのアイコン",
     });
     expect(
-      within(dialog).getByRole("searchbox", { name: "アイコンを検索" }),
+      within(dialog).getByRole("radio", { name: /未設定/ }),
     ).toBeEnabled();
     expect(
       within(dialog).getByRole("button", { name: "保存" }),
@@ -776,14 +779,15 @@ describe("OuchiPortal", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("resolves relation labels from the relation-name definition", async () => {
+  it("highlights related devices without putting endpoint labels on cards", async () => {
     const user = userEvent.setup();
     const { container } = render(<OuchiPortal data={portalData} />);
 
     await user.click(
       screen.getByRole("button", { name: "openmediavaultを選択" }),
     );
-    expect(screen.getByText("親ホスト")).toBeInTheDocument();
+    // Endpoint labels live on the line hover chips, not on the cards.
+    expect(screen.queryByText("親ホスト")).not.toBeInTheDocument();
     expect(
       container.querySelector('[data-device-id="2"]'),
     ).toHaveClass("ouchi-device-card--related");
@@ -792,17 +796,117 @@ describe("OuchiPortal", () => {
     ).toHaveClass("ouchi-device-card--neutral");
   });
 
-  it("renders the relation's own labels in the portal", async () => {
+  it("shows the relation's endpoint labels as chips while a device is selected", async () => {
     const user = userEvent.setup();
     const templated = structuredClone(portalData);
     templated.relations[0].fromLabel = "VMhost";
     templated.relations[0].toLabel = "親ホスト8";
 
-    render(<OuchiPortal data={templated} />);
+    const rect = (
+      left: number,
+      top: number,
+      width: number,
+      height: number,
+    ): DOMRect =>
+      ({
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+        width,
+        height,
+        x: left,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        if (this instanceof HTMLElement) {
+          if (this.classList.contains("ouchi-canvas")) {
+            return rect(0, 0, 1200, 1000);
+          }
+          if (this.dataset.deviceId === "3") {
+            return rect(20, 40, 240, 160);
+          }
+          if (this.dataset.deviceId === "2") {
+            return rect(20, 400, 240, 160);
+          }
+          if (this.dataset.deviceId) {
+            return rect(900, 40, 240, 160);
+          }
+        }
+        return rect(0, 0, 0, 0);
+      },
+    );
+    vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
+      function (this: Element) {
+        return [this.getBoundingClientRect()] as unknown as DOMRectList;
+      },
+    );
+
+    const { container } = render(<OuchiPortal data={templated} />);
     await user.click(
       screen.getByRole("button", { name: "openmediavaultを選択" }),
     );
-    expect(screen.getByText("親ホスト8")).toBeInTheDocument();
+    // The labels appear as endpoint chips in the connector layer,
+    // never as content inside a device card.
+    const chips = await waitFor(() => {
+      const found = container.querySelectorAll(
+        ".ouchi-relation-endpoint-label",
+      );
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    expect(Array.from(chips, (chip) => chip.textContent)).toEqual([
+      "VMhost",
+      "親ホスト8",
+    ]);
+    expect(
+      container.querySelector('[data-device-id] .ouchi-relation-endpoint-label'),
+    ).toBeNull();
+
+    fireEvent.click(container.querySelector(".ouchi-canvas") as HTMLElement);
+    expect(
+      container.querySelectorAll(".ouchi-relation-endpoint-label"),
+    ).toHaveLength(0);
+  });
+
+  it("cycles relation display modes on the portal filter and persists them locally", async () => {
+    const user = userEvent.setup();
+    window.localStorage.clear();
+    render(<OuchiPortal data={portalData} />);
+
+    const chip = screen.getByRole("button", {
+      name: "関係フィルター バックアップ先（選択時のみ）",
+    });
+    // The mode is shown by appearance (chip class) only: no state label
+    // text ever appears, so the chip width never changes with the mode.
+    expect(chip).toHaveClass("ouchi-relation-filter-chip--selected");
+    expect(chip.textContent).toBe("バックアップ先");
+    await user.click(chip);
+    const alwaysChip = screen.getByRole("button", {
+      name: "関係フィルター バックアップ先（常時表示）",
+    });
+    expect(alwaysChip).toHaveClass("ouchi-relation-filter-chip--always");
+    expect(alwaysChip.textContent).toBe("バックアップ先");
+    expect(window.localStorage.getItem("ouchi.relationDisplayModes.v1")).toBe(
+      JSON.stringify({ "バックアップ先": "always" }),
+    );
+
+    await user.click(alwaysChip);
+    const hiddenChip = screen.getByRole("button", {
+      name: "関係フィルター バックアップ先（表示しない）",
+    });
+    expect(hiddenChip).toHaveClass("ouchi-relation-filter-chip--hidden");
+    expect(hiddenChip.textContent).toBe("バックアップ先");
+
+    await user.click(hiddenChip);
+    expect(
+      screen.getByRole("button", {
+        name: "関係フィルター バックアップ先（選択時のみ）",
+      }),
+    ).toHaveClass("ouchi-relation-filter-chip--selected");
+    window.localStorage.clear();
   });
 
   it("uses a relation-name selector in the shared relation editor", async () => {
@@ -846,6 +950,8 @@ describe("OuchiPortal", () => {
       id: "relation-name-2",
       name: "固定ラベル",
       color: "#22c55e",
+      lineStart: "circle",
+      lineEnd: "circle",
       relationCount: 0,
     });
     render(<OuchiPortal data={templated} />);
@@ -1135,6 +1241,8 @@ describe("OuchiPortal", () => {
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         name: "監視",
         color: "#22c55e",
+        lineStart: "circle",
+        lineEnd: "circle",
       });
     });
 
@@ -1345,7 +1453,11 @@ describe("OuchiPortal", () => {
               ? 100
               : interfaceId === "interface-2"
                 ? 400
-                : 700;
+                : interfaceId === "interface-3"
+                  ? 700
+                  : interfaceId === "interface-4"
+                    ? 1000
+                    : 1300;
           return rect(20, top, 240, 160);
         }
         return rect(20, 1200, 240, 160);
@@ -1371,7 +1483,7 @@ describe("OuchiPortal", () => {
         container.querySelectorAll(
           ".ouchi-relation-connector--same-device .ouchi-relation-visible",
         ),
-      ).toHaveLength(2);
+      ).toHaveLength(4);
     });
     const paths = Array.from(
       container.querySelectorAll<SVGPathElement>(
@@ -1382,6 +1494,8 @@ describe("OuchiPortal", () => {
     expect(paths).toEqual([
       "M 140 260 L 140 400",
       "M 140 560 L 140 700",
+      "M 140 860 L 140 1000",
+      "M 140 1160 L 140 1300",
     ]);
     expect(paths.every((path) => path?.includes(" L "))).toBe(true);
     expect(paths.every((path) => !path?.includes(" C "))).toBe(true);
@@ -1416,16 +1530,16 @@ describe("OuchiPortal", () => {
           const interfaceId = this
             .getAttribute("aria-labelledby")
             ?.replace("device-", "");
-          if (interfaceId === "interface-4") {
+          if (interfaceId === "interface-6") {
             return rect(20, 200, 240, 160);
           }
-          if (interfaceId === "interface-14") {
+          if (interfaceId === "interface-16") {
             return rect(20, 500, 240, 160);
           }
-          if (interfaceId === "interface-13") {
+          if (interfaceId === "interface-15") {
             return rect(300, 500, 240, 160);
           }
-          if (interfaceId === "interface-15") {
+          if (interfaceId === "interface-17") {
             return rect(580, 500, 240, 160);
           }
         }
@@ -1467,7 +1581,7 @@ describe("OuchiPortal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows endpoint labels at both ends while hovering a relation line", async () => {
+  it("shows endpoint labels at both ends while a device is selected", async () => {
     const user = userEvent.setup();
     const rect = (
       left: number,
@@ -1523,17 +1637,14 @@ describe("OuchiPortal", () => {
       expect(found).not.toBeNull();
       return found as Element;
     });
-    expect(
-      container.querySelectorAll(".ouchi-relation-endpoint-label"),
-    ).toHaveLength(0);
-
-    fireEvent.pointerEnter(group, { clientX: 140, clientY: 300 });
-    fireEvent.pointerMove(group, { clientX: 140, clientY: 300 });
-
-    expect(screen.getByRole("tooltip")).toHaveTextContent("バックアップ先");
-    const labels = container.querySelectorAll(
-      ".ouchi-relation-endpoint-label",
-    );
+    // Selecting the device already shows both endpoint labels.
+    const labels = await waitFor(() => {
+      const found = container.querySelectorAll(
+        ".ouchi-relation-endpoint-label",
+      );
+      expect(found).toHaveLength(2);
+      return found;
+    });
     expect(Array.from(labels, (label) => label.textContent)).toEqual([
       "VM",
       "親ホスト",
@@ -1545,10 +1656,15 @@ describe("OuchiPortal", () => {
     expect((labels[1] as HTMLElement).style.left).toBe("140px");
     expect((labels[1] as HTMLElement).style.top).toBe("400px");
 
+    fireEvent.pointerEnter(group, { clientX: 140, clientY: 300 });
+    fireEvent.pointerMove(group, { clientX: 140, clientY: 300 });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("バックアップ先");
+
+    // Leaving the line keeps the labels: the selection still holds.
     fireEvent.pointerLeave(group);
     expect(
       container.querySelectorAll(".ouchi-relation-endpoint-label"),
-    ).toHaveLength(0);
+    ).toHaveLength(2);
   });
 
   it("clears selection when clicking outside a device", () => {
@@ -1782,7 +1898,7 @@ describe("OuchiPortal", () => {
     const dialog = screen.getByRole("dialog", { name: "Notionのアイコン" });
     expect(
       dialog.querySelector(
-        ".ouchi-icon-picker-current .ouchi-service-mark--generic-globe",
+        ".ouchi-icon-picker-current .ouchi-service-mark--url",
       ),
     ).toBeInTheDocument();
   });
@@ -1993,7 +2109,7 @@ describe("OuchiPortal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("applies a dashboard icon as its jsDelivr URL on save", async () => {
+  it("can unset the icon from the icon dialog", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
     render(
@@ -2006,38 +2122,14 @@ describe("OuchiPortal", () => {
     );
     const dialog = screen.getByRole("dialog", { name: "おうちGitのアイコン" });
 
-    await user.type(
-      within(dialog).getByRole("searchbox", { name: "アイコンを検索" }),
-      "grafana",
-    );
-
-    expect(
-      within(dialog).getByRole("heading", {
-        name: "汎用アイコン",
-      }),
-    ).toBeVisible();
-    expect(
-      within(dialog).getByRole("heading", { name: "dashboard-icons" }),
-    ).toBeVisible();
-    expect(
-      within(dialog).queryByRole("option", { name: "メールを選択" }),
-    ).not.toBeInTheDocument();
     await user.click(
-      await within(dialog).findByRole("option", {
-        name: "Grafanaを選択",
-      }),
+      within(dialog).getByRole("radio", { name: /未設定/ }),
     );
-
-    expect(
-      within(dialog).getByText("選択中: Grafana"),
-    ).toBeVisible();
+    expect(within(dialog).getByText("選択中: 未設定")).toBeVisible();
     await user.click(
       within(dialog).getByRole("button", { name: "保存" }),
     );
-    expect(onSave).toHaveBeenCalledWith(
-      portalData.services[0].id,
-      "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg",
-    );
+    expect(onSave).toHaveBeenCalledWith(portalData.services[0].id, null);
   });
 
   it("can select favicon or enter an explicit image URL", async () => {
@@ -2048,18 +2140,22 @@ describe("OuchiPortal", () => {
         data={portalData}
         onClose={() => undefined}
         onSave={onSave}
-        service={portalData.services[0]}
+        service={portalData.services[1]}
       />,
     );
-    const dialog = screen.getByRole("dialog", { name: "おうちGitのアイコン" });
+    const dialog = screen.getByRole("dialog", { name: "Notionのアイコン" });
 
     await user.click(
-      within(dialog).getByRole("button", {
-        name: "サービスの favicon を使う",
-      }),
+      within(dialog).getByRole("radio", { name: /favicon/ }),
     );
     expect(within(dialog).getByText("選択中: favicon")).toBeVisible();
 
+    await user.click(
+      within(dialog).getByRole("radio", { name: /^URL/ }),
+    );
+    await user.clear(
+      within(dialog).getByRole("textbox", { name: "アイコン画像URL" }),
+    );
     await user.type(
       within(dialog).getByRole("textbox", { name: "アイコン画像URL" }),
       "https://icons.example/service.svg",
@@ -2068,7 +2164,7 @@ describe("OuchiPortal", () => {
       within(dialog).getByRole("button", { name: "保存" }),
     );
     expect(onSave).toHaveBeenCalledWith(
-      portalData.services[0].id,
+      portalData.services[1].id,
       "url:https://icons.example/service.svg",
     );
   });

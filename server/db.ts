@@ -10,6 +10,7 @@ import type {
   PortalApiRelationName,
   PortalApiService,
   PortalInterfaceInput,
+  PortalLineEndpointShape,
   PortalNetworkInput,
   PortalProperties,
   PortalRelationInput,
@@ -33,6 +34,9 @@ type DbOptions = {
   interfaceMacMigrationPath?: string;
   interfaceDropLabelMigrationPath?: string;
   networkAccentMigrationPath?: string;
+  deviceDropIsVmMigrationPath?: string;
+  relationNameLineEndsMigrationPath?: string;
+  serviceIconChoicesMigrationPath?: string;
 };
 
 type NetworkRow = {
@@ -48,7 +52,6 @@ type DeviceRow = {
   hostname: string;
   petname: string | null;
   category: PortalApiDevice["category"];
-  is_vm: number;
   ssh_user: string | null;
   ssh_port: number | null;
   meter_enabled: number;
@@ -88,6 +91,8 @@ type RelationRow = {
   id: number;
   relation_name_id: number;
   relation_name: string;
+  line_start: PortalLineEndpointShape;
+  line_end: PortalLineEndpointShape;
   from_device_id: number;
   to_device_id: number;
   from_interface_id: number;
@@ -103,6 +108,8 @@ type RelationNameRow = {
   id: number;
   name: string;
   color: string;
+  line_start: PortalLineEndpointShape;
+  line_end: PortalLineEndpointShape;
   relation_count: number;
 };
 
@@ -159,7 +166,6 @@ function toApiDevice(
     hostname: row.hostname,
     petname: row.petname,
     category: row.category,
-    isVm: Boolean(row.is_vm),
     sshUser: row.ssh_user,
     sshPort: row.ssh_port === null ? null : asNumber(row.ssh_port),
     meterEnabled: Boolean(row.meter_enabled),
@@ -190,11 +196,7 @@ function toApiService(row: ServiceRow): PortalApiService {
     topPath: row.top_path,
     monitorPath: row.monitor_path,
     serviceUrl: row.service_url,
-    iconKey: normalizeServiceIconReference(
-      row.icon_key,
-      row.favicon_url,
-      "favicon",
-    ),
+    iconKey: normalizeServiceIconReference(row.icon_key, row.favicon_url),
     enabled: Boolean(row.enabled),
     url: buildServiceUrl(base, { ip: row.ip ?? "" }),
     monitorUrl: buildMonitorUrl(base, { ip: row.ip ?? "" }),
@@ -215,6 +217,8 @@ function toApiRelation(row: RelationRow): PortalApiRelation {
     fromLabel: row.from_label,
     toLabel: row.to_label,
     color: row.color,
+    lineStart: row.line_start,
+    lineEnd: row.line_end,
   };
 }
 
@@ -223,13 +227,15 @@ function toApiRelationName(row: RelationNameRow): PortalApiRelationName {
     id: asNumber(row.id),
     name: row.name,
     color: row.color,
+    lineStart: row.line_start,
+    lineEnd: row.line_end,
     relationCount: asNumber(row.relation_count),
   };
 }
 
 const RELATION_SELECT = `
   SELECT r.id, n.id AS relation_name_id, n.name AS relation_name,
-         n.color,
+         n.color, n.line_start, n.line_end,
          fi.device_id AS from_device_id, ti.device_id AS to_device_id,
          r.from_interface_id, r.to_interface_id,
          fi.name AS from_interface_name, ti.name AS to_interface_name,
@@ -241,7 +247,7 @@ const RELATION_SELECT = `
 `;
 
 const RELATION_NAME_SELECT = `
-  SELECT n.id, n.name, n.color,
+  SELECT n.id, n.name, n.color, n.line_start, n.line_end,
          COUNT(r.id) AS relation_count
   FROM relation_names n
   LEFT JOIN relations r ON r.relation_name_id = n.id
@@ -436,6 +442,66 @@ export class PortalDatabase {
       this.database.exec(readFileSync(networkAccentMigrationPath, "utf8"));
     }
 
+    const deviceColumnsCurrent = this.database
+      .prepare("PRAGMA table_info(devices)")
+      .all() as Array<{ name: string }>;
+    if (deviceColumnsCurrent.some((column) => column.name === "is_vm")) {
+      const deviceDropIsVmMigrationPath =
+        options.deviceDropIsVmMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "011_device_drop_is_vm.sql",
+        );
+      this.database.exec(readFileSync(deviceDropIsVmMigrationPath, "utf8"));
+    }
+
+    const relationNameColumnsCurrent = this.database
+      .prepare("PRAGMA table_info(relation_names)")
+      .all() as Array<{ name: string }>;
+    if (
+      !relationNameColumnsCurrent.some(
+        (column) => column.name === "line_start",
+      )
+    ) {
+      const relationNameLineEndsMigrationPath =
+        options.relationNameLineEndsMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "012_relation_name_line_ends.sql",
+        );
+      this.database.exec(
+        readFileSync(relationNameLineEndsMigrationPath, "utf8"),
+      );
+    }
+
+    const legacyIconRow = this.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM services
+         WHERE icon_key LIKE 'generic:%'
+           OR icon_key LIKE 'preset:%'
+           OR icon_key LIKE 'dashboard:%'
+           OR icon_key = ''
+           OR (icon_key NOT LIKE '%:%' AND icon_key <> 'favicon')`,
+      )
+      .get() as { count: number };
+    if (legacyIconRow.count > 0) {
+      const serviceIconChoicesMigrationPath =
+        options.serviceIconChoicesMigrationPath ??
+        resolve(
+          root,
+          "contract-v1",
+          "migrations",
+          "013_service_icon_choices.sql",
+        );
+      this.database.exec(
+        readFileSync(serviceIconChoicesMigrationPath, "utf8"),
+      );
+    }
+
     const row = this.database
       .prepare("SELECT COUNT(*) AS count FROM networks")
       .get() as { count: number };
@@ -517,7 +583,7 @@ export class PortalDatabase {
   listDevices(): PortalApiDevice[] {
     const rows = this.database
       .prepare(
-        `SELECT id, hostname, petname, category, is_vm, ssh_user, ssh_port,
+        `SELECT id, hostname, petname, category, ssh_user, ssh_port,
                 meter_enabled, note, properties
          FROM devices ORDER BY id`,
       )
@@ -547,15 +613,14 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO devices
-          (hostname, petname, category, is_vm, ssh_user, ssh_port,
+          (hostname, petname, category, ssh_user, ssh_port,
            meter_enabled, note, properties)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.hostname.trim(),
         nullableText(input.petname),
         input.category,
-        input.isVm ? 1 : 0,
         nullableText(input.sshUser),
         input.sshPort ?? null,
         input.meterEnabled ? 1 : 0,
@@ -575,7 +640,7 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE devices
-         SET hostname = ?, petname = ?, category = ?, is_vm = ?, ssh_user = ?,
+         SET hostname = ?, petname = ?, category = ?, ssh_user = ?,
              ssh_port = ?, meter_enabled = ?, note = ?,
              properties = COALESCE(?, properties)
          WHERE id = ?`,
@@ -584,7 +649,6 @@ export class PortalDatabase {
         input.hostname.trim(),
         nullableText(input.petname),
         input.category,
-        input.isVm ? 1 : 0,
         nullableText(input.sshUser),
         input.sshPort ?? null,
         input.meterEnabled ? 1 : 0,
@@ -855,11 +919,7 @@ export class PortalDatabase {
         nullableText(input.topPath),
         nullableText(input.monitorPath),
         nullableText(input.serviceUrl),
-        normalizeServiceIconReference(
-          input.iconKey,
-          undefined,
-          "favicon",
-        ),
+        normalizeServiceIconReference(input.iconKey, undefined),
         null,
         input.enabled ? 1 : 0,
         Object.hasOwn(input, "properties")
@@ -934,12 +994,14 @@ export class PortalDatabase {
   ): PortalApiRelationName {
     const result = this.database
       .prepare(
-        `INSERT INTO relation_names (name, color)
-         VALUES (?, ?)`,
+        `INSERT INTO relation_names (name, color, line_start, line_end)
+         VALUES (?, ?, ?, ?)`,
       )
       .run(
         input.name.trim(),
         input.color.trim(),
+        input.lineStart ?? "circle",
+        input.lineEnd ?? "circle",
       );
     return this.getRelationName(asNumber(result.lastInsertRowid))!;
   }
@@ -954,12 +1016,16 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE relation_names
-         SET name = ?, color = ?
+         SET name = ?, color = ?,
+             line_start = COALESCE(?, line_start),
+             line_end = COALESCE(?, line_end)
          WHERE id = ?`,
       )
       .run(
         input.name.trim(),
         input.color.trim(),
+        input.lineStart ?? null,
+        input.lineEnd ?? null,
         id,
       );
     return this.getRelationName(id);

@@ -290,9 +290,11 @@
   padding: 2px;
 }
 
-.ouchi-manage-dialog input[type="checkbox"] {
+.ouchi-manage-dialog input[type="checkbox"],
+.ouchi-manage-dialog input[type="radio"] {
   width: auto;
   min-height: auto;
+  flex: 0 0 auto;
 }
 
 .ouchi-manage-dialog textarea {
@@ -469,6 +471,28 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid #ddd;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ouchi-manage-dialog .ouchi-icon-picker-option small {
+  display: block;
+  color: #66707a;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .ouchi-manage-dialog .ouchi-icon-picker-current > div {

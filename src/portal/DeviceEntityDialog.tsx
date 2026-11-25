@@ -114,7 +114,6 @@ export function DeviceEntityDialog({
       petname: petname.trim() || undefined,
       properties: editing?.properties ?? {},
       category,
-      isVm: category === "vm",
       meterEnabled:
         category === "service"
           ? false
