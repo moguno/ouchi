@@ -30,10 +30,6 @@ function isDashboardSlug(value: string): boolean {
   return /^[a-z0-9][a-z0-9._-]{0,99}$/i.test(value);
 }
 
-export function faviconIconReference(): PortalIconReference {
-  return FAVICON_ICON_REFERENCE;
-}
-
 export function urlIconReference(url: string): PortalIconReference {
   return `url:${url.trim()}`;
 }

@@ -17,10 +17,6 @@ export function deviceName(device: PortalDevice): string {
   return device.petname?.trim() || device.name;
 }
 
-export function serviceDescription(service: PortalService): string {
-  return service.description?.trim() || "";
-}
-
 export function relationTooltip(relation: PortalRelation): string {
   return relation.relationName;
 }

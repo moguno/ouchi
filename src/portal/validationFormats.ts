@@ -97,10 +97,6 @@ export function isHttpPath(value: string): boolean {
   return value.trim().startsWith("/");
 }
 
-export function isHexColor(value: string): boolean {
-  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
-}
-
 export const LINE_ENDPOINT_SHAPES = [
   "none",
   "arrow",

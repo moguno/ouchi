@@ -91,10 +91,6 @@ const idSchema = {
   description: "REST API の正の整数ID",
 };
 
-const nullableStringSchema = {
-  type: ["string", "null"],
-};
-
 const propertiesSchema = {
   type: "object",
   additionalProperties: { type: "string" },

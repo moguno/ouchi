@@ -85,7 +85,6 @@ export function createApp(
     context.json({
       ok: true,
       service: "ouchi.local",
-      database: "sqlite-v0.6",
     }),
   );
 
@@ -786,24 +785,6 @@ export function createApp(
     return result
       ? context.json(result)
       : context.json({ error: "デバイスが見つかりません" }, 404);
-  });
-
-  app.get("/api/devices/:id/meters", (context) => {
-    const id = parseId(context.req.param("id"));
-    if (!id) {
-      return context.json({ error: "IDが不正です" }, 400);
-    }
-    const device = database.getDevice(id);
-    if (!device) {
-      return context.json({ error: "デバイスが見つかりません" }, 404);
-    }
-    return context.json({
-      deviceId: id,
-      memoryPercent: null,
-      diskPercent: null,
-      collectedAt: null,
-      available: false,
-    });
   });
 
   app.notFound((context) =>

@@ -1153,18 +1153,6 @@ describe("REST API v1", () => {
     }
   });
 
-  it("returns null meters until the SSH collector is configured", async () => {
-    const response = await app.request("/api/devices/4/meters");
-    expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({
-      deviceId: 4,
-      memoryPercent: null,
-      diskPercent: null,
-      collectedAt: null,
-      available: false,
-    });
-  });
-
   it("reads and persists settings.title through the API", async () => {
     expect(await json(await app.request("/api/settings"))).toEqual({
       domain: "ouchi.local",

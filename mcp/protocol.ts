@@ -12,7 +12,6 @@ import { callTool, TOOL_DEFINITIONS } from "./tools";
 
 export const MCP_SERVER_NAME = "ouchi-ledger-mcp";
 export const MCP_SERVER_VERSION = "1.0.0";
-export const MCP_LATEST_PROTOCOL_VERSION = "2025-11-25";
 
 const MCP_INSTRUCTIONS =
   "ouchi.local の台帳 REST API を読み書きする LAN 用 MCP サーバーです。" +

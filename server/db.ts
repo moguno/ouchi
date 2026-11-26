@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
@@ -10,7 +10,6 @@ import type {
   PortalApiRelationName,
   PortalApiService,
   PortalInterfaceInput,
-  PortalLineEndpointShape,
   PortalNetworkInput,
   PortalProperties,
   PortalRelationInput,
@@ -21,7 +20,6 @@ import type {
 } from "../src/portal/types";
 import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 import { buildMonitorUrl, buildServiceUrl } from "../src/portal/urls";
-import { normalizeProperties } from "../src/portal/validation";
 import { applySchemaAndMigrations, type DbOptions } from "./dbSchema";
 import {
   asNumber,

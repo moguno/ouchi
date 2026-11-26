@@ -428,12 +428,6 @@ export const PORTAL_GENERIC_ICON_KEYS: PortalGenericIconKey[] = [
   ...PORTAL_ICON_KEYS,
 ];
 
-export const STATUS_LABELS: Record<PortalStatus, string> = {
-  up: "稼働中",
-  down: "停止",
-  maintenance: "メンテナンス",
-};
-
 export const DEVICE_CATEGORY_LABELS: Record<PortalDeviceCategory, string> = {
   network: "ネットワーク機器",
   physical: "物理マシン",

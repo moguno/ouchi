@@ -252,7 +252,6 @@ HTTP 409 も同様です。（関係名、始点、終点、始点ラベル、
 | `PUT /api/relations/:id` | 関係更新（5列の完全一致重複は400） |
 | `DELETE /api/relations/:id` | 関係削除 |
 | `GET /api/devices/:id/relations?depth=1` | 双方向の関係トラバース |
-| `GET /api/devices/:id/meters` | メモリ／ディスク使用率 |
 | `GET /api/settings` | 全体設定 |
 | `PUT /api/settings` | ポータルタイトルを保存 |
 | `GET /api/export` | 台帳一式をYAMLでダウンロード |
