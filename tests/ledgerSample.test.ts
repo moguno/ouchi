@@ -11,31 +11,56 @@ describe("Pages sample ledger", () => {
     );
     const ledger = parseLedgerYaml(yaml);
 
-    expect(ledger.format).toBe("ouchi-ledger/9");
+    expect(ledger.format).toBe("ouchi-ledger/13");
     expect(ledger.settings.title).toBe("あなたのおうち環境");
     expect(ledger.networks).toHaveLength(6);
     expect(ledger.networks.map((network) => network.name)).toEqual([
-      "インターネット",
       "家族用LAN",
       "ホームラボ",
       "個人ネットワーク",
       "データ基盤",
       "アプリ基盤",
+      "インターネット",
     ]);
     expect(ledger.networks.map((network) => network.cidr)).toEqual([
-      "192.0.2.0/24",
       "198.51.100.0/24",
       "203.0.113.0/24",
       "198.18.0.0/24",
       "198.18.1.0/24",
       "198.18.2.0/24",
+      "192.0.2.0/24",
     ]);
+    expect(ledger.settings.properties).toEqual({
+      運用方針: "架空のサンプル台帳。実在の機器・アドレスは含まれない",
+      バックアップ: "週1回、台帳YAMLをエクスポートして保管",
+    });
+    expect(
+      ledger.networks.find((network) => network.name === "ホームラボ")
+        ?.properties,
+    ).toEqual({ 方針: "検証はステージングで先に試してから本番へ" });
     expect(ledger.devices).toHaveLength(25);
     expect(
       ledger.devices.flatMap((device) => device.interfaces),
     ).toHaveLength(29);
-    expect(ledger.services).toHaveLength(22);
+    expect(ledger.services).toHaveLength(23);
     expect(ledger.relations).toHaveLength(10);
+    const postgres = ledger.services.find(
+      (service) => service.subdomain === "basalt-pg",
+    );
+    expect(postgres).toMatchObject({
+      port: 5432,
+      protocol: "tcp",
+      scheme: "none",
+    });
+    const dbRelations = ledger.relations.filter(
+      (relation) => relation.relationName === "DB",
+    );
+    expect(dbRelations).toHaveLength(2);
+    for (const relation of dbRelations) {
+      expect(relation.port).toBe(5432);
+      expect(relation.protocol).toBe("tcp");
+      expect(relation.toLabel ?? "").toBe("");
+    }
     expect(ledger.relationNames).toEqual([
       expect.objectContaining({
         name: "VM",
@@ -309,20 +334,26 @@ describe("Pages sample ledger", () => {
         ip: "198.18.0.32",
       },
     ]);
+    const endpointLabel = (endpoint: { device: string } | { service: string }) =>
+      "service" in endpoint ? `service:${endpoint.service}` : endpoint.device;
     expect(
       ledger.relations
-        .filter((relation) =>
-          ["acorn-notes", "fern-gallery"].includes(relation.to.device),
+        .filter(
+          (relation) =>
+            "device" in relation.to &&
+            ["acorn-notes", "fern-gallery"].includes(relation.to.device),
         )
-        .map((relation) => relation.from.device),
+        .map((relation) =>
+          "device" in relation.from ? relation.from.device : "",
+        ),
     ).toEqual(["akari", "akari"]);
     expect(
       ledger.devices.find((device) => device.hostname === "spruce-host"),
     ).toBeUndefined();
     expect(
       ledger.relations.map((relation) => ({
-        from: relation.from.device,
-        to: relation.to.device,
+        from: endpointLabel(relation.from),
+        to: endpointLabel(relation.to),
         relationName: relation.relationName,
       })),
     ).toEqual([
@@ -357,18 +388,18 @@ describe("Pages sample ledger", () => {
         relationName: "レプリケーション",
       },
       {
-        from: "app1",
+        from: "service:app1",
         to: "basalt-db",
         relationName: "DB",
       },
       {
-        from: "app2",
+        from: "service:app2",
         to: "basalt-db",
         relationName: "DB",
       },
       {
-        from: "app1",
-        to: "app3",
+        from: "service:app1",
+        to: "service:app3",
         relationName: "Webhook",
       },
       {
@@ -381,6 +412,15 @@ describe("Pages sample ledger", () => {
     const deviceByHostname = new Map(
       ledger.devices.map((device) => [device.hostname, device]),
     );
+    const serviceDeviceBySubdomain = new Map(
+      ledger.services.map((service) => [service.subdomain, service.device]),
+    );
+    const endpointHostname = (
+      endpoint: { device: string } | { service: string },
+    ) =>
+      "service" in endpoint
+        ? serviceDeviceBySubdomain.get(endpoint.service)
+        : endpoint.device;
     const networksByHostname = new Map(
       ledger.devices.map((device) => [
         device.hostname,
@@ -388,8 +428,10 @@ describe("Pages sample ledger", () => {
       ]),
     );
     for (const relation of ledger.relations) {
-      const from = deviceByHostname.get(relation.from.device);
-      const to = deviceByHostname.get(relation.to.device);
+      const fromHostname = endpointHostname(relation.from);
+      const toHostname = endpointHostname(relation.to);
+      const from = deviceByHostname.get(fromHostname!);
+      const to = deviceByHostname.get(toHostname!);
       expect(from).toEqual(
         expect.objectContaining({
           category: "physical",
@@ -403,9 +445,9 @@ describe("Pages sample ledger", () => {
         );
       }
       const sharedNetworks = [
-        ...(networksByHostname.get(relation.from.device) ?? []),
+        ...(networksByHostname.get(fromHostname!) ?? []),
       ].filter((network) =>
-        networksByHostname.get(relation.to.device)?.has(network),
+        networksByHostname.get(toHostname!)?.has(network),
       );
       if (relation.relationName === "DB" || relation.relationName === "NFS") {
         // Routed across the L3 switch: the two devices share no
@@ -429,13 +471,13 @@ describe("Pages sample ledger", () => {
       }),
     );
     expect(
-      deviceByHostname.get(replication?.to.device ?? "")?.category,
+      deviceByHostname.get(endpointHostname(replication!.to) ?? "")?.category,
     ).toBe("physical");
     expect(
       ledger.services.filter((service) =>
         ["basalt-db", "onyx-db"].includes(service.device),
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     const webhook = ledger.relations.find(
       (relation) => relation.relationName === "Webhook",
     );

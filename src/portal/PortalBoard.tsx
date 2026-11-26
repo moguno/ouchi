@@ -18,7 +18,6 @@ import {
 import {
   deviceName,
   deviceVisual,
-  serviceDescription,
   serviceName,
 } from "./portalPresentation";
 import {
@@ -86,6 +85,8 @@ function NetworkCard({
   data,
   selectedDeviceId,
   onSelect,
+  selectedServiceId,
+  onSelectService,
   demoMode,
   iconBaseUrl,
   allowRemoteIcons,
@@ -95,6 +96,8 @@ function NetworkCard({
   data: PortalDataV2;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  selectedServiceId?: string;
+  onSelectService: (serviceId: string) => void;
   demoMode: boolean;
   iconBaseUrl: string;
   allowRemoteIcons: boolean;
@@ -195,10 +198,12 @@ function NetworkCard({
                           iface={iface}
                           onDemoServiceClick={onDemoServiceClick}
                           onSelect={onSelect}
+                          onSelectService={onSelectService}
                           sameDevice={
                             (interfaceCounts.get(device.id) ?? 0) > 1
                           }
                           selectedDeviceId={selectedDeviceId}
+                          selectedServiceId={selectedServiceId}
                           services={services}
                           visual={deviceVisual(
                             device.id,
@@ -224,6 +229,8 @@ export function IconBoard({
   relationModes,
   selectedDeviceId,
   onSelect,
+  selectedServiceId,
+  onSelectService,
   demoMode,
   iconBaseUrl,
   allowRemoteIcons,
@@ -233,6 +240,8 @@ export function IconBoard({
   relationModes?: RelationDisplayModes;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  selectedServiceId?: string;
+  onSelectService: (serviceId: string) => void;
   demoMode: boolean;
   iconBaseUrl: string;
   allowRemoteIcons: boolean;
@@ -250,7 +259,9 @@ export function IconBoard({
           network={network}
           onDemoServiceClick={onDemoServiceClick}
           onSelect={onSelect}
+          onSelectService={onSelectService}
           selectedDeviceId={selectedDeviceId}
+          selectedServiceId={selectedServiceId}
         />
       ))}
     </div>
@@ -262,46 +273,58 @@ function ListService({
   iface,
   demoMode,
   onDemoClick,
+  selected,
+  onSelect,
 }: {
   service: PortalService;
   iface: PortalInterface;
   demoMode: boolean;
   onDemoClick: () => void;
+  selected: boolean;
+  onSelect: (serviceId: string) => void;
 }) {
   const href = service.url ?? "";
-  const content = (
-    <>
-      <span className="ouchi-list-service-name">{serviceName(service)}</span>
-      <small>
-        {serviceDescription(service) || iface.ip || "IP未登録"}
-      </small>
-      {href && <ExternalLinkIcon size={14} />}
-    </>
-  );
-  if (demoMode) {
-    return (
-      <button
-        className="ouchi-list-service ouchi-service-tile--demo"
-        onClick={onDemoClick}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
-  return href ? (
+  const name = serviceName(service);
+  // The external-link mark is the jump target; the row itself
+  // selects the service, mirroring the tile board's split.
+  const jump = demoMode ? (
+    <button
+      aria-label={`${name}を開く`}
+      className="ouchi-list-service-jump"
+      onClick={(event) => {
+        event.stopPropagation();
+        onDemoClick();
+      }}
+      type="button"
+    >
+      <ExternalLinkIcon size={14} />
+    </button>
+  ) : href ? (
     <a
-      className="ouchi-list-service"
+      aria-label={`${name}を開く`}
+      className="ouchi-list-service-jump"
       href={href}
+      onClick={(event) => event.stopPropagation()}
       rel="noreferrer"
       target="_blank"
     >
-      {content}
+      <ExternalLinkIcon size={14} />
     </a>
-  ) : (
-    <span className="ouchi-list-service ouchi-service-tile--disabled">
-      {content}
-    </span>
+  ) : null;
+  return (
+    <div
+      className={`ouchi-list-service${selected ? " ouchi-list-service--selected" : ""}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(service.id);
+      }}
+    >
+      <span className="ouchi-list-service-name">{name}</span>
+      <small>
+        {service.port}/{service.protocol}
+      </small>
+      {jump}
+    </div>
   );
 }
 
@@ -310,6 +333,8 @@ export function ListBoard({
   relationModes,
   selectedDeviceId,
   onSelect,
+  selectedServiceId,
+  onSelectService,
   demoMode,
   onDemoServiceClick,
 }: {
@@ -317,6 +342,8 @@ export function ListBoard({
   relationModes?: RelationDisplayModes;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  selectedServiceId?: string;
+  onSelectService: (serviceId: string) => void;
   demoMode: boolean;
   onDemoServiceClick: () => void;
 }) {
@@ -482,6 +509,10 @@ export function ListBoard({
                                           key={service.id}
                                           iface={iface}
                                           onDemoClick={onDemoServiceClick}
+                                          onSelect={onSelectService}
+                                          selected={
+                                            service.id === selectedServiceId
+                                          }
                                           service={service}
                                         />
                                       ))

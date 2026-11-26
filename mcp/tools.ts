@@ -8,6 +8,7 @@ import type {
   PortalRelationInput,
   PortalRelationNameInput,
   PortalServiceInput,
+  PortalSettingsInput,
 } from "../src/portal/types";
 import {
   deviceRelationTags,
@@ -106,6 +107,7 @@ const networkInputProperties = {
   cidr: { type: ["string", "null"] },
   accent: { type: "string" },
   note: { type: ["string", "null"] },
+  properties: propertiesSchema,
 };
 
 const deviceInputProperties = {
@@ -137,7 +139,7 @@ const serviceInputProperties = {
   description: { type: ["string", "null"] },
   port: { type: "integer" },
   protocol: { type: "string", description: "tcp / udp" },
-  scheme: { type: "string", description: "http / https" },
+  scheme: { type: "string", description: "http / https / none（リンクなし）" },
   topPath: { type: ["string", "null"] },
   monitorPath: { type: ["string", "null"] },
   serviceUrl: { type: ["string", "null"] },
@@ -147,11 +149,22 @@ const serviceInputProperties = {
 };
 
 const relationInputProperties = {
-  fromInterfaceId: idSchema,
-  toInterfaceId: idSchema,
+  fromInterfaceId: { type: ["integer", "null"] },
+  toInterfaceId: { type: ["integer", "null"] },
+  fromServiceId: { type: ["integer", "null"] },
+  toServiceId: { type: ["integer", "null"] },
   relationName: { type: "string" },
   fromLabel: { type: "string" },
   toLabel: { type: "string" },
+  port: {
+    type: ["integer", "null"],
+    description: "宛先ポート 1-65535（protocolとセット）",
+  },
+  protocol: {
+    type: ["string", "null"],
+    description: "tcp / udp（portとセット）",
+  },
+  properties: propertiesSchema,
 };
 
 const relationNameInputProperties = {
@@ -335,6 +348,37 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     ),
     annotations: withAnnotations("サービスURL解決", readAnnotations),
   },
+  {
+    name: "update_settings",
+    title: "ouchi設定更新",
+    description:
+      "ouchi（この台帳インスタンス）自体の設定を更新します。" +
+      "title は省略すると現在の値を保持し、properties（ouchiのメモ）は" +
+      "指定すると全量置換、省略すると既存値を保持します。",
+    inputSchema: objectSchema({
+      title: { type: "string" },
+      properties: propertiesSchema,
+    }),
+    annotations: withAnnotations("ouchi設定更新", updateAnnotations),
+  },
+  {
+    name: "reorder_networks",
+    title: "ネットワーク並び替え",
+    description:
+      "ネットワークの表示順を、ID の配列で指定した順に並び替えます。" +
+      "全ネットワークの ID をちょうど一度ずつ含めてください。",
+    inputSchema: objectSchema(
+      {
+        ids: {
+          type: "array",
+          items: { type: "integer" },
+          description: "表示順に並べたネットワークIDの配列。",
+        },
+      },
+      ["ids"],
+    ),
+    annotations: withAnnotations("ネットワーク並び替え", updateAnnotations),
+  },
   collectionTool("networks", "ネットワーク"),
   getTool("network", "ネットワーク"),
   createTool(
@@ -468,17 +512,13 @@ export const TOOL_DEFINITIONS: McpToolDefinition[] = [
     "relation",
     "関係",
     relationInputProperties,
-    ["fromInterfaceId", "toInterfaceId", "relationName"],
+    ["relationName"],
   ),
   updateTool(
     "relation",
     "関係",
     relationInputProperties,
-    [
-      "fromInterfaceId",
-      "toInterfaceId",
-      "relationName",
-    ],
+    ["relationName"],
   ),
   deleteTool("relation", "関係"),
   {
@@ -717,6 +757,12 @@ function networkBody(args: ToolArguments): PortalNetworkInput {
     cidr: args.cidr as string | null | undefined,
     accent: stringArgument(args, "accent"),
     note: args.note as string | null | undefined,
+    ...(Object.hasOwn(args, "properties")
+      ? {
+          properties:
+            args.properties as PortalNetworkInput["properties"],
+        }
+      : {}),
   };
 }
 
@@ -775,14 +821,38 @@ function serviceBody(args: ToolArguments): PortalServiceInput {
 }
 
 function relationBody(args: ToolArguments): PortalRelationInput {
+  const endpoint = (
+    interfaceKey: string,
+    serviceKey: string,
+  ): Record<string, number | null> => {
+    const interfaceId = args[interfaceKey];
+    const serviceId = args[serviceKey];
+    return {
+      [interfaceKey]:
+        typeof interfaceId === "number" ? interfaceId : null,
+      [serviceKey]: typeof serviceId === "number" ? serviceId : null,
+    };
+  };
   return {
-    fromInterfaceId: numberArgument(args, "fromInterfaceId"),
-    toInterfaceId: numberArgument(args, "toInterfaceId"),
+    ...endpoint("fromInterfaceId", "fromServiceId"),
+    ...endpoint("toInterfaceId", "toServiceId"),
     relationName: stringArgument(args, "relationName"),
     fromLabel:
       args.fromLabel as string | undefined,
     toLabel:
       args.toLabel as string | undefined,
+    ...(Object.hasOwn(args, "port")
+      ? { port: args.port as PortalRelationInput["port"] }
+      : {}),
+    ...(Object.hasOwn(args, "protocol")
+      ? { protocol: args.protocol as PortalRelationInput["protocol"] }
+      : {}),
+    ...(Object.hasOwn(args, "properties")
+      ? {
+          properties:
+            args.properties as PortalRelationInput["properties"],
+        }
+      : {}),
   };
 }
 
@@ -874,6 +944,32 @@ export async function callTool(
         url,
       };
       return jsonResult(result, result);
+    }
+    case "update_settings": {
+      const current = await client.getSettings();
+      const title =
+        typeof args.title === "string" ? args.title : current.title;
+      return jsonResult(
+        await client.updateSettings({
+          title,
+          ...(Object.hasOwn(args, "properties")
+            ? {
+                properties:
+                  args.properties as PortalSettingsInput["properties"],
+              }
+            : {}),
+        }),
+      );
+    }
+    case "reorder_networks": {
+      const ids = args.ids;
+      if (
+        !Array.isArray(ids) ||
+        !ids.every((id) => typeof id === "number" && Number.isInteger(id))
+      ) {
+        throw new Error("idsにはネットワークIDの配列を指定してください");
+      }
+      return jsonResult(await client.reorderNetworks(ids as number[]));
     }
     case "list_networks":
       return jsonResult(await client.listNetworks());

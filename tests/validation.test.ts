@@ -128,8 +128,12 @@ const data: PortalDataV2 = {
       toDeviceId: "2",
       fromInterfaceId: "13",
       toInterfaceId: "12",
+      fromServiceId: null,
+      toServiceId: null,
       fromLabel: "バックアップ先",
       toLabel: "バックアップ先",
+      port: null,
+      protocol: null,
       color: "#3b82f6",
       lineStart: "circle",
       lineEnd: "circle",
@@ -267,6 +271,38 @@ describe("shared REST validation", () => {
     });
   });
 
+  it("validates the relation port and protocol as a pair", () => {
+    const base = {
+      relationName: "DB",
+      fromInterfaceId: 13,
+      toInterfaceId: 12,
+    };
+    expect(
+      validateRelationPayload({ ...base, port: 5432, protocol: "tcp" }),
+    ).toEqual([]);
+    expect(
+      validateRelationPayload({ ...base, port: null, protocol: null }),
+    ).toEqual([]);
+    expect(validateRelationPayload({ ...base, port: 5432 })).toContainEqual({
+      path: "protocol",
+      message: "ポートとプロトコルはセットで指定してください",
+    });
+    expect(validateRelationPayload({ ...base, protocol: "udp" }))
+      .toContainEqual({
+        path: "port",
+        message: "ポートとプロトコルはセットで指定してください",
+      });
+    expect(
+      validateRelationPayload({ ...base, port: 0, protocol: "tcp" }),
+    ).toContainEqual({ path: "port", message: "ポート番号が不正です" });
+    expect(
+      validateRelationPayload({ ...base, port: 53, protocol: "icmp" }),
+    ).toContainEqual({
+      path: "protocol",
+      message: "プロトコルが不正です",
+    });
+  });
+
   it("does not accept service status as an input field", () => {
     const serviceInput = {
       interfaceId: 12,
@@ -389,8 +425,12 @@ describe("shared REST validation", () => {
           relationName: "バックアップ先",
           fromInterfaceId: "13",
           toInterfaceId: "12",
+      fromServiceId: null,
+      toServiceId: null,
           fromLabel: "バックアップ先",
           toLabel: "バックアップ先",
+          port: null,
+          protocol: null,
         },
         data,
         "20",
@@ -402,8 +442,12 @@ describe("shared REST validation", () => {
           relationName: "バックアップ先",
           fromInterfaceId: "13",
           toInterfaceId: "12",
+      fromServiceId: null,
+      toServiceId: null,
           fromLabel: "host",
           toLabel: "8",
+          port: null,
+          protocol: null,
         },
         data,
         "99",
@@ -415,8 +459,12 @@ describe("shared REST validation", () => {
           relationName: "バックアップ先",
           fromInterfaceId: "13",
           toInterfaceId: "12",
+      fromServiceId: null,
+      toServiceId: null,
           fromLabel: "バックアップ先",
           toLabel: "バックアップ先",
+          port: null,
+          protocol: null,
         },
         data,
         "99",
@@ -424,7 +472,7 @@ describe("shared REST validation", () => {
     ).toContainEqual({
       path: "relationName",
       message:
-        "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
+        "同じ関係名・始点・終点・ラベル・ポートの関係はすでに登録されています",
     });
   });
 
@@ -446,8 +494,12 @@ describe("shared REST validation", () => {
       toDeviceId: "2",
       fromInterfaceId: "14",
       toInterfaceId: "12",
+      fromServiceId: null,
+      toServiceId: null,
       fromLabel: "監視元",
       toLabel: "監視先",
+      port: null,
+      protocol: null,
       color: "#22c55e",
       lineStart: "circle",
       lineEnd: "circle",
@@ -462,8 +514,12 @@ describe("shared REST validation", () => {
       toDeviceId: "2",
       fromInterfaceId: "13",
       toInterfaceId: "12",
+      fromServiceId: null,
+      toServiceId: null,
       fromLabel: "バックアップ先",
       toLabel: "バックアップ先",
+      port: null,
+      protocol: null,
       color: "#3b82f6",
       lineStart: "circle",
       lineEnd: "circle",
@@ -499,6 +555,8 @@ describe("shared REST validation", () => {
       id: "21",
       fromLabel: "9",
       toLabel: "443",
+      port: null,
+      protocol: null,
     });
     expect(validatePortalData(templated).issues).toEqual([]);
 
@@ -631,6 +689,18 @@ describe("URL assembly", () => {
     expect(buildMonitorUrl(service, iface)).toBe(
       "http://192.168.0.19:3000/api/v1/version",
     );
+  });
+
+  it("returns null for scheme none, even with an IP and explicit URL", () => {
+    const none = {
+      scheme: "none" as const,
+      port: 5432,
+      topPath: "/",
+      monitorPath: "/",
+      serviceUrl: "https://example.com/",
+    };
+    expect(buildServiceUrl(none, { ip: "192.168.0.20" })).toBeNull();
+    expect(buildMonitorUrl(none, { ip: "192.168.0.20" })).toBeNull();
   });
 
   it("returns null when an IP and explicit URL are both absent", () => {

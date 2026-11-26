@@ -239,6 +239,29 @@ describe("MCP block", () => {
     expect(text).toContain("toLabel=ホストOS");
   });
 
+  it("creates service-endpoint relations and renders them in map text", async () => {
+    await callMcpTool("create_relation_name", {
+      name: "サービス連携",
+      color: "#7c3aed",
+    });
+    const created = await callMcpTool("create_relation", {
+      fromServiceId: 1,
+      toInterfaceId: 2,
+      relationName: "サービス連携",
+      fromLabel: "Webhook",
+      toLabel: "",
+    });
+    expect(created.isError).toBe(false);
+
+    const map = await callMcpTool("get_network_map", {
+      deviceId: 1,
+      depth: 1,
+    });
+    const mapText = map.content?.[0]?.text ?? "";
+    expect(mapText).toContain("nanopi-r2s:service:gitea");
+    expect(mapText).toContain("relationName=サービス連携");
+  });
+
   it("uses relation labels in map and neighborhood text", async () => {
     await callMcpTool("create_relation_name", {
       name: "ポート接続",
@@ -729,7 +752,7 @@ describe("MCP block", () => {
             {
               path: "relationName",
               message:
-                "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
+                "同じ関係名・始点・終点・ラベル・ポートの関係はすでに登録されています",
             },
           ],
         },
@@ -757,6 +780,48 @@ describe("MCP block", () => {
       },
     });
     expect(database.listRelations()).toHaveLength(before + 1);
+  });
+
+  it("updates ouchi settings, network properties, and network order", async () => {
+    const settings = (
+      await callMcpTool("update_settings", {
+        properties: { 運用: "MCPメモ" },
+      })
+    ).structuredContent?.result as {
+      title: string;
+      properties: Record<string, string>;
+    };
+    expect(settings.properties).toEqual({ 運用: "MCPメモ" });
+    expect(settings.title).toBe(database.getSettings().title);
+    expect(database.getSettings().properties).toEqual({ 運用: "MCPメモ" });
+
+    const networks = database.listNetworks();
+    const network = networks[0];
+    const updated = (
+      await callMcpTool("update_network", {
+        id: network.id,
+        name: network.name,
+        cidr: network.cidr,
+        accent: network.accent,
+        note: network.note,
+        properties: { 方針: "MCP" },
+      })
+    ).structuredContent?.result as {
+      properties: Record<string, string>;
+    };
+    expect(updated.properties).toEqual({ 方針: "MCP" });
+
+    const reversed = networks.map((item) => item.id).reverse();
+    const reordered = (
+      await callMcpTool("reorder_networks", { ids: reversed })
+    ).structuredContent?.result as Array<{ id: number }>;
+    expect(reordered.map((item) => item.id)).toEqual(reversed);
+    expect(database.listNetworks().map((item) => item.id)).toEqual(reversed);
+
+    const map = await callMcpTool("get_network_map", {});
+    const mapText = map.content?.[0]?.text ?? "";
+    expect(mapText).toContain("ouchi properties={\"運用\":\"MCPメモ\"}");
+    expect(mapText).toContain("properties={\"方針\":\"MCP\"}");
   });
 
   it("enforces the service-category pseudo-device rules in REST", async () => {
@@ -906,7 +971,7 @@ describe("MCP block", () => {
         "import_ledger_yaml",
       ]),
     );
-    expect(listed.result?.tools).toHaveLength(38);
+    expect(listed.result?.tools).toHaveLength(40);
 
     const mapResponse = await httpRequestToApp(actualMcpApp.fetch, {
       method: "POST",
@@ -952,7 +1017,7 @@ describe("MCP block", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(38);
+      expect(tools.tools).toHaveLength(40);
       expect(tools.tools.map((tool) => tool.name)).toContain(
         "get_network_map",
       );

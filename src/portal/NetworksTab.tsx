@@ -7,6 +7,8 @@ interface NetworksTabProps {
   onAdd: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onNetworkMemo: (id: string) => void;
+  onMoveNetwork: (id: string, direction: "up" | "down") => void;
   saveDisabled?: boolean;
 }
 
@@ -21,9 +23,12 @@ export function NetworksTab({
   onAdd,
   onDelete,
   onEdit,
+  onNetworkMemo,
+  onMoveNetwork,
   saveDisabled = false,
 }: NetworksTabProps) {
-  const rows = sortNetworksForDisplay(data.networks).map((network) => {
+  const ordered = sortNetworksForDisplay(data.networks);
+  const rows = ordered.map((network, index) => {
     const deviceCount = new Set(
       data.interfaces
         .filter((iface) => iface.networkId === network.id)
@@ -40,6 +45,25 @@ export function NetworksTab({
       deleteLabel: `${network.name}を削除`,
       onEdit: () => onEdit(network.id),
       onDelete: () => onDelete(network.id),
+      actions: [
+        {
+          label: "↑",
+          ariaLabel: `${network.name}を上へ移動`,
+          disabled: saveDisabled || index === 0,
+          onClick: () => onMoveNetwork(network.id, "up"),
+        },
+        {
+          label: "↓",
+          ariaLabel: `${network.name}を下へ移動`,
+          disabled: saveDisabled || index === ordered.length - 1,
+          onClick: () => onMoveNetwork(network.id, "down"),
+        },
+        {
+          label: "メモ",
+          ariaLabel: `${network.name}のメモ`,
+          onClick: () => onNetworkMemo(network.id),
+        },
+      ],
     };
   });
 

@@ -447,6 +447,24 @@
   background: #edf3f6;
 }
 
+.ouchi-list-service {
+  cursor: pointer;
+}
+
+.ouchi-list-service--selected {
+  background: #e8effe;
+  border-color: #2563eb;
+}
+
+.ouchi-list-service-jump {
+  display: inline-flex;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
 .ouchi-list-service-name {
   overflow: hidden;
   font-weight: 750;

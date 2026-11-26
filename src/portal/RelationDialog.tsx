@@ -4,6 +4,7 @@ import { ManageDialog } from "./ManageDialog";
 import {
   RelationEditor,
   type RelationEditableField,
+  type RelationEndpointKind,
 } from "./RelationEditor";
 import type {
   PortalDataV2,
@@ -48,8 +49,12 @@ export function RelationDialog({
           fromInterfaceId: firstInterface?.id ?? "",
           toInterfaceId:
             firstOtherInterface?.id ?? firstInterface?.id ?? "",
+          fromServiceId: null,
+          toServiceId: null,
           fromLabel: "",
           toLabel: "",
+          port: null,
+          protocol: null,
           color: firstRelationName?.color ?? "#d5a22b",
           lineStart: firstRelationName?.lineStart ?? "circle",
           lineEnd: firstRelationName?.lineEnd ?? "circle",
@@ -64,7 +69,16 @@ export function RelationDialog({
     );
     setRelation((current) => ({
       ...current,
-      [field]: value,
+      [field]:
+        field === "port"
+          ? value === ""
+            ? null
+            : Number(value)
+          : field === "protocol"
+            ? value === ""
+              ? null
+              : value
+            : value,
           ...(field === "relationName" && definition
             ? {
                 relationNameId: definition.id,
@@ -76,22 +90,53 @@ export function RelationDialog({
     }));
   }
 
+  function changeEndpointKind(
+    side: "from" | "to",
+    kind: RelationEndpointKind,
+  ) {
+    setRelation((current) => {
+      if (kind === "service") {
+        const firstService = data.services[0];
+        return side === "from"
+          ? { ...current, fromServiceId: firstService?.id ?? "", fromInterfaceId: null }
+          : { ...current, toServiceId: firstService?.id ?? "", toInterfaceId: null };
+      }
+      const firstInterface = data.interfaces[0];
+      return side === "from"
+        ? { ...current, fromInterfaceId: firstInterface?.id ?? "", fromServiceId: null }
+        : { ...current, toInterfaceId: firstInterface?.id ?? "", toServiceId: null };
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saveDisabled) {
       return;
     }
-    const fromInterface = data.interfaces.find(
-      (iface) => iface.id === relation.fromInterfaceId,
-    );
-    const toInterface = data.interfaces.find(
-      (iface) => iface.id === relation.toInterfaceId,
-    );
+    const endpointDeviceId = (
+      interfaceId: string | null,
+      serviceId: string | null,
+    ): string | undefined => {
+      if (serviceId) {
+        const service = data.services.find(
+          (candidate) => candidate.id === serviceId,
+        );
+        return data.interfaces.find(
+          (iface) => iface.id === service?.interfaceId,
+        )?.deviceId;
+      }
+      return data.interfaces.find((iface) => iface.id === interfaceId)
+        ?.deviceId;
+    };
     const normalized: PortalRelation = {
       ...relation,
       relationName: relation.relationName.trim(),
-      fromDeviceId: fromInterface?.deviceId ?? relation.fromDeviceId,
-      toDeviceId: toInterface?.deviceId ?? relation.toDeviceId,
+      fromDeviceId:
+        endpointDeviceId(relation.fromInterfaceId, relation.fromServiceId) ??
+        relation.fromDeviceId,
+      toDeviceId:
+        endpointDeviceId(relation.toInterfaceId, relation.toServiceId) ??
+        relation.toDeviceId,
       fromLabel: relation.fromLabel.trim(),
       toLabel: relation.toLabel.trim(),
     };
@@ -134,7 +179,9 @@ export function RelationDialog({
           devices={data.devices}
           index={0}
           interfaces={data.interfaces}
+          services={data.services}
           onChange={updateRelation}
+          onKindChange={changeEndpointKind}
           onDelete={onClose}
           relation={relation}
           relationNames={data.relationNames}

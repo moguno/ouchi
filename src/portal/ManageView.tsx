@@ -35,8 +35,11 @@ interface ManageViewProps {
   onAdd: (kind: EntityKind) => void;
   onEdit: (kind: EntityKind, id: string) => void;
   onDelete: (kind: EntityKind, id: string) => void;
+  onNetworkMemo: (id: string) => void;
+  onMoveNetwork: (id: string, direction: "up" | "down") => void;
   onDeviceMemo: (id: string) => void;
   onServiceMemo: (id: string) => void;
+  onRelationMemo: (id: string) => void;
   onServiceTop: (id: string) => void;
   onServiceIcon: (id: string) => void;
   onAddRelation: () => void;
@@ -69,8 +72,11 @@ export function ManageView({
   onAdd,
   onEdit,
   onDelete,
+  onNetworkMemo,
+  onMoveNetwork,
   onDeviceMemo,
   onServiceMemo,
+  onRelationMemo,
   onServiceTop,
   onServiceIcon,
   onAddRelation,
@@ -277,6 +283,8 @@ export function ManageView({
             onAdd={() => onAdd("network")}
             onDelete={(id) => onDelete("network", id)}
             onEdit={(id) => onEdit("network", id)}
+            onMoveNetwork={onMoveNetwork}
+            onNetworkMemo={onNetworkMemo}
             saveDisabled={savingDisabled}
           />
         )}
@@ -310,6 +318,7 @@ export function ManageView({
             onDelete={onDeleteRelation}
             onDeleteRelationName={onDeleteRelationName}
             onEdit={onEditRelation}
+            onRelationMemo={onRelationMemo}
             onSaveRelationName={onSaveRelationName}
             saveDisabled={savingDisabled}
           />

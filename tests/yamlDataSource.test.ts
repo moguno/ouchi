@@ -33,13 +33,22 @@ function downgradeToV3(doc: Record<string, any>): Record<string, any> {
     );
     delete device.interfaces;
   }
+  const serviceDevice = new Map<string, string>(
+    (doc.services ?? []).map((service: Record<string, any>) => [
+      service.subdomain,
+      service.device,
+    ]),
+  );
   for (const relation of doc.relations ?? []) {
-    if (typeof relation.from === "object") {
-      relation.from = relation.from.device;
-    }
-    if (typeof relation.to === "object") {
-      relation.to = relation.to.device;
-    }
+    const downgradeEndpoint = (endpoint: unknown) =>
+      typeof endpoint === "object" && endpoint !== null
+        ? ((endpoint as Record<string, any>).device ??
+          serviceDevice.get(
+            (endpoint as Record<string, any>).service as string,
+          ))
+        : endpoint;
+    relation.from = downgradeEndpoint(relation.from);
+    relation.to = downgradeEndpoint(relation.to);
   }
   for (const service of doc.services ?? []) {
     service.network = networkByInterface.get(
@@ -58,12 +67,16 @@ describe("YAML data source", () => {
     expect(data.settings).toEqual({
       domain: "ouchi.example",
       title: "あなたのおうち環境",
+      properties: {
+        運用方針: "架空のサンプル台帳。実在の機器・アドレスは含まれない",
+        バックアップ: "週1回、台帳YAMLをエクスポートして保管",
+      },
     });
     expect(data.networks).toHaveLength(6);
     expect(data.devices).toHaveLength(25);
     expect(data.interfaces).toHaveLength(29);
     expect(data.relations).toHaveLength(10);
-    expect(data.services).toHaveLength(22);
+    expect(data.services).toHaveLength(23);
     expect(data.devices.every((device) => Boolean(device.petname))).toBe(true);
     expect(
       data.devices.find((device) => device.name === "cedar-host")?.petname,
@@ -84,12 +97,12 @@ describe("YAML data source", () => {
       "network-6",
     ]);
     expect(data.networks.map((network) => network.name)).toEqual([
-      "インターネット",
       "家族用LAN",
       "ホームラボ",
       "個人ネットワーク",
       "データ基盤",
       "アプリ基盤",
+      "インターネット",
     ]);
     expect(data.devices.find((device) => device.name === "l3-switch")).toEqual(
       expect.objectContaining({
@@ -114,7 +127,7 @@ describe("YAML data source", () => {
     );
     const homeLanInterface = data.interfaces.find(
       (iface) =>
-        iface.deviceId === l3Switch?.id && iface.networkId === "network-2",
+        iface.deviceId === l3Switch?.id && iface.networkId === "network-1",
     );
     const atlasLab = data.devices.find(
       (device) => device.name === "atlas-lab",
@@ -136,6 +149,39 @@ describe("YAML data source", () => {
     expect(
       data.relationNames.map((relationName) => relationName.color),
     ).toEqual(["#d48a2f", "#c2185b", "#0277bd", "#f4511e", "#558b2f"]);
+  });
+
+  it("resolves service endpoints in the sample ledger", () => {
+    const data = ledgerYamlToPortalData(sampleYaml);
+    const serviceById = new Map(
+      data.services.map((service) => [service.id, service]),
+    );
+    const dbRelations = data.relations.filter(
+      (relation) => relation.relationName === "DB",
+    );
+    expect(dbRelations).toHaveLength(2);
+    for (const relation of dbRelations) {
+      expect(relation.fromInterfaceId).toBeNull();
+      expect(
+        serviceById.get(relation.fromServiceId ?? "")?.subdomain,
+      ).toMatch(/^app[12]$/);
+      expect(relation.toLabel).toBe("");
+      expect(relation.port).toBe(5432);
+      expect(relation.protocol).toBe("tcp");
+      expect(
+        data.devices.find((device) => device.id === relation.toDeviceId)
+          ?.name,
+      ).toBe("basalt-db");
+    }
+    const webhook = data.relations.find(
+      (relation) => relation.relationName === "Webhook",
+    );
+    expect(
+      serviceById.get(webhook?.fromServiceId ?? "")?.subdomain,
+    ).toBe("app1");
+    expect(serviceById.get(webhook?.toServiceId ?? "")?.subdomain).toBe(
+      "app3",
+    );
   });
 
   it("upgrades ouchi-ledger/2 documents by expanding label templates", () => {
@@ -213,6 +259,27 @@ describe("YAML data source", () => {
     expect(
       data.devices
         .filter((item) => item.name !== "l3-switch")
+        .every((item) => Object.keys(item.properties ?? {}).length === 0),
+    ).toBe(true);
+  });
+
+  it("loads relation properties and treats missing ones as an empty map", () => {
+    const document = parse(sampleYaml) as {
+      relations: Array<Record<string, unknown>>;
+    };
+    document.relations[0].properties = {
+      note: "結線メモ",
+      vault_path: "sops/relations/vm-link",
+    };
+
+    const data = ledgerYamlToPortalData(stringify(document));
+    expect(data.relations[0].properties).toEqual({
+      note: "結線メモ",
+      vault_path: "sops/relations/vm-link",
+    });
+    expect(
+      data.relations
+        .slice(1)
         .every((item) => Object.keys(item.properties ?? {}).length === 0),
     ).toBe(true);
   });
@@ -350,7 +417,7 @@ describe("YAML data source", () => {
 
     expect(personalNetwork).toEqual(
       expect.objectContaining({
-        id: "network-4",
+        id: "network-3",
         cidr: "198.18.0.0/24",
       }),
     );
@@ -434,7 +501,7 @@ describe("YAML data source", () => {
     );
     expect(pagesInterface).toEqual(
       expect.objectContaining({
-        networkId: "network-1",
+        networkId: "network-6",
         ip: "",
       }),
     );
@@ -513,7 +580,7 @@ describe("YAML data source", () => {
   it("converts legacy accent tone names when upgrading from /6", () => {
     const data = ledgerYamlToPortalData(
       sampleYaml
-        .replace("format: ouchi-ledger/9", "format: ouchi-ledger/6")
+        .replace("format: ouchi-ledger/13", "format: ouchi-ledger/6")
         .replace('accent: "#5b9bd6"', "accent: blue"),
     );
     expect(
@@ -524,7 +591,7 @@ describe("YAML data source", () => {
   it("upgrades /8 documents and keeps relation-name endpoint shapes", () => {
     const data = ledgerYamlToPortalData(
       sampleYaml
-        .replace("format: ouchi-ledger/9", "format: ouchi-ledger/8")
+        .replace("format: ouchi-ledger/13", "format: ouchi-ledger/8")
         .replace(
           '  - name: VM\n    color: "#d48a2f"',
           '  - name: VM\n    color: "#d48a2f"\n    lineEnd: arrow',
@@ -539,14 +606,39 @@ describe("YAML data source", () => {
     expect(relation?.lineEnd).toBe("arrow");
   });
 
+  it("upgrades /10 documents and defaults relation properties to empty", () => {
+    const data = ledgerYamlToPortalData(
+      sampleYaml.replace("format: ouchi-ledger/13", "format: ouchi-ledger/10"),
+    );
+    expect(data.relations.length).toBeGreaterThan(0);
+    for (const relation of data.relations) {
+      expect(relation.properties).toEqual({});
+    }
+  });
+
+  it("upgrades /12 documents and keeps structured relation ports", () => {
+    const data = ledgerYamlToPortalData(
+      sampleYaml.replace("format: ouchi-ledger/13", "format: ouchi-ledger/12"),
+    );
+    const db = data.relations.find((item) => item.relationName === "DB");
+    expect(db?.port).toBe(5432);
+    expect(db?.protocol).toBe("tcp");
+    expect(db?.toLabel).toBe("");
+    const postgres = data.services.find(
+      (item) => item.subdomain === "basalt-pg",
+    );
+    expect(postgres?.scheme).toBe("none");
+    expect(postgres?.url).toBeNull();
+  });
+
   it("rejects unknown ledger format versions", () => {
     expect(() =>
       ledgerYamlToPortalData(
         sampleYaml.replace(
-          "format: ouchi-ledger/9",
-          "format: ouchi-ledger/10",
+          "format: ouchi-ledger/13",
+          "format: ouchi-ledger/99",
         ),
       ),
-    ).toThrow(/formatは「ouchi-ledger\/9」/);
+    ).toThrow(/formatは「ouchi-ledger\/13」/);
   });
 });

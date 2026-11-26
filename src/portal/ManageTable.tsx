@@ -10,6 +10,7 @@ export interface ManageTableRowAction {
   ariaLabel: string;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 export interface ManageTableRow {
@@ -89,6 +90,7 @@ export function ManageTable({
                     {" "}
                     <button
                       aria-label={action.ariaLabel}
+                      disabled={action.disabled}
                       onClick={action.onClick}
                       type="button"
                     >

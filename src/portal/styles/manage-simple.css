@@ -364,6 +364,28 @@
   border-top: 1px solid #ccc;
 }
 
+.ouchi-manage-dialog .ouchi-endpoint-kind {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.ouchi-manage-dialog .ouchi-endpoint-kind button {
+  padding: 3px 10px;
+  border: 1px solid #b9c2cc;
+  border-radius: 999px;
+  background: #fff;
+  color: #44515f;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ouchi-manage-dialog .ouchi-endpoint-kind button[aria-pressed="true"] {
+  background: #6259d8;
+  border-color: #6259d8;
+  color: #fff;
+}
+
 .ouchi-manage-dialog .ouchi-form-section > header {
   display: flex;
   align-items: flex-start;

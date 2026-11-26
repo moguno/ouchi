@@ -34,10 +34,10 @@ describe("connectorAnchors", () => {
     expect(cardsShareHorizontalLine(from, to)).toBe(false);
     expect(connectorAnchors(from, to)).toEqual({
       startX: 200,
-      startY: 200,
+      startY: 212,
       endX: 500,
-      endY: 120,
-      d: "M 200 200 L 500 120",
+      endY: 108,
+      d: "M 200 212 L 500 108",
     });
   });
 
@@ -48,10 +48,10 @@ describe("connectorAnchors", () => {
     expect(cardsShareHorizontalLine(from, to)).toBe(false);
     expect(connectorAnchors(from, to)).toEqual({
       startX: 200,
-      startY: 120,
+      startY: 108,
       endX: 500,
-      endY: 200,
-      d: "M 200 120 L 500 200",
+      endY: 212,
+      d: "M 200 108 L 500 212",
     });
   });
 
@@ -61,11 +61,11 @@ describe("connectorAnchors", () => {
 
     expect(cardsShareHorizontalLine(from, to)).toBe(true);
     expect(connectorAnchors(from, to)).toEqual({
-      startX: 300,
+      startX: 287,
       startY: 70,
-      endX: 400,
+      endX: 413,
       endY: 90,
-      d: "M 300 70 L 400 90",
+      d: "M 287 70 L 413 90",
     });
   });
 
@@ -75,11 +75,11 @@ describe("connectorAnchors", () => {
 
     expect(cardsShareHorizontalLine(from, to)).toBe(true);
     expect(connectorAnchors(from, to)).toEqual({
-      startX: 400,
+      startX: 413,
       startY: 70,
-      endX: 300,
+      endX: 287,
       endY: 90,
-      d: "M 400 70 L 300 90",
+      d: "M 413 70 L 287 90",
     });
   });
 
@@ -90,9 +90,9 @@ describe("connectorAnchors", () => {
     expect(cardsShareHorizontalLine(from, to)).toBe(false);
     expect(connectorAnchors(from, to)).toMatchObject({
       startX: 200,
-      startY: 120,
+      startY: 108,
       endX: 500,
-      endY: 120,
+      endY: 132,
     });
   });
 });
@@ -110,10 +110,10 @@ describe("routeConnectorLinks edge distribution", () => {
         startSide: "bottom",
         endSide: "top",
         startX: 200,
-        startY: 120,
+        startY: 108,
         endX: 200,
-        endY: 200,
-        d: "M 200 120 L 200 200",
+        endY: 212,
+        d: "M 200 108 L 200 212",
       },
     ]);
   });
@@ -131,16 +131,16 @@ describe("routeConnectorLinks edge distribution", () => {
     );
 
     expect(byId.get("left-link")).toMatchObject({
-      startX: 200,
-      startY: 120,
+      startX: expect.closeTo(204.33, 1),
+      startY: 108,
       endX: 250,
-      endY: 300,
+      endY: 312,
     });
     expect(byId.get("right-link")).toMatchObject({
-      startX: 300,
-      startY: 120,
+      startX: expect.closeTo(295.67, 1),
+      startY: 108,
       endX: 550,
-      endY: 300,
+      endY: 312,
     });
   });
 
@@ -168,8 +168,8 @@ describe("routeConnectorLinks edge distribution", () => {
       })),
     ).toEqual([
       { id: "link-0", startX: 250, endX: 250 },
-      { id: "link-1", startX: 325, endX: 600 },
-      { id: "link-2", startX: 175, endX: 70 },
+      { id: "link-1", startX: 318.5, endX: 600 },
+      { id: "link-2", startX: 181.5, endX: 70 },
     ]);
   });
 
@@ -193,23 +193,23 @@ describe("routeConnectorLinks edge distribution", () => {
 
     expect(byId.get("link-1")).toMatchObject({
       startSide: "left",
-      startX: 500,
-      startY: 95,
-      endX: 200,
+      startX: 513,
+      startY: 101,
+      endX: 187,
       endY: 100,
     });
     expect(byId.get("link-2")).toMatchObject({
       startSide: "left",
-      startX: 500,
+      startX: 513,
       startY: 170,
-      endX: 200,
+      endX: 187,
       endY: 200,
     });
     expect(byId.get("link-0")).toMatchObject({
       startSide: "left",
-      startX: 500,
-      startY: 245,
-      endX: 200,
+      startX: 513,
+      startY: 239,
+      endX: 187,
       endY: 300,
     });
   });

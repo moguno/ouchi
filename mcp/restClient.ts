@@ -11,6 +11,8 @@ import type {
   PortalRelationInput,
   PortalRelationNameInput,
   PortalServiceInput,
+  PortalSettings,
+  PortalSettingsInput,
 } from "../src/portal/types";
 
 export type FetchImplementation = (
@@ -99,6 +101,18 @@ export class LedgerRestClient {
 
   getPortalData(): Promise<PortalApiData> {
     return this.request<PortalApiData>("/api/portal");
+  }
+
+  getSettings(): Promise<PortalSettings> {
+    return this.request<PortalSettings>("/api/settings");
+  }
+
+  updateSettings(input: PortalSettingsInput): Promise<PortalSettings> {
+    return this.write("PUT", "/api/settings", input);
+  }
+
+  reorderNetworks(ids: number[]): Promise<PortalApiNetwork[]> {
+    return this.write("PUT", "/api/networks/order", { ids });
   }
 
   listNetworks(): Promise<PortalApiNetwork[]> {

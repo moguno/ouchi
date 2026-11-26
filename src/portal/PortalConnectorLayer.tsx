@@ -7,8 +7,13 @@ import {
   type RefObject,
 } from "react";
 import {
+  expandConnectorRect,
+  insetConnectorRect,
+  rectEdgeIntersection,
   routeConnectorLinks,
+  TILE_ANCHOR_GAP,
   type ConnectorLink,
+  type ConnectorNode,
   type ConnectorRect,
   type ConnectorSide,
 } from "./connectors";
@@ -72,12 +77,14 @@ export function usePortalConnectors({
   layoutMode,
   relationModes,
   selectedDeviceId,
+  selectedServiceId,
 }: {
   canvasRef: RefObject<HTMLDivElement | null>;
   data: PortalDataV2;
   layoutMode: string;
   relationModes?: RelationDisplayModes;
   selectedDeviceId?: string;
+  selectedServiceId?: string;
 }) {
   const [relationConnectors, setRelationConnectors] = useState<
     RelationConnector[]
@@ -103,8 +110,8 @@ export function usePortalConnectors({
       const cards = Array.from(
         canvas.querySelectorAll<HTMLElement>("[data-device-id]"),
       ).filter((card) => card.getClientRects().length > 0);
-      const localRect = (card: HTMLElement): ConnectorRect => {
-        const rect = card.getBoundingClientRect();
+      const localRect = (element: HTMLElement): ConnectorRect => {
+        const rect = element.getBoundingClientRect();
         return {
           left: rect.left - canvasRect.left,
           right: rect.right - canvasRect.left,
@@ -128,22 +135,101 @@ export function usePortalConnectors({
                 card.dataset.interfaceId === interfaceId),
           );
 
+      // Service tiles anchor on their icon frame: map each rendered
+      // service to the local rect of its icon wrap.
+      const tileRects = new Map<string, ConnectorRect>();
+      canvas
+        .querySelectorAll<HTMLElement>("[data-service-id]")
+        .forEach((tile) => {
+          const serviceId = tile.dataset.serviceId;
+          if (!serviceId || tileRects.has(serviceId)) {
+            return;
+          }
+          const icon =
+            tile.querySelector<HTMLElement>(".ouchi-service-icon-wrap") ??
+            tile;
+          tileRects.set(serviceId, localRect(icon));
+        });
+
+      type ResolvedEndpoint =
+        | { kind: "card"; node: ConnectorNode }
+        | { kind: "tile"; rect: ConnectorRect };
+      const endpointsFor = (
+        deviceId: string,
+        interfaceId: string | null,
+        serviceId: string | null,
+      ): ResolvedEndpoint[] => {
+        if (serviceId) {
+          const tile = tileRects.get(serviceId);
+          if (tile) {
+            return [{ kind: "tile", rect: tile }];
+          }
+          return cardsFor(deviceId).map(({ node }) => ({
+            kind: "card" as const,
+            node,
+          }));
+        }
+        const specific = interfaceId
+          ? cardsFor(deviceId, interfaceId)
+          : [];
+        const targets =
+          specific.length > 0 ? specific : cardsFor(deviceId);
+        return targets.map(({ node }) => ({ kind: "card" as const, node }));
+      };
+
       const links: ConnectorLink[] = [];
-      const metadata = new Map<
-        string,
-        Pick<
-          RelationConnector,
-          | "kind"
-          | "color"
-          | "tooltip"
-          | "always"
-          | "selected"
-          | "startLabel"
-          | "endLabel"
-          | "startShape"
-          | "endShape"
-        >
-      >();
+      const directConnectors: RelationConnector[] = [];
+      type ConnectorMeta = Pick<
+        RelationConnector,
+        | "kind"
+        | "color"
+        | "tooltip"
+        | "always"
+        | "selected"
+        | "startLabel"
+        | "endLabel"
+        | "startShape"
+        | "endShape"
+      >;
+      const metadata = new Map<string, ConnectorMeta>();
+      // Card endpoints anchor on the inner edge of the card's
+      // padding, matching the routed card-to-card geometry; tile
+      // endpoints anchor TILE_ANCHOR_GAP outside their icon frame.
+      const endpointRect = (endpoint: ResolvedEndpoint): ConnectorRect =>
+        endpoint.kind === "tile"
+          ? expandConnectorRect(endpoint.rect, TILE_ANCHOR_GAP)
+          : insetConnectorRect(endpoint.node.rect);
+      const addLink = (
+        id: string,
+        from: ResolvedEndpoint,
+        to: ResolvedEndpoint,
+        meta: ConnectorMeta,
+      ) => {
+        if (from.kind === "card" && to.kind === "card") {
+          links.push({ id, from: from.node, to: to.node });
+          metadata.set(id, meta);
+          return;
+        }
+        const fromRect = endpointRect(from);
+        const toRect = endpointRect(to);
+        const center = (rect: ConnectorRect) => ({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        const start = rectEdgeIntersection(fromRect, center(toRect));
+        const end = rectEdgeIntersection(toRect, center(fromRect));
+        directConnectors.push({
+          ...meta,
+          id,
+          d: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
+          startX: start.x,
+          startY: start.y,
+          endX: end.x,
+          endY: end.y,
+          startSide: start.side,
+          endSide: end.side,
+        });
+      };
       const selectedCards = selectedDeviceId
         ? cardsFor(selectedDeviceId)
         : [];
@@ -153,16 +239,16 @@ export function usePortalConnectors({
           return;
         }
         const id = `same-device-${selectedIndex}-${selectedIndex + 1}`;
-        links.push({
+        addLink(
           id,
-          from: selectedCard.node,
-          to: sameDeviceCard.node,
-        });
-        metadata.set(id, {
-          kind: "same-device",
-          color: "#6259d8",
-          tooltip: "同一デバイス",
-        });
+          { kind: "card", node: selectedCard.node },
+          { kind: "card", node: sameDeviceCard.node },
+          {
+            kind: "same-device",
+            color: "#6259d8",
+            tooltip: "同一デバイス",
+          },
+        );
       });
 
       for (const relation of data.relations) {
@@ -170,6 +256,12 @@ export function usePortalConnectors({
           relationDisplayMode(relationModes, relation.relationName) ===
           "hidden"
         ) {
+          continue;
+        }
+        // A relation with a service endpoint is a tile relation: it
+        // is drawn on tile selection (or in always mode), never on
+        // device selection.
+        if (relation.fromServiceId || relation.toServiceId) {
           continue;
         }
         if (
@@ -186,32 +278,25 @@ export function usePortalConnectors({
         // the relation's endpoint labels onto start/end by which side of
         // the relation the selected device is.
         const selectedIsFrom = relation.fromDeviceId === selectedDeviceId;
-        // A relation belongs to one interface on each side: draw it only
-        // between the cards of those interfaces. When an endpoint
-        // interface has no card on screen (e.g. it has no network), fall
-        // back to the device's cards so the relation stays visible.
-        const selectedInterfaceId = selectedIsFrom
-          ? relation.fromInterfaceId
-          : relation.toInterfaceId;
-        const relatedInterfaceId = selectedIsFrom
-          ? relation.toInterfaceId
-          : relation.fromInterfaceId;
-        const selectedEndpointCards = cardsFor(
-          selectedDeviceId,
-          selectedInterfaceId,
+        // A relation belongs to one endpoint on each side: draw it only
+        // between the cards of those interfaces, or on the service tile
+        // for a service endpoint. When an endpoint has no card or tile
+        // on screen (e.g. its interface has no network), fall back to
+        // the device's cards so the relation stays visible.
+        const selectedTargets = endpointsFor(
+          selectedDeviceId!,
+          selectedIsFrom
+            ? relation.fromInterfaceId
+            : relation.toInterfaceId,
+          selectedIsFrom ? relation.fromServiceId : relation.toServiceId,
         );
-        const selectedTargets =
-          selectedEndpointCards.length > 0
-            ? selectedEndpointCards
-            : selectedCards;
-        const relatedEndpointCards = cardsFor(
+        const relatedTargets = endpointsFor(
           relatedDeviceId,
-          relatedInterfaceId,
+          selectedIsFrom
+            ? relation.toInterfaceId
+            : relation.fromInterfaceId,
+          selectedIsFrom ? relation.toServiceId : relation.fromServiceId,
         );
-        const relatedTargets =
-          relatedEndpointCards.length > 0
-            ? relatedEndpointCards
-            : cardsFor(relatedDeviceId);
         const startLabel = displayRelationLabel(
           selectedIsFrom ? relation.fromLabel : relation.toLabel,
         );
@@ -219,15 +304,10 @@ export function usePortalConnectors({
           selectedIsFrom ? relation.toLabel : relation.fromLabel,
         );
 
-        selectedTargets.forEach((selectedCard, selectedIndex) => {
-          relatedTargets.forEach((relatedCard, relatedIndex) => {
+        selectedTargets.forEach((selectedEndpoint, selectedIndex) => {
+          relatedTargets.forEach((relatedEndpoint, relatedIndex) => {
             const id = `${relation.id}-${selectedIndex}-${relatedIndex}`;
-            links.push({
-              id,
-              from: selectedCard.node,
-              to: relatedCard.node,
-            });
-            metadata.set(id, {
+            addLink(id, selectedEndpoint, relatedEndpoint, {
               kind: "relation",
               color: relation.color,
               tooltip: relationTooltip(relation),
@@ -247,9 +327,73 @@ export function usePortalConnectors({
           });
         });
       }
+      // Tile relations are drawn when one of their endpoint services
+      // is the selected tile, oriented from the selected service.
+      if (selectedServiceId) {
+        for (const relation of data.relations) {
+          if (
+            relationDisplayMode(relationModes, relation.relationName) ===
+            "hidden"
+          ) {
+            continue;
+          }
+          const selectedIsFrom =
+            relation.fromServiceId === selectedServiceId;
+          const selectedIsTo = relation.toServiceId === selectedServiceId;
+          if (!selectedIsFrom && !selectedIsTo) {
+            continue;
+          }
+          const selectedTargets = endpointsFor(
+            selectedIsFrom ? relation.fromDeviceId : relation.toDeviceId,
+            selectedIsFrom
+              ? relation.fromInterfaceId
+              : relation.toInterfaceId,
+            selectedServiceId,
+          );
+          const relatedTargets = endpointsFor(
+            selectedIsFrom ? relation.toDeviceId : relation.fromDeviceId,
+            selectedIsFrom
+              ? relation.toInterfaceId
+              : relation.fromInterfaceId,
+            selectedIsFrom ? relation.toServiceId : relation.fromServiceId,
+          );
+          const startLabel = displayRelationLabel(
+            selectedIsFrom ? relation.fromLabel : relation.toLabel,
+          );
+          const endLabel = displayRelationLabel(
+            selectedIsFrom ? relation.toLabel : relation.fromLabel,
+          );
+          selectedTargets.forEach((selectedEndpoint, selectedIndex) => {
+            relatedTargets.forEach((relatedEndpoint, relatedIndex) => {
+              const id = `service-${relation.id}-${selectedIndex}-${relatedIndex}`;
+              addLink(id, selectedEndpoint, relatedEndpoint, {
+                kind: "relation",
+                color: relation.color,
+                tooltip: relationTooltip(relation),
+                always:
+                  relationDisplayMode(
+                    relationModes,
+                    relation.relationName,
+                  ) === "always",
+                selected: true,
+                startLabel,
+                endLabel,
+                startShape: selectedIsFrom
+                  ? relation.lineStart
+                  : relation.lineEnd,
+                endShape: selectedIsFrom
+                  ? relation.lineEnd
+                  : relation.lineStart,
+              });
+            });
+          });
+        }
+      }
       // Relations whose display mode is "always" are drawn even with
       // no selection (and for endpoints the selection does not touch),
       // oriented from the relation's start to its end as stored.
+      // Always mode is a guard: it applies to tile relations too,
+      // regardless of the current selection.
       for (const relation of data.relations) {
         if (
           relationDisplayMode(relationModes, relation.relationName) !==
@@ -260,37 +404,35 @@ export function usePortalConnectors({
         if (
           selectedDeviceId &&
           (relation.fromDeviceId === selectedDeviceId ||
-            relation.toDeviceId === selectedDeviceId)
+            relation.toDeviceId === selectedDeviceId) &&
+          !relation.fromServiceId &&
+          !relation.toServiceId
         ) {
           continue;
         }
-        const fromEndpointCards = cardsFor(
+        if (
+          selectedServiceId &&
+          (relation.fromServiceId === selectedServiceId ||
+            relation.toServiceId === selectedServiceId)
+        ) {
+          continue;
+        }
+        const fromTargets = endpointsFor(
           relation.fromDeviceId,
           relation.fromInterfaceId,
+          relation.fromServiceId,
         );
-        const fromTargets =
-          fromEndpointCards.length > 0
-            ? fromEndpointCards
-            : cardsFor(relation.fromDeviceId);
-        const toEndpointCards = cardsFor(
+        const toTargets = endpointsFor(
           relation.toDeviceId,
           relation.toInterfaceId,
+          relation.toServiceId,
         );
-        const toTargets =
-          toEndpointCards.length > 0
-            ? toEndpointCards
-            : cardsFor(relation.toDeviceId);
         const startLabel = displayRelationLabel(relation.fromLabel);
         const endLabel = displayRelationLabel(relation.toLabel);
-        fromTargets.forEach((fromCard, fromIndex) => {
-          toTargets.forEach((toCard, toIndex) => {
+        fromTargets.forEach((fromEndpoint, fromIndex) => {
+          toTargets.forEach((toEndpoint, toIndex) => {
             const id = `always-${relation.id}-${fromIndex}-${toIndex}`;
-            links.push({
-              id,
-              from: fromCard.node,
-              to: toCard.node,
-            });
-            metadata.set(id, {
+            addLink(id, fromEndpoint, toEndpoint, {
               kind: "relation",
               color: relation.color,
               tooltip: relationTooltip(relation),
@@ -303,12 +445,13 @@ export function usePortalConnectors({
           });
         });
       }
-      setRelationConnectors(
-        routeConnectorLinks(links).map((connector) => ({
+      setRelationConnectors([
+        ...routeConnectorLinks(links).map((connector) => ({
           ...metadata.get(connector.id)!,
           ...connector,
         })),
-      );
+        ...directConnectors,
+      ]);
     };
 
     const scheduleUpdate = () => {
@@ -331,7 +474,14 @@ export function usePortalConnectors({
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate, true);
     };
-  }, [canvasRef, data, layoutMode, relationModes, selectedDeviceId]);
+  }, [
+    canvasRef,
+    data,
+    layoutMode,
+    relationModes,
+    selectedDeviceId,
+    selectedServiceId,
+  ]);
 
   function updateConnectorTooltip(
     event: PointerEvent<SVGGElement>,

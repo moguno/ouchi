@@ -1,4 +1,17 @@
--- ouchi.local ledger schema v0.14 (2026-11-25)
+-- ouchi.local ledger schema v0.18 (2026-11-26)
+-- v0.18 gives relations a structured destination port and protocol
+-- (migration 018): port 1-65535 and protocol tcp/udp, always set as
+-- a pair or both NULL. Relations are L3-only, so the port leaves the
+-- free-text endpoint labels; ICMP has no ports and stays out.
+-- v0.17 lets relation endpoints be services as well as interfaces
+-- (migration 017): each side names exactly one of the two, mixed
+-- freely; the relations table is rebuilt for the new columns.
+-- v0.16 gives networks and settings a properties map (migration 015):
+-- the network memo and the ouchi (instance) memo; networks also gain
+-- an explicit sort_order (migration 016) that the management
+-- screen's up/down buttons edit.
+-- v0.15 gives relations a properties map (migration 014): the
+-- relation memo, joining the device and service memos.
 -- v0.14 shrinks service icons to three choices (migration 013): the
 -- service's favicon, an explicit image URL, or unset (NULL). Stored
 -- generic / preset references become unset; dashboard references
@@ -57,7 +70,9 @@ CREATE TABLE IF NOT EXISTS networks (
   name TEXT UNIQUE NOT NULL,
   cidr TEXT,
   accent TEXT,
-  note TEXT
+  note TEXT,
+  properties TEXT NOT NULL DEFAULT '{}',
+  sort_order INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS devices (
   id INTEGER PRIMARY KEY,
@@ -92,17 +107,40 @@ CREATE TABLE IF NOT EXISTS relation_names (
 CREATE TABLE IF NOT EXISTS relations (
   id INTEGER PRIMARY KEY,
   relation_name_id INTEGER NOT NULL REFERENCES relation_names(id),
-  from_interface_id INTEGER NOT NULL REFERENCES interfaces(id),
-  to_interface_id INTEGER NOT NULL REFERENCES interfaces(id),
+  from_interface_id INTEGER REFERENCES interfaces(id),
+  from_service_id INTEGER REFERENCES services(id),
+  to_interface_id INTEGER REFERENCES interfaces(id),
+  to_service_id INTEGER REFERENCES services(id),
   from_label TEXT NOT NULL DEFAULT '',
   to_label TEXT NOT NULL DEFAULT '',
-  CHECK (from_interface_id <> to_interface_id),
+  properties TEXT NOT NULL DEFAULT '{}',
+  port INTEGER,
+  protocol TEXT,
+  CHECK ((from_interface_id IS NULL) <> (from_service_id IS NULL)),
+  CHECK ((to_interface_id IS NULL) <> (to_service_id IS NULL)),
+  CHECK (
+    from_interface_id IS NULL
+    OR to_interface_id IS NULL
+    OR from_interface_id <> to_interface_id
+  ),
+  CHECK (
+    from_service_id IS NULL
+    OR to_service_id IS NULL
+    OR from_service_id <> to_service_id
+  ),
+  CHECK (port IS NULL OR (port >= 1 AND port <= 65535)),
+  CHECK (protocol IS NULL OR protocol IN ('tcp', 'udp')),
+  CHECK ((port IS NULL) = (protocol IS NULL)),
   UNIQUE (
     relation_name_id,
     from_interface_id,
+    from_service_id,
     to_interface_id,
+    to_service_id,
     from_label,
-    to_label
+    to_label,
+    port,
+    protocol
   )
 );
 CREATE TABLE IF NOT EXISTS services (
@@ -127,7 +165,8 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   domain TEXT NOT NULL DEFAULT 'ouchi.local',
-  title TEXT NOT NULL DEFAULT 'あなたのホームラボ'
+  title TEXT NOT NULL DEFAULT 'あなたのホームラボ',
+  properties TEXT NOT NULL DEFAULT '{}'
 );
 -- Key-pair management (May proposal, 2026-11-19; priority undecided).
 -- Ledger only: public keys here, private keys stay in SOPS, never in DB.

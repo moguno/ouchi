@@ -1,13 +1,12 @@
-format: ouchi-ledger/9
+format: ouchi-ledger/13
 exportedAt: "2026-11-21T09:00:00.000Z"
 settings:
   domain: ouchi.example
   title: あなたのおうち環境
+  properties:
+    運用方針: 架空のサンプル台帳。実在の機器・アドレスは含まれない
+    バックアップ: 週1回、台帳YAMLをエクスポートして保管
 networks:
-  - name: インターネット
-    cidr: 192.0.2.0/24
-    accent: "#7467a8"
-    note: RFC 5737 TEST-NET-1。WAN と外部サービス用
   - name: 家族用LAN
     cidr: 198.51.100.0/24
     accent: "#5b9bd6"
@@ -16,6 +15,8 @@ networks:
     cidr: 203.0.113.0/24
     accent: "#4ba755"
     note: RFC 5737 TEST-NET-3。仮想化基盤とサーバー用
+    properties:
+      方針: 検証はステージングで先に試してから本番へ
   - name: 個人ネットワーク
     cidr: 198.18.0.0/24
     accent: "#d69132"
@@ -28,6 +29,10 @@ networks:
     cidr: 198.18.2.0/24
     accent: "#00838f"
     note: RFC 2544 ベンチマーク用範囲。アプリケーションサーバー用の架空ネットワーク
+  - name: インターネット
+    cidr: 192.0.2.0/24
+    accent: "#7467a8"
+    note: RFC 5737 TEST-NET-1。WAN と外部サービス用
 devices:
   - hostname: l3-switch
     petname: L3 Switch
@@ -391,25 +396,25 @@ relations:
     fromLabel: プライマリ
     toLabel: レプリカ
   - from:
-      device: app1
-      interface: eth0
+      service: app1
     to:
       device: basalt-db
       interface: eth0
     relationName: DB
+    port: 5432
+    protocol: tcp
   - from:
-      device: app2
-      interface: eth0
+      service: app2
     to:
       device: basalt-db
       interface: eth0
     relationName: DB
+    port: 5432
+    protocol: tcp
   - from:
-      device: app1
-      interface: eth0
+      service: app1
     to:
-      device: app3
-      interface: eth0
+      service: app3
     relationName: Webhook
     fromLabel: データ到着
     toLabel: /api/v1/hook
@@ -708,6 +713,19 @@ services:
     monitorPath: /health
     serviceUrl: null
     iconKey: favicon
+    enabled: true
+  - subdomain: basalt-pg
+    device: basalt-db
+    interface: eth0
+    petname: 玄武岩DB本体
+    description: 架空のPostgreSQL本体（HTTP管理画面なし）
+    port: 5432
+    protocol: tcp
+    scheme: none
+    topPath: /
+    monitorPath: null
+    serviceUrl: null
+    iconKey: null
     enabled: true
 sshKeys: []
 deviceKeys: []

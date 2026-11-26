@@ -13,6 +13,7 @@ interface RelationsTabProps {
   onDelete: (id: string) => void;
   onDeleteRelationName: (id: string) => void;
   onEdit: (id: string) => void;
+  onRelationMemo: (id: string) => void;
   onSaveRelationName: (relationName: PortalRelationName) => Promise<boolean>;
   saveDisabled?: boolean;
 }
@@ -38,6 +39,7 @@ export function RelationsTab({
   onDelete,
   onDeleteRelationName,
   onEdit,
+  onRelationMemo,
   onSaveRelationName,
   saveDisabled = false,
 }: RelationsTabProps) {
@@ -75,17 +77,38 @@ export function RelationsTab({
   });
 
   const relationRows = data.relations.map((relation) => {
-    const endpoint = (deviceId: string, interfaceId: string) => {
+    const endpoint = (
+      deviceId: string,
+      interfaceId: string | null,
+      serviceId: string | null,
+    ) => {
       const deviceName =
         data.devices.find((device) => device.id === deviceId)?.name ??
         "不明なデバイス";
+      if (serviceId) {
+        const service = data.services.find(
+          (candidate) => candidate.id === serviceId,
+        );
+        const serviceLabel = service
+          ? service.petname?.trim() || service.subdomain
+          : "不明なサービス";
+        return `${deviceName} / サービス: ${serviceLabel}`;
+      }
       const interfaceName = data.interfaces.find(
         (iface) => iface.id === interfaceId,
       )?.name;
       return interfaceName ? `${deviceName} / ${interfaceName}` : deviceName;
     };
-    const from = endpoint(relation.fromDeviceId, relation.fromInterfaceId);
-    const to = endpoint(relation.toDeviceId, relation.toInterfaceId);
+    const from = endpoint(
+      relation.fromDeviceId,
+      relation.fromInterfaceId,
+      relation.fromServiceId,
+    );
+    const to = endpoint(
+      relation.toDeviceId,
+      relation.toInterfaceId,
+      relation.toServiceId,
+    );
     const relationName = relation.relationName.trim() || "関係名なし";
     return {
       id: relation.id,
@@ -98,6 +121,13 @@ export function RelationsTab({
       },
       editLabel: `${from}から${to}への関係を編集`,
       deleteLabel: `${from}から${to}への関係を削除`,
+      actions: [
+        {
+          label: "メモ",
+          ariaLabel: `${from}から${to}への関係のメモ`,
+          onClick: () => onRelationMemo(relation.id),
+        },
+      ],
       onEdit: () => onEdit(relation.id),
       onDelete: () => onDelete(relation.id),
     };
@@ -159,6 +189,7 @@ export function RelationsTab({
           columns={relationColumns}
           deleteDisabled={saveDisabled}
           deleteDisabledReason="デモモードでは保存されません。"
+          editButtonLabel="基本"
           emptyMessage="関係はまだ登録されていません。"
           rows={relationRows}
         />

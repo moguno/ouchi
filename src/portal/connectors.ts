@@ -9,6 +9,50 @@ export interface ConnectorRect {
 
 export type ConnectorSide = "top" | "right" | "bottom" | "left";
 
+/**
+ * Card anchors retreat from the card border to the inner edge of the
+ * card's padding (the content edge). The device card's padding is
+ * 12px vertical / 13px horizontal, so a line between adjacent cards
+ * spans padding + gap + padding instead of the gap alone and stays
+ * visible. Side selection and opponent ordering keep using the real
+ * card rect; only the anchor placement uses the inset rect.
+ */
+export const CARD_ANCHOR_INSET_X = 13;
+export const CARD_ANCHOR_INSET_Y = 12;
+
+export function insetConnectorRect(rect: ConnectorRect): ConnectorRect {
+  return {
+    left: rect.left + CARD_ANCHOR_INSET_X,
+    right: rect.right - CARD_ANCHOR_INSET_X,
+    top: rect.top + CARD_ANCHOR_INSET_Y,
+    bottom: rect.bottom - CARD_ANCHOR_INSET_Y,
+    width: rect.width - CARD_ANCHOR_INSET_X * 2,
+    height: rect.height - CARD_ANCHOR_INSET_Y * 2,
+  };
+}
+
+/**
+ * Service-tile anchors sit this far OUTSIDE the tile's icon frame, so
+ * the endpoint mark floats just off the icon instead of touching it.
+ * Expanding the rect before the edge intersection moves the anchor
+ * out along the line by exactly this amount.
+ */
+export const TILE_ANCHOR_GAP = 8;
+
+export function expandConnectorRect(
+  rect: ConnectorRect,
+  gap: number,
+): ConnectorRect {
+  return {
+    left: rect.left - gap,
+    right: rect.right + gap,
+    top: rect.top - gap,
+    bottom: rect.bottom + gap,
+    width: rect.width + gap * 2,
+    height: rect.height + gap * 2,
+  };
+}
+
 export interface ConnectorNode {
   id: string;
   rect: ConnectorRect;
@@ -196,7 +240,7 @@ export function routeConnectorLinks(
       plans.sort(planComparator(side === "top" || side === "bottom"));
       plans.forEach((plan, index) => {
         plan.coordinate = connectorEdgeCoordinate(
-          plan.node.rect,
+          insetConnectorRect(plan.node.rect),
           side,
           index,
           plans.length,
@@ -209,12 +253,12 @@ export function routeConnectorLinks(
     const startPlan = started[index];
     const endPlan = ended[index];
     const start = endpointCoordinates(
-      link.from.rect,
+      insetConnectorRect(link.from.rect),
       startPlan.side,
       startPlan.coordinate as number,
     );
     const end = endpointCoordinates(
-      link.to.rect,
+      insetConnectorRect(link.to.rect),
       endPlan.side,
       endPlan.coordinate as number,
     );
@@ -231,20 +275,60 @@ export function routeConnectorLinks(
   });
 }
 
+export interface ConnectorPoint {
+  x: number;
+  y: number;
+  side: ConnectorSide;
+}
+
+/**
+ * The point where the ray from a rect's centre toward a target point
+ * crosses the rect's edge. Service-tile endpoints anchor this way: the
+ * line between two tile centres lands exactly on each icon's frame.
+ */
+export function rectEdgeIntersection(
+  rect: ConnectorRect,
+  toward: { x: number; y: number },
+): ConnectorPoint {
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = toward.x - centerX;
+  const dy = toward.y - centerY;
+  if (dx === 0 && dy === 0) {
+    return { x: centerX, y: rect.top, side: "top" };
+  }
+  const scaleX =
+    dx !== 0 ? rect.width / 2 / Math.abs(dx) : Number.POSITIVE_INFINITY;
+  const scaleY =
+    dy !== 0 ? rect.height / 2 / Math.abs(dy) : Number.POSITIVE_INFINITY;
+  const scale = Math.min(scaleX, scaleY);
+  const side: ConnectorSide =
+    scaleX < scaleY
+      ? dx > 0
+        ? "right"
+        : "left"
+      : dy > 0
+        ? "bottom"
+        : "top";
+  return { x: centerX + dx * scale, y: centerY + dy * scale, side };
+}
+
 export function connectorAnchors(
   from: ConnectorRect,
   to: ConnectorRect,
 ): ConnectorGeometry {
   const { startSide, endSide } = connectorSides(from, to);
+  const insetFrom = insetConnectorRect(from);
+  const insetTo = insetConnectorRect(to);
   const start = endpointCoordinates(
-    from,
+    insetFrom,
     startSide,
-    connectorEdgeCoordinate(from, startSide, 0, 1),
+    connectorEdgeCoordinate(insetFrom, startSide, 0, 1),
   );
   const end = endpointCoordinates(
-    to,
+    insetTo,
     endSide,
-    connectorEdgeCoordinate(to, endSide, 0, 1),
+    connectorEdgeCoordinate(insetTo, endSide, 0, 1),
   );
   return {
     startX: start.x,

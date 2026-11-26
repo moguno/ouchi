@@ -12,7 +12,6 @@ import {
 } from "./types";
 import {
   deviceName,
-  serviceDescription,
   serviceName,
   type DeviceVisual,
 } from "./portalPresentation";
@@ -21,7 +20,7 @@ const DEVICE_CATEGORY_ICON_KEYS: Record<
   PortalDeviceCategory,
   PortalGenericIconKey
 > = {
-  network: "globe",
+  network: "switch",
   physical: "server",
   vm: "container",
   service: "applications",
@@ -49,6 +48,8 @@ function ServiceTile({
   iconBaseUrl,
   allowRemoteIcons,
   onDemoClick,
+  selected,
+  onSelect,
 }: {
   service: PortalService;
   iface: PortalInterface;
@@ -56,49 +57,73 @@ function ServiceTile({
   iconBaseUrl: string;
   allowRemoteIcons: boolean;
   onDemoClick: () => void;
+  selected: boolean;
+  onSelect: (serviceId: string) => void;
 }) {
   const href = service.url ?? "";
-  const content = (
-    <>
-      <span className="ouchi-service-icon-wrap">
-        <ServiceIcon
-          allowRemoteAssets={allowRemoteIcons}
-          iconKey={service.iconKey}
-          serviceUrl={href}
-          size={50}
-        />
-      </span>
-      <span className="ouchi-service-copy">
-        <strong>{serviceName(service)}</strong>
-        <small>
-          {serviceDescription(service) || iface.ip || "IP未登録"}
-        </small>
-      </span>
-    </>
+  const name = serviceName(service);
+  const icon = (
+    <span className="ouchi-service-icon-wrap">
+      <ServiceIcon
+        allowRemoteAssets={allowRemoteIcons}
+        iconKey={service.iconKey}
+        serviceUrl={href}
+        size={42}
+      />
+    </span>
   );
-  if (demoMode) {
-    return (
-      <button
-        className="ouchi-service-tile ouchi-service-tile--demo"
-        onClick={onDemoClick}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
-  return href ? (
+  // The icon is the jump target: clicking it opens the service and
+  // never touches the selection. The rest of the tile selects the
+  // service (and shows its relations).
+  const iconTarget = demoMode ? (
+    <button
+      aria-label={`${name}を開く`}
+      className="ouchi-service-icon-link"
+      onClick={(event) => {
+        event.stopPropagation();
+        onDemoClick();
+      }}
+      type="button"
+    >
+      {icon}
+    </button>
+  ) : href ? (
     <a
-      className="ouchi-service-tile"
+      aria-label={`${name}を開く`}
+      className="ouchi-service-icon-link"
       href={href}
+      onClick={(event) => event.stopPropagation()}
       rel="noreferrer"
       target="_blank"
     >
-      {content}
+      {icon}
     </a>
   ) : (
-    <div className="ouchi-service-tile ouchi-service-tile--disabled">
-      {content}
+    icon
+  );
+  return (
+    <div
+      className={[
+        "ouchi-service-tile",
+        demoMode ? "ouchi-service-tile--demo" : "",
+        !demoMode && !href ? "ouchi-service-tile--disabled" : "",
+        selected ? "ouchi-service-tile--selected" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-service-id={service.id}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(service.id);
+      }}
+    >
+      {iconTarget}
+      <span className="ouchi-service-copy">
+        <strong>{name}</strong>
+        <small>
+          {service.port}/{service.protocol}
+        </small>
+      </span>
     </div>
   );
 }
@@ -111,6 +136,8 @@ export function DeviceCard({
   sameDevice,
   selectedDeviceId,
   onSelect,
+  selectedServiceId,
+  onSelectService,
   demoMode,
   iconBaseUrl,
   allowRemoteIcons,
@@ -123,6 +150,8 @@ export function DeviceCard({
   sameDevice: boolean;
   selectedDeviceId?: string;
   onSelect: (deviceId: string) => void;
+  selectedServiceId?: string;
+  onSelectService: (serviceId: string) => void;
   demoMode: boolean;
   iconBaseUrl: string;
   allowRemoteIcons: boolean;
@@ -195,6 +224,8 @@ export function DeviceCard({
               iconBaseUrl={iconBaseUrl}
               allowRemoteIcons={allowRemoteIcons}
               onDemoClick={onDemoServiceClick}
+              onSelect={onSelectService}
+              selected={service.id === selectedServiceId}
             />
           ))}
         </div>

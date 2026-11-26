@@ -14,30 +14,6 @@ import {
   useState,
 } from "react";
 import {
-  PortalApiError,
-  createDevice,
-  createInterface,
-  createNetwork,
-  createRelation,
-  createRelationName,
-  createService,
-  deleteDevice,
-  deleteInterface,
-  deleteNetwork,
-  deleteRelation,
-  deleteRelationName,
-  deleteService,
-  exportLedger,
-  importLedger,
-  updateDevice,
-  updateInterface,
-  updateNetwork,
-  updateRelation,
-  updateRelationName,
-  updateService,
-  updateSettings,
-} from "./apiClient";
-import {
   ConfirmDialog,
   EntityDialog,
   type DeviceMutation,
@@ -50,10 +26,13 @@ import {
 } from "./icons";
 import { DemoServiceLinkDialog } from "./DemoServiceLinkDialog";
 import { DeviceMemoDialog } from "./DeviceMemoDialog";
+import { NetworkMemoDialog } from "./NetworkMemoDialog";
+import { RelationMemoDialog } from "./RelationMemoDialog";
 import { ServiceMemoDialog } from "./ServiceMemoDialog";
 import { ServiceTopDialog } from "./ServiceTopDialog";
 import { ServiceIconDialog } from "./ServiceIconDialog";
 import { ManageView } from "./ManageView";
+import { MemoView, type MemoTargetKind } from "./MemoView";
 import {
   PortalConnectorLayer,
   usePortalConnectors,
@@ -76,31 +55,24 @@ import {
   type PortalNetwork,
   type PortalProperties,
   type PortalRelation,
+  type PortalRelationInput,
   type PortalRelationName,
   type PortalService,
   type PortalServiceInput,
 } from "./types";
 import { serviceName } from "./portalPresentation";
 import { usePortalData } from "./usePortalData";
-import { fetchDemoLedgerYaml } from "./yamlDataSource";
+import {
+  deleteKindLabel,
+  usePortalActions,
+  type ConfirmState,
+  type DialogState,
+} from "./usePortalActions";
 import {
   DEFAULT_PORTAL_TITLE,
   validatePortalData,
 } from "./validation";
 type ViewMode = "icons" | "list";
-
-interface DialogState {
-  kind: EntityKind;
-  editingId?: string;
-}
-
-type ConfirmState =
-  | {
-      type: "delete";
-      kind: EntityKind | "relation" | "relationName";
-      id: string;
-    };
-
 const EMPTY_DATA: PortalDataV2 = {
   version: 2,
   networks: [],
@@ -114,44 +86,6 @@ const EMPTY_DATA: PortalDataV2 = {
     title: DEFAULT_PORTAL_TITLE,
   },
 };
-
-const KIND_LABELS: Record<EntityKind, string> = {
-  network: "ネットワーク",
-  device: "デバイス",
-  service: "サービス",
-};
-
-function toDeviceInput(device: PortalDevice): PortalDeviceInput {
-  return {
-    hostname: device.name.trim(),
-    petname: device.petname?.trim() || null,
-    properties: device.properties ?? {},
-    category: device.category,
-    sshUser: device.ssh?.user || null,
-    sshPort: device.ssh?.port ?? null,
-    meterEnabled: device.meterEnabled ?? false,
-    note: device.note || null,
-  };
-}
-
-function toServiceInput(service: PortalService): PortalServiceInput {
-  return {
-    interfaceId: Number(service.interfaceId),
-    subdomain: service.subdomain.trim().toLowerCase(),
-    petname: service.petname || null,
-    description: service.description || null,
-    properties: service.properties ?? {},
-    port: service.port,
-    protocol: service.protocol,
-    scheme: service.scheme,
-    topPath: service.topPath || null,
-    monitorPath: service.monitorPath || null,
-    serviceUrl: service.serviceUrl || null,
-    iconKey: service.iconKey,
-    enabled: service.enabled,
-  };
-}
-
 export function OuchiPortal({
   data,
   apiBaseUrl = "",
@@ -186,13 +120,16 @@ export function OuchiPortal({
 
   const [viewMode, setViewMode] = useState<ViewMode>("icons");
   const [manageOpen, setManageOpen] = useState(false);
+  const [memoOpen, setMemoOpen] = useState(false);
   const [manageTab, setManageTab] = useState<ManageTab>("networks");
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [relationDialog, setRelationDialog] = useState<{
     editingId?: string;
   } | null>(null);
+  const [networkMemoId, setNetworkMemoId] = useState<string | null>(null);
   const [deviceMemoId, setDeviceMemoId] = useState<string | null>(null);
   const [serviceMemoId, setServiceMemoId] = useState<string | null>(null);
+  const [relationMemoId, setRelationMemoId] = useState<string | null>(null);
   const [serviceTopId, setServiceTopId] = useState<string | null>(null);
   const [serviceIconId, setServiceIconId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
@@ -200,6 +137,11 @@ export function OuchiPortal({
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(
     initialSelectedDeviceId,
   );
+  // Selection is unique across the board: a device or a service,
+  // never both. Selecting one clears the other.
+  const [selectedServiceId, setSelectedServiceId] = useState<
+    string | undefined
+  >(undefined);
   const [relationModes, setRelationModes] = useState<RelationDisplayModes>(
     loadRelationDisplayModes,
   );
@@ -228,6 +170,7 @@ export function OuchiPortal({
     layoutMode: viewMode,
     relationModes,
     selectedDeviceId,
+    selectedServiceId,
   });
 
   useEffect(() => {
@@ -239,7 +182,11 @@ export function OuchiPortal({
   }, [message]);
 
   useEffect(() => {
-    if (!selectedDeviceId || manageOpen || typeof document === "undefined") {
+    if (
+      (!selectedDeviceId && !selectedServiceId) ||
+      manageOpen ||
+      typeof document === "undefined"
+    ) {
       return;
     }
 
@@ -249,6 +196,7 @@ export function OuchiPortal({
         !portalRef.current?.contains(event.target)
       ) {
         setSelectedDeviceId(undefined);
+        setSelectedServiceId(undefined);
       }
     };
 
@@ -256,7 +204,7 @@ export function OuchiPortal({
     return () => {
       document.removeEventListener("pointerdown", handleOutsidePointerDown);
     };
-  }, [manageOpen, selectedDeviceId]);
+  }, [manageOpen, selectedDeviceId, selectedServiceId]);
 
   function openAdd(kind: EntityKind) {
     setManageTab(
@@ -278,6 +226,11 @@ export function OuchiPortal({
   function openManagement() {
     setManageTab("networks");
     setManageOpen(true);
+    setMessage(undefined);
+  }
+
+  function openMemo() {
+    setMemoOpen(true);
     setMessage(undefined);
   }
 
@@ -359,19 +312,6 @@ export function OuchiPortal({
     const service = portalData.services.find((item) => item.id === id);
     return service ? serviceName(service) : "";
   }
-
-  function deleteKindLabel(
-    kind: EntityKind | "relation" | "relationName",
-  ) {
-    if (kind === "relation") {
-      return "関係";
-    }
-    if (kind === "relationName") {
-      return "関係名";
-    }
-    return KIND_LABELS[kind];
-  }
-
   function deleteConfirmationDescription(
     kind: EntityKind | "relation" | "relationName",
     id: string,
@@ -403,365 +343,56 @@ export function OuchiPortal({
         : "";
     return `${target}${cascadeNotice}この操作は元に戻せません。`;
   }
-
-  function apiFailure(cause: unknown) {
-    if (cause instanceof PortalApiError) {
-      if (cause.issues.length > 0) {
-        return cause.issues.map((issue) => issue.message).join(" / ");
-      }
-      return cause.message;
-    }
-    return cause instanceof Error ? cause.message : "API操作に失敗しました";
-  }
-
-  async function handleDelete() {
-    if (demoMode || !confirm || confirm.type !== "delete") {
-      return;
-    }
-
-    try {
-      if (confirm.kind === "relation") {
-        await deleteRelation(apiBaseUrl, confirm.id);
-      } else if (confirm.kind === "relationName") {
-        await deleteRelationName(apiBaseUrl, confirm.id);
-      } else if (confirm.kind === "network") {
-        await deleteNetwork(apiBaseUrl, confirm.id);
-      } else if (confirm.kind === "device") {
-        await deleteDevice(apiBaseUrl, confirm.id);
-      } else {
-        await deleteService(apiBaseUrl, confirm.id);
-      }
-      if (confirm.kind === "device" && selectedDeviceId === confirm.id) {
-        setSelectedDeviceId(undefined);
-      }
-      setMessage(`${deleteKindLabel(confirm.kind)}を削除しました。`);
-      setConfirm(null);
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-      setConfirm(null);
-    }
-  }
-
-  async function handleExportLedger() {
-    const download = demoMode && yamlUrl
-      ? {
-          filename: "ouchi-ledger-demo.yaml",
-          yaml: await fetchDemoLedgerYaml(yamlUrl),
-        }
-      : await exportLedger(apiBaseUrl);
-    if (typeof document === "undefined") {
-      return download.filename;
-    }
-    const blob = new Blob([download.yaml], {
-      type: "application/yaml;charset=utf-8",
-    });
-    const canUseObjectUrl =
-      typeof URL.createObjectURL === "function";
-    const url = canUseObjectUrl
-      ? URL.createObjectURL(blob)
-      : `data:application/yaml;charset=utf-8,${encodeURIComponent(download.yaml)}`;
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = download.filename;
-    link.click();
-    if (canUseObjectUrl) {
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
-    return download.filename;
-  }
-
-  async function handleImportLedger(yaml: string) {
-    if (demoMode) {
-      return "デモモードでは保存されません。";
-    }
-    const result = await importLedger(apiBaseUrl, yaml);
-    setSelectedDeviceId(undefined);
-    await reload();
-    const imported = result.imported;
-    return (
-      `全置き換えが完了しました。ネットワーク ${imported.networks}件、` +
-      `デバイス ${imported.devices}件、インターフェース ${imported.interfaces}件、` +
-      `関係名 ${imported.relationNames}件、関係 ${imported.relations}件、` +
-      `サービス ${imported.services}件、` +
-      `SSH公開鍵 ${imported.sshKeys}件を読み込みました。`
-    );
-  }
-
-  async function handleSavePortalTitle(title: string) {
-    if (demoMode) {
-      return;
-    }
-    await updateSettings(apiBaseUrl, { title });
-    await reload();
-    setMessage("ポータルタイトルを保存しました。");
-  }
-
-  async function handleSave(kind: EntityKind, entity: PortalEntity) {
-    if (demoMode) {
-      return;
-    }
-    try {
-      if (kind === "network") {
-        const network = entity as PortalNetwork;
-        const input = {
-          name: network.name,
-          cidr: network.cidr || null,
-          accent: network.accent,
-          note: network.note || null,
-        };
-        if (portalData.networks.some((item) => item.id === network.id)) {
-          await updateNetwork(apiBaseUrl, network.id, input);
-        } else {
-          await createNetwork(apiBaseUrl, input);
-        }
-      } else if (kind === "service") {
-        const service = entity as PortalService;
-        const input = toServiceInput(service);
-        if (portalData.services.some((item) => item.id === service.id)) {
-          await updateService(apiBaseUrl, service.id, input);
-        } else {
-          await createService(apiBaseUrl, input);
-        }
-      } else {
-        const mutation = entity as DeviceMutation;
-        const existing = portalData.devices.some(
-          (item) => item.id === mutation.device.id,
-        );
-        const nextInterfaceIds = new Set(
-          mutation.interfaces.map((iface) => iface.id),
-        );
-        const blockedInterface = portalData.interfaces.find(
-          (iface) =>
-            iface.deviceId === mutation.device.id &&
-            !nextInterfaceIds.has(iface.id) &&
-            (portalData.services.some(
-              (service) => service.interfaceId === iface.id,
-            ) ||
-              portalData.relations.some(
-                (relation) =>
-                  relation.fromInterfaceId === iface.id ||
-                  relation.toInterfaceId === iface.id,
-              )),
-        );
-        if (blockedInterface) {
-          throw new Error(
-            "サービスや関係が紐づくインターフェースを削除する前に、サービスや関係を削除または移動してください",
-          );
-        }
-        const deviceInput = toDeviceInput(mutation.device);
-        let savedDeviceId = mutation.device.id;
-        if (existing) {
-          await updateDevice(apiBaseUrl, savedDeviceId, deviceInput);
-        } else {
-          const created = (await createDevice(
-            apiBaseUrl,
-            deviceInput,
-          )) as { id: number };
-          savedDeviceId = String(created.id);
-        }
-
-        const currentInterfaces = portalData.interfaces.filter(
-          (iface) => iface.deviceId === savedDeviceId,
-        );
-        for (const iface of currentInterfaces) {
-          if (!nextInterfaceIds.has(iface.id)) {
-            await deleteInterface(apiBaseUrl, iface.id);
-          }
-        }
-        for (const iface of mutation.interfaces) {
-          const input = {
-            deviceId: Number(savedDeviceId),
-            name: iface.name.trim(),
-            networkId: iface.networkId ? Number(iface.networkId) : null,
-            ip: iface.ip.trim() || null,
-            mac: iface.mac?.trim() || null,
-          };
-          if (
-            currentInterfaces.some((item) => item.id === iface.id)
-          ) {
-            await updateInterface(apiBaseUrl, iface.id, input);
-          } else {
-            await createInterface(apiBaseUrl, input);
-          }
-        }
-      }
-
-      setMessage(`${KIND_LABELS[kind]}を保存しました。`);
-      setDialog(null);
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-    }
-  }
-
-  async function handleSaveRelation(
-    relation: PortalRelation,
-  ) {
-    if (demoMode) {
-      return;
-    }
-    try {
-      const input = {
-        fromInterfaceId: Number(relation.fromInterfaceId),
-        toInterfaceId: Number(relation.toInterfaceId),
-        relationName: relation.relationName.trim(),
-        fromLabel: relation.fromLabel?.trim() ?? "",
-        toLabel: relation.toLabel?.trim() ?? "",
-      };
-      if (
-        portalData.relations.some((candidate) => candidate.id === relation.id)
-      ) {
-        await updateRelation(apiBaseUrl, relation.id, input);
-      } else {
-        await createRelation(apiBaseUrl, input);
-      }
-      setRelationDialog(null);
-      setMessage("関係を保存しました。");
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-    }
-  }
-
-  async function handleSaveDeviceMemo(
-    deviceId: string,
-    properties: PortalProperties,
-  ) {
-    if (demoMode) {
-      return;
-    }
-    const device = portalData.devices.find((item) => item.id === deviceId);
-    if (!device) {
-      return;
-    }
-    try {
-      await updateDevice(apiBaseUrl, deviceId, {
-        ...toDeviceInput(device),
-        properties,
-      });
-      setDeviceMemoId(null);
-      setMessage("メモを保存しました。");
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-    }
-  }
-
-  async function handleSaveServiceMemo(
-    serviceId: string,
-    properties: PortalProperties,
-  ) {
-    if (demoMode) {
-      return;
-    }
-    const service = portalData.services.find((item) => item.id === serviceId);
-    if (!service) {
-      return;
-    }
-    try {
-      await updateService(apiBaseUrl, serviceId, {
-        ...toServiceInput(service),
-        properties,
-      });
-      setServiceMemoId(null);
-      setMessage("メモを保存しました。");
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-    }
-  }
-
-  async function handleSaveServiceTop(
-    serviceId: string,
-    patch: Pick<
-      PortalService,
-      "scheme" | "port" | "protocol" | "topPath" | "serviceUrl"
-    >,
-  ) {
-    if (demoMode) {
-      return;
-    }
-    const service = portalData.services.find((item) => item.id === serviceId);
-    if (!service) {
-      return;
-    }
-    try {
-      await updateService(apiBaseUrl, serviceId, {
-        ...toServiceInput(service),
-        scheme: patch.scheme,
-        port: patch.port,
-        protocol: patch.protocol,
-        topPath: patch.topPath || null,
-        serviceUrl: patch.serviceUrl || null,
-      });
-      setServiceTopId(null);
-      setMessage("トップを保存しました。");
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-    }
-  }
-
-  async function handleSaveServiceIcon(
-    serviceId: string,
-    iconKey: PortalService["iconKey"],
-  ) {
-    if (demoMode) {
-      return;
-    }
-    const service = portalData.services.find((item) => item.id === serviceId);
-    if (!service) {
-      return;
-    }
-    try {
-      await updateService(apiBaseUrl, serviceId, {
-        ...toServiceInput(service),
-        iconKey,
-      });
-      setServiceIconId(null);
-      setMessage("アイコンを保存しました。");
-      await reload();
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-    }
-  }
-
-  async function handleSaveRelationName(
-    relationName: PortalRelationName,
-  ) {
-    if (demoMode) {
-      return false;
-    }
-    try {
-      const input = {
-        name: relationName.name,
-        color: relationName.color,
-        lineStart: relationName.lineStart,
-        lineEnd: relationName.lineEnd,
-      };
-      if (
-        portalData.relationNames.some(
-          (candidate) => candidate.id === relationName.id,
-        )
-      ) {
-        await updateRelationName(apiBaseUrl, relationName.id, input);
-      } else {
-        await createRelationName(apiBaseUrl, input);
-      }
-      setMessage("関係名を保存しました。");
-      await reload();
-      return true;
-    } catch (cause) {
-      setMessage(apiFailure(cause));
-      return false;
-    }
-  }
-
+  const {
+    handleDelete,
+    handleExportLedger,
+    handleImportLedger,
+    handleSavePortalTitle,
+    handleSave,
+    handleSaveRelation,
+    handleSaveDeviceMemo,
+    handleSaveServiceMemo,
+    handleSaveRelationMemo,
+    handleSaveNetworkMemo,
+    handleMoveNetwork,
+    handleSaveMemoProperties,
+    handleSaveServiceTop,
+    handleSaveServiceIcon,
+    handleSaveRelationName,
+  } = usePortalActions({
+    apiBaseUrl,
+    demoMode,
+    yamlUrl,
+    portalData,
+    reload,
+    confirm,
+    selectedDeviceId,
+    selectedServiceId,
+    setMessage,
+    setConfirm,
+    setDialog,
+    setRelationDialog,
+    setNetworkMemoId,
+    setDeviceMemoId,
+    setServiceMemoId,
+    setRelationMemoId,
+    setServiceTopId,
+    setServiceIconId,
+    setSelectedDeviceId,
+    setSelectedServiceId,
+  });
   function toggleSelection(deviceId: string) {
     setSelectedDeviceId((current) =>
       current === deviceId ? undefined : deviceId,
     );
+    setSelectedServiceId(undefined);
+  }
+
+  function selectService(serviceId: string) {
+    setSelectedServiceId((current) =>
+      current === serviceId ? undefined : serviceId,
+    );
+    setSelectedDeviceId(undefined);
   }
 
 
@@ -769,12 +400,29 @@ export function OuchiPortal({
     (device) => device.category === "vm",
   ).length;
   const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.interfaces.length}インターフェース、${portalData.relations.length}関係、${portalData.services.length}サービス`;
+  const memoNetwork = networkMemoId
+    ? portalData.networks.find((item) => item.id === networkMemoId)
+    : undefined;
   const memoDevice = deviceMemoId
     ? portalData.devices.find((item) => item.id === deviceMemoId)
     : undefined;
   const memoService = serviceMemoId
     ? portalData.services.find((item) => item.id === serviceMemoId)
     : undefined;
+  const memoRelation = relationMemoId
+    ? portalData.relations.find((item) => item.id === relationMemoId)
+    : undefined;
+  const memoRelationTitle = memoRelation
+    ? `${memoRelation.relationName}（${
+        portalData.devices.find(
+          (device) => device.id === memoRelation.fromDeviceId,
+        )?.name ?? "不明なデバイス"
+      } → ${
+        portalData.devices.find(
+          (device) => device.id === memoRelation.toDeviceId,
+        )?.name ?? "不明なデバイス"
+      }）のメモ`
+    : "";
   const topService = serviceTopId
     ? portalData.services.find((item) => item.id === serviceTopId)
     : undefined;
@@ -828,6 +476,25 @@ export function OuchiPortal({
         />
       )}
 
+      {canOpenManage && memoRelation && (
+        <RelationMemoDialog
+          onClose={() => setRelationMemoId(null)}
+          onSave={handleSaveRelationMemo}
+          relation={memoRelation}
+          saveDisabled={demoMode}
+          title={memoRelationTitle}
+        />
+      )}
+
+      {canOpenManage && memoNetwork && (
+        <NetworkMemoDialog
+          network={memoNetwork}
+          onClose={() => setNetworkMemoId(null)}
+          onSave={handleSaveNetworkMemo}
+          saveDisabled={demoMode}
+        />
+      )}
+
       {canOpenManage && topService && (
         <ServiceTopDialog
           data={portalData}
@@ -863,6 +530,17 @@ export function OuchiPortal({
     </>
   );
 
+  if (canOpenManage && memoOpen) {
+    return (
+      <MemoView
+        data={portalData}
+        onBack={() => setMemoOpen(false)}
+        onSaveMemo={handleSaveMemoProperties}
+        saveDisabled={demoMode}
+      />
+    );
+  }
+
   if (canOpenManage && manageOpen) {
     return (
       <>
@@ -876,19 +554,30 @@ export function OuchiPortal({
             setManageOpen(false);
             setDialog(null);
             setRelationDialog(null);
+            setNetworkMemoId(null);
             setDeviceMemoId(null);
             setServiceMemoId(null);
+            setRelationMemoId(null);
             setServiceTopId(null);
             setServiceIconId(null);
             setConfirm(null);
           }}
           onDelete={requestDelete}
+          onNetworkMemo={(id) => {
+            setNetworkMemoId(id);
+            setMessage(undefined);
+          }}
+          onMoveNetwork={handleMoveNetwork}
           onDeviceMemo={(id) => {
             setDeviceMemoId(id);
             setMessage(undefined);
           }}
           onServiceMemo={(id) => {
             setServiceMemoId(id);
+            setMessage(undefined);
+          }}
+          onRelationMemo={(id) => {
+            setRelationMemoId(id);
             setMessage(undefined);
           }}
           onServiceTop={(id) => {
@@ -932,6 +621,7 @@ export function OuchiPortal({
           return;
         }
         setSelectedDeviceId(undefined);
+        setSelectedServiceId(undefined);
       }}
       ref={portalRef}
     >
@@ -993,6 +683,18 @@ export function OuchiPortal({
               リスト表示
             </button>
           </div>
+          {canOpenManage && (
+            <button
+              className="ouchi-manage-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                openMemo();
+              }}
+              type="button"
+            >
+              メモ
+            </button>
+          )}
           {isReadOnly && !demoMode ? (
             <span className="ouchi-readonly-note">表示専用デモ</span>
           ) : (
@@ -1070,7 +772,9 @@ export function OuchiPortal({
             iconBaseUrl={apiBaseUrl}
             onDemoServiceClick={() => setDemoServiceNoticeOpen(true)}
             onSelect={toggleSelection}
+            onSelectService={selectService}
             selectedDeviceId={selectedDeviceId}
+            selectedServiceId={selectedServiceId}
           />
         ) : (
           <ListBoard
@@ -1079,7 +783,9 @@ export function OuchiPortal({
             demoMode={isReadOnly}
             onDemoServiceClick={() => setDemoServiceNoticeOpen(true)}
             onSelect={toggleSelection}
+            onSelectService={selectService}
             selectedDeviceId={selectedDeviceId}
+            selectedServiceId={selectedServiceId}
           />
         )}
       </div>

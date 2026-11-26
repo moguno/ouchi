@@ -3,6 +3,7 @@ import type {
   PortalDeviceInput,
   PortalInterfaceInput,
   PortalNetworkInput,
+  PortalProperties,
   PortalRelationInput,
   PortalRelationNameInput,
   PortalServiceInput,
@@ -130,8 +131,17 @@ export function createApp(
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
     }
+    const settingsInput = input as {
+      title: string;
+      properties?: PortalProperties;
+    };
     return context.json(
-      database.updateSettings((input as { title: string }).title),
+      Object.hasOwn(settingsInput, "properties")
+        ? database.updateSettings(
+            settingsInput.title,
+            settingsInput.properties,
+          )
+        : database.updateSettings(settingsInput.title),
     );
   });
 
@@ -155,6 +165,29 @@ export function createApp(
       const failure = databaseConflict(error);
       return context.json(failure.body, failure.status);
     }
+  });
+
+  app.put("/api/networks/order", async (context) => {
+    const input = await jsonBody(context);
+    const ids = (input as { ids?: unknown })?.ids;
+    if (
+      !Array.isArray(ids) ||
+      !ids.every(
+        (id) => typeof id === "number" && Number.isInteger(id) && id > 0,
+      )
+    ) {
+      return context.json(
+        { error: "並び順の指定が不正です" },
+        400,
+      );
+    }
+    const networks = database.reorderNetworks(ids as number[]);
+    return networks
+      ? context.json(networks)
+      : context.json(
+          { error: "並び順には全ネットワークを指定してください" },
+          400,
+        );
   });
 
   app.put("/api/networks/:id", async (context) => {
@@ -604,18 +637,34 @@ export function createApp(
       return issues;
     }
     const value = input as PortalRelationInput;
-    const fromInterface = database.getInterface(value.fromInterfaceId);
-    if (!fromInterface) {
+    const fromInterface = value.fromInterfaceId
+      ? database.getInterface(value.fromInterfaceId)
+      : undefined;
+    if (value.fromInterfaceId && !fromInterface) {
       issues.push({
         path: "fromInterfaceId",
         message: "関係元のインターフェースが存在しません",
       });
     }
-    const toInterface = database.getInterface(value.toInterfaceId);
-    if (!toInterface) {
+    if (value.fromServiceId && !database.getService(value.fromServiceId)) {
+      issues.push({
+        path: "fromServiceId",
+        message: "関係元のサービスが存在しません",
+      });
+    }
+    const toInterface = value.toInterfaceId
+      ? database.getInterface(value.toInterfaceId)
+      : undefined;
+    if (value.toInterfaceId && !toInterface) {
       issues.push({
         path: "toInterfaceId",
         message: "関係先のインターフェースが存在しません",
+      });
+    }
+    if (value.toServiceId && !database.getService(value.toServiceId)) {
+      issues.push({
+        path: "toServiceId",
+        message: "関係先のサービスが存在しません",
       });
     }
     if (
@@ -637,17 +686,21 @@ export function createApp(
     } else if (
       database.relationDuplicate(
         relationName.id,
-        value.fromInterfaceId,
-        value.toInterfaceId,
+        value.fromInterfaceId ?? null,
+        value.fromServiceId ?? null,
+        value.toInterfaceId ?? null,
+        value.toServiceId ?? null,
         value.fromLabel?.trim() ?? "",
         value.toLabel?.trim() ?? "",
+        value.port ?? null,
+        value.protocol ?? null,
         editingId,
       )
     ) {
       issues.push({
         path: "relationName",
         message:
-          "同じ関係名・始点・終点・ラベルの関係はすでに登録されています",
+          "同じ関係名・始点・終点・ラベル・ポートの関係はすでに登録されています",
       });
     }
     return issues;

@@ -1,7 +1,7 @@
 export type PortalStatus = "up" | "down" | "maintenance";
 
 
-export type PortalServiceScheme = "http" | "https";
+export type PortalServiceScheme = "http" | "https" | "none";
 
 export type PortalServiceProtocol = "tcp" | "udp";
 
@@ -42,6 +42,7 @@ export type PortalGenericIconKey =
   | "music"
   | "printer"
   | "shield"
+  | "switch"
   | "terminal"
   | "upload"
   | "users"
@@ -67,6 +68,8 @@ export interface PortalNetwork {
   cidr?: string;
   accent: string;
   note?: string;
+  properties?: PortalProperties;
+  sortOrder?: number;
 }
 
 export interface PortalDeviceResources {
@@ -122,10 +125,15 @@ export interface PortalRelation {
   relationName: string;
   fromDeviceId: string;
   toDeviceId: string;
-  fromInterfaceId: string;
-  toInterfaceId: string;
+  fromInterfaceId: string | null;
+  toInterfaceId: string | null;
+  fromServiceId: string | null;
+  toServiceId: string | null;
   fromLabel: string;
   toLabel: string;
+  port: number | null;
+  protocol: PortalServiceProtocol | null;
+  properties?: PortalProperties;
   color: string;
   lineStart: PortalLineEndpointShape;
   lineEnd: PortalLineEndpointShape;
@@ -154,6 +162,7 @@ export interface PortalService {
 export interface PortalSettings {
   domain: string;
   title: string;
+  properties?: PortalProperties;
 }
 
 export interface PortalDataV2 {
@@ -204,6 +213,8 @@ export interface PortalApiNetwork {
   cidr: string | null;
   accent: string;
   note: string | null;
+  properties: PortalProperties;
+  sortOrder: number;
 }
 
 export interface PortalApiInterface {
@@ -243,12 +254,21 @@ export interface PortalApiRelation {
   relationName: string;
   fromDeviceId: number;
   toDeviceId: number;
-  fromInterfaceId: number;
-  toInterfaceId: number;
-  fromInterfaceName: string;
-  toInterfaceName: string;
+  fromInterfaceId: number | null;
+  toInterfaceId: number | null;
+  fromInterfaceName: string | null;
+  toInterfaceName: string | null;
+  fromServiceId: number | null;
+  toServiceId: number | null;
+  fromServiceName: string | null;
+  toServiceName: string | null;
+  fromServiceSubdomain: string | null;
+  toServiceSubdomain: string | null;
   fromLabel: string;
   toLabel: string;
+  port: number | null;
+  protocol: PortalServiceProtocol | null;
+  properties: PortalProperties;
   color: string;
   lineStart: PortalLineEndpointShape;
   lineEnd: PortalLineEndpointShape;
@@ -286,6 +306,7 @@ export interface PortalApiData {
 
 export interface PortalSettingsInput {
   title: string;
+  properties?: PortalProperties;
 }
 
 export interface PortalNetworkInput {
@@ -293,6 +314,7 @@ export interface PortalNetworkInput {
   cidr?: string | null;
   accent: string;
   note?: string | null;
+  properties?: PortalProperties;
 }
 
 export interface PortalDeviceInput {
@@ -316,10 +338,15 @@ export interface PortalInterfaceInput {
 
 export interface PortalRelationInput {
   relationName: string;
-  fromInterfaceId: number;
-  toInterfaceId: number;
+  fromInterfaceId?: number | null;
+  toInterfaceId?: number | null;
+  fromServiceId?: number | null;
+  toServiceId?: number | null;
   fromLabel?: string;
   toLabel?: string;
+  port?: number | null;
+  protocol?: PortalServiceProtocol | null;
+  properties?: PortalProperties;
 }
 
 export interface PortalRelationNameInput {
@@ -354,6 +381,7 @@ export const PORTAL_STATUSES: PortalStatus[] = [
 export const PORTAL_SERVICE_SCHEMES: PortalServiceScheme[] = [
   "http",
   "https",
+  "none",
 ];
 
 export const PORTAL_DEVICE_CATEGORIES: PortalDeviceCategory[] = [

@@ -27,7 +27,10 @@ function networkLabel(
   network: PortalApiData["networks"][number],
 ): string {
   const cidr = network.cidr ? `, ${network.cidr}` : "";
-  return `${network.name} (id=${network.id}, accent=${network.accent}${cidr})`;
+  return (
+    `${network.name} (id=${network.id}, accent=${network.accent}${cidr}, ` +
+    `properties=${JSON.stringify(network.properties ?? {})})`
+  );
 }
 
 function interfaceSuffix(iface: PortalApiInterface): string {
@@ -39,6 +42,14 @@ function interfaceSuffix(iface: PortalApiInterface): string {
 function serviceLine(service: PortalApiService): string {
   const petname = service.petname ? ` / ${service.petname}` : "";
   const description = service.description ? ` — ${service.description}` : "";
+  if (service.scheme === "none") {
+    return (
+      `${service.subdomain}${petname} (id=${service.id}, ` +
+      `${service.protocol}:${service.port}, ` +
+      `url=(リンクなし), properties=${JSON.stringify(service.properties ?? {})})` +
+      description
+    );
+  }
   const url = service.url ?? "(URL未解決)";
   return (
     `${service.subdomain}${petname} (id=${service.id}, ` +
@@ -53,15 +64,39 @@ function relationLine(
   relation: PortalApiRelation,
 ): string {
   const deviceById = new Map(data.devices.map((device) => [device.id, device]));
-  const from = deviceById.get(relation.fromDeviceId)?.hostname ?? "?";
-  const to = deviceById.get(relation.toDeviceId)?.hostname ?? "?";
+  const endpoint = (
+    deviceId: number,
+    interfaceName: string | null,
+    serviceSubdomain: string | null,
+  ): string => {
+    const host = deviceById.get(deviceId)?.hostname ?? "?";
+    return serviceSubdomain
+      ? `${host}:service:${serviceSubdomain}`
+      : `${host}:${interfaceName ?? "?"}`;
+  };
+  const from = endpoint(
+    relation.fromDeviceId,
+    relation.fromInterfaceName,
+    relation.fromServiceSubdomain,
+  );
+  const to = endpoint(
+    relation.toDeviceId,
+    relation.toInterfaceName,
+    relation.toServiceSubdomain,
+  );
   const fromLabel = relation.fromLabel || relation.relationName;
   const toLabel = relation.toLabel || relation.relationName;
+  const port =
+    relation.port !== null && relation.protocol !== null
+      ? `port=${relation.port}/${relation.protocol}, `
+      : "";
   return (
-    `${from}:${relation.fromInterfaceName} --[${fromLabel}]--> ` +
-    `${to}:${relation.toInterfaceName} ` +
+    `${from} --[${fromLabel}]--> ` +
+    `${to} ` +
     `[relationName=${relation.relationName}, color=${relation.color}, ` +
     `fromLabel=${fromLabel}, toLabel=${toLabel}, ` +
+    port +
+    `properties=${JSON.stringify(relation.properties ?? {})}, ` +
     `id=${relation.id}]`
   );
 }
@@ -275,6 +310,7 @@ export function generateNetworkMapText(
 ): string {
   const lines = [
     `ouchi.local ledger: ${data.settings.title}`,
+    `ouchi properties=${JSON.stringify(data.settings.properties ?? {})}`,
     `format-version: ${data.version}`,
     ...hierarchyLines(data),
     "relations:",

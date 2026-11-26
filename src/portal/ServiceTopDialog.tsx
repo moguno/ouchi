@@ -117,7 +117,7 @@ export function ServiceTopDialog({
             >
               {PORTAL_SERVICE_SCHEMES.map((value) => (
                 <option key={value} value={value}>
-                  {value.toUpperCase()}
+                  {value === "none" ? "リンクなし" : value.toUpperCase()}
                 </option>
               ))}
             </select>
@@ -182,7 +182,7 @@ export function ServiceTopDialog({
         {iface && (
           <div className="ouchi-url-preview">
             <span>サービス</span>
-            <code>{servicePreview}</code>
+            <code>{servicePreview ?? "（リンクなし）"}</code>
           </div>
         )}
 

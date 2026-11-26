@@ -37,12 +37,16 @@ export function deviceVisual(
     return { mode: "selected" };
   }
 
+  // Only interface relations relate devices on card selection;
+  // tile relations stay invisible until the tile itself is chosen.
   const related = relations.filter(
     (relation) =>
-      (relation.fromDeviceId === selectedDeviceId &&
+      !relation.fromServiceId &&
+      !relation.toServiceId &&
+      ((relation.fromDeviceId === selectedDeviceId &&
         relation.toDeviceId === deviceId) ||
-      (relation.toDeviceId === selectedDeviceId &&
-        relation.fromDeviceId === deviceId),
+        (relation.toDeviceId === selectedDeviceId &&
+          relation.fromDeviceId === deviceId)),
   );
   if (related.length > 0) {
     return {

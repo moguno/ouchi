@@ -311,6 +311,17 @@ export function GenericServiceMark({
         </>
       );
       break;
+    case "switch":
+      content = (
+        <>
+          <rect x="5" y="15" width="38" height="18" rx="3.5" fill="#54616c" />
+          <rect x="10" y="21" width="5.5" height="6" rx="1" fill="#d9edf3" />
+          <rect x="17.5" y="21" width="5.5" height="6" rx="1" fill="#d9edf3" />
+          <rect x="25" y="21" width="5.5" height="6" rx="1" fill="#d9edf3" />
+          <circle cx="38" cy="24" r="2" fill="#9fe4bb" />
+        </>
+      );
+      break;
     case "terminal":
       content = (
         <>

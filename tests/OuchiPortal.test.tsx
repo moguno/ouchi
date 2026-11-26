@@ -69,18 +69,20 @@ const service = (
 const portalData: PortalDataV2 = {
   version: 2,
   networks: [
-    { id: "1", name: "インターネット", accent: "violet" },
+    { id: "1", name: "インターネット", accent: "violet", sortOrder: 30 },
     {
       id: "2",
       name: "おうちLAN",
       cidr: "192.168.0.0/24",
       accent: "blue",
+      sortOrder: 10,
     },
     {
       id: "3",
       name: "OCIネットワーク",
       cidr: "192.168.253.0/24",
       accent: "orange",
+      sortOrder: 20,
     },
   ],
   devices: [
@@ -159,8 +161,12 @@ const portalData: PortalDataV2 = {
       toDeviceId: "2",
       fromInterfaceId: "12",
       toInterfaceId: "11",
+      fromServiceId: null,
+      toServiceId: null,
       fromLabel: "VM",
       toLabel: "親ホスト",
+      port: null,
+      protocol: null,
       color: "#3b82f6",
       lineStart: "circle",
       lineEnd: "circle",
@@ -196,6 +202,8 @@ const apiData: PortalApiData = {
     cidr: network.cidr ?? null,
     accent: network.accent,
     note: null,
+    properties: {},
+    sortOrder: (index + 1) * 10,
   })),
   devices: portalData.devices.map((device, index) => ({
     id: index + 1,
@@ -250,17 +258,32 @@ const apiData: PortalApiData = {
     relationName: relation.relationName,
     fromDeviceId: Number(relation.fromDeviceId),
     toDeviceId: Number(relation.toDeviceId),
-    fromInterfaceId: Number(relation.fromInterfaceId),
-    toInterfaceId: Number(relation.toInterfaceId),
+    fromInterfaceId:
+      relation.fromInterfaceId === null
+        ? null
+        : Number(relation.fromInterfaceId),
+    toInterfaceId:
+      relation.toInterfaceId === null ? null : Number(relation.toInterfaceId),
     fromInterfaceName:
       portalData.interfaces.find(
         (iface) => iface.id === relation.fromInterfaceId,
-      )?.name ?? "",
+      )?.name ?? null,
     toInterfaceName:
       portalData.interfaces.find((iface) => iface.id === relation.toInterfaceId)
-        ?.name ?? "",
+        ?.name ?? null,
+    fromServiceId:
+      relation.fromServiceId === null ? null : Number(relation.fromServiceId),
+    toServiceId:
+      relation.toServiceId === null ? null : Number(relation.toServiceId),
+    fromServiceName: null,
+    toServiceName: null,
+    fromServiceSubdomain: null,
+    toServiceSubdomain: null,
     fromLabel: relation.fromLabel,
     toLabel: relation.toLabel,
+    port: relation.port,
+    protocol: relation.protocol,
+    properties: relation.properties ?? {},
     color: relation.color,
     lineStart: relation.lineStart,
     lineEnd: relation.lineEnd,
@@ -631,7 +654,7 @@ describe("OuchiPortal", () => {
       />,
     );
     const missingUrlTile = await screen.findByRole("button", {
-      name: "Google Drive Google のクラウドストレージサービス",
+      name: "Google Driveを開く",
     });
     expect(missingUrlTile).not.toHaveAttribute("href");
 
@@ -1062,9 +1085,13 @@ describe("OuchiPortal", () => {
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         fromInterfaceId: 12,
         toInterfaceId: 11,
+        fromServiceId: null,
+        toServiceId: null,
         relationName: "バックアップ先",
         fromLabel: "VM",
         toLabel: "親ホスト",
+        port: null,
+        protocol: null,
       });
     });
   });
@@ -1165,9 +1192,13 @@ describe("OuchiPortal", () => {
       expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
         fromInterfaceId: 10,
         toInterfaceId: 11,
+        fromServiceId: null,
+        toServiceId: null,
         relationName: "バックアップ先",
         fromLabel: "",
         toLabel: "",
+        port: null,
+        protocol: null,
       });
     });
 
@@ -1398,14 +1429,14 @@ describe("OuchiPortal", () => {
       ".ouchi-relation-connector--same-device circle",
     );
     expect(Array.from(circles, (circle) => circle.getAttribute("cx"))).toEqual(
-      ["140", "100", "180", "140"],
+      ["140", "104.33333333333333", "175.66666666666666", "140"],
     );
     expect(
       Array.from(
         circles,
         (circle) => circle.getAttribute("cy"),
       ).sort(),
-    ).toEqual(["200", "200", "220", "420"]);
+    ).toEqual(["188", "188", "232", "432"]);
     expect(
       Array.from(
         container.querySelectorAll(
@@ -1413,10 +1444,183 @@ describe("OuchiPortal", () => {
         ),
         (path) => path.getAttribute("d"),
       ),
-    ).toEqual(["M 140 220 L 100 200", "M 180 200 L 140 420"]);
+    ).toEqual([
+      "M 140 232 L 104.33333333333333 188",
+      "M 175.66666666666666 188 L 140 432",
+    ]);
     expect(
       container.querySelector(".ouchi-relation-card-mask"),
     ).not.toBeInTheDocument();
+  });
+
+  it("draws service-endpoint relations from tile icon to tile icon", async () => {
+    const user = userEvent.setup();
+    const tileData: PortalDataV2 = {
+      version: 2,
+      networks: [
+        { id: "1", name: "おうちLAN", accent: "blue", sortOrder: 10 },
+      ],
+      devices: [
+        { id: "1", name: "app-a", category: "physical", meterEnabled: false },
+        { id: "2", name: "app-b", category: "physical", meterEnabled: false },
+      ],
+      interfaces: [
+        {
+          id: "11",
+          deviceId: "1",
+          name: "eth0",
+          networkId: "1",
+          ip: "192.168.0.51",
+        },
+        {
+          id: "12",
+          deviceId: "2",
+          name: "eth0",
+          networkId: "1",
+          ip: "192.168.0.52",
+        },
+      ],
+      relationNames: [
+        {
+          id: "rn1",
+          name: "Webhook",
+          color: "#7c3aed",
+          lineStart: "circle",
+          lineEnd: "circle",
+          relationCount: 1,
+        },
+      ],
+      relations: [
+        {
+          id: "r1",
+          relationNameId: "rn1",
+          relationName: "Webhook",
+          fromDeviceId: "1",
+          toDeviceId: "2",
+          fromInterfaceId: null,
+          toInterfaceId: null,
+          fromServiceId: "s1",
+          toServiceId: "s2",
+          fromLabel: "",
+          toLabel: "",
+          port: null,
+          protocol: null,
+          color: "#7c3aed",
+          lineStart: "circle",
+          lineEnd: "circle",
+        },
+      ],
+      services: [
+        service({ id: "s1", interfaceId: "11", subdomain: "appa" }),
+        service({ id: "s2", interfaceId: "12", subdomain: "appb" }),
+      ],
+      settings: { domain: "ouchi.local", title: "タイル確認" },
+    };
+    const rect = (
+      left: number,
+      top: number,
+      width: number,
+      height: number,
+    ): DOMRect =>
+      ({
+        x: left,
+        y: top,
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        if (this instanceof HTMLElement) {
+          if (this.classList.contains("ouchi-canvas")) {
+            return rect(0, 0, 1200, 1000);
+          }
+          if (this.classList.contains("ouchi-service-icon-wrap")) {
+            const serviceId =
+              this.closest("[data-service-id]")?.getAttribute(
+                "data-service-id",
+              );
+            if (serviceId === "s1") {
+              return rect(40, 100, 50, 50);
+            }
+            if (serviceId === "s2") {
+              return rect(420, 100, 50, 50);
+            }
+          }
+          if (this.dataset.deviceId === "1") {
+            return rect(20, 40, 240, 300);
+          }
+          if (this.dataset.deviceId === "2") {
+            return rect(400, 40, 240, 300);
+          }
+        }
+        return rect(0, 0, 0, 0);
+      },
+    );
+    vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
+      function (this: Element) {
+        return [this.getBoundingClientRect()] as unknown as DOMRectList;
+      },
+    );
+
+    const { container } = render(<OuchiPortal data={tileData} />);
+    // Device selection alone never draws a tile relation.
+    await user.click(screen.getByRole("button", { name: "app-aを選択" }));
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(
+          ".ouchi-relation-connector .ouchi-relation-visible",
+        ),
+      ).toHaveLength(0);
+    });
+
+    // Selecting the tile draws its relations.
+    await user.click(container.querySelector('[data-service-id="s1"]')!);
+    const lines = await waitFor(() => {
+      const found = container.querySelectorAll(
+        ".ouchi-relation-connector .ouchi-relation-visible",
+      );
+      expect(found).toHaveLength(1);
+      return found;
+    });
+    // Icon centres are (65, 125) and (445, 125); the line runs from
+    // 8px outside the first icon's right edge to 8px outside the
+    // second icon's left edge.
+    expect(lines[0].getAttribute("d")).toBe("M 98 125 L 412 125");
+    // Only the selected tile carries a selection frame; the
+    // counterpart tile is never highlighted in conjunction.
+    expect(
+      container.querySelector(
+        '[data-service-id="s1"]',
+      )?.classList.contains("ouchi-service-tile--selected"),
+    ).toBe(true);
+    expect(
+      container.querySelector(
+        '[data-service-id="s2"]',
+      )?.classList.contains("ouchi-service-tile--selected"),
+    ).toBe(false);
+    expect(
+      container.querySelector(".ouchi-service-tile--related"),
+    ).toBeNull();
+
+    // Selecting a card clears the tile selection and its lines.
+    await user.click(screen.getByRole("button", { name: "app-bを選択" }));
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(
+          ".ouchi-relation-connector .ouchi-relation-visible",
+        ),
+      ).toHaveLength(0);
+    });
+    expect(
+      container.querySelector(
+        '[data-service-id="s1"]',
+      )?.classList.contains("ouchi-service-tile--selected"),
+    ).toBe(false);
   });
 
   it("draws the l3-switch demo chain between adjacent top and bottom points", async () => {
@@ -1492,10 +1696,10 @@ describe("OuchiPortal", () => {
       (path) => path.getAttribute("d"),
     );
     expect(paths).toEqual([
-      "M 140 260 L 140 400",
-      "M 140 560 L 140 700",
-      "M 140 860 L 140 1000",
-      "M 140 1160 L 140 1300",
+      "M 140 248 L 140 412",
+      "M 140 548 L 140 712",
+      "M 140 848 L 140 1012",
+      "M 140 1148 L 140 1312",
     ]);
     expect(paths.every((path) => path?.includes(" L "))).toBe(true);
     expect(paths.every((path) => !path?.includes(" C "))).toBe(true);
@@ -1572,9 +1776,9 @@ describe("OuchiPortal", () => {
       return paths;
     });
     expect(relationPaths).toEqual([
-      "M 140 360 L 420 500",
-      "M 80 360 L 140 500",
-      "M 200 360 L 700 500",
+      "M 140 348 L 420 512",
+      "M 86.5 348 L 140 512",
+      "M 193.5 348 L 700 512",
     ]);
     expect(
       container.querySelector(".ouchi-relation-card-mask"),
@@ -1651,10 +1855,10 @@ describe("OuchiPortal", () => {
     ]);
     expect(labels[0]).toHaveClass("ouchi-relation-endpoint-label--bottom");
     expect((labels[0] as HTMLElement).style.left).toBe("140px");
-    expect((labels[0] as HTMLElement).style.top).toBe("200px");
+    expect((labels[0] as HTMLElement).style.top).toBe("188px");
     expect(labels[1]).toHaveClass("ouchi-relation-endpoint-label--top");
     expect((labels[1] as HTMLElement).style.left).toBe("140px");
-    expect((labels[1] as HTMLElement).style.top).toBe("400px");
+    expect((labels[1] as HTMLElement).style.top).toBe("412px");
 
     fireEvent.pointerEnter(group, { clientX: 140, clientY: 300 });
     fireEvent.pointerMove(group, { clientX: 140, clientY: 300 });
@@ -2427,6 +2631,8 @@ describe("OuchiPortal", () => {
           cidr: null,
           accent: "#4ba755",
           note: null,
+          properties: {},
+          sortOrder: 40,
         });
       }
         return jsonResponse(next);

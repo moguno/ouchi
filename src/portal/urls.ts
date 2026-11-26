@@ -18,6 +18,9 @@ export function buildServiceUrl(
   >,
   iface: Pick<PortalInterface, "ip">,
 ): string | null {
+  if (service.scheme === "none") {
+    return null;
+  }
   const explicitUrl = service.serviceUrl?.trim();
   if (explicitUrl) {
     return explicitUrl;
@@ -38,6 +41,9 @@ export function buildMonitorUrl(
   >,
   iface: Pick<PortalInterface, "ip">,
 ): string | null {
+  if (service.scheme === "none") {
+    return null;
+  }
   const explicitUrl = service.serviceUrl?.trim();
   if (explicitUrl) {
     return explicitUrl;

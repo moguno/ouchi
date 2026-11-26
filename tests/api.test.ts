@@ -11,7 +11,10 @@ import { PortalDatabase } from "../server/db";
 import type {
   PortalApiData,
   PortalApiDevice,
+  PortalApiNetwork,
+  PortalApiRelation,
   PortalApiService,
+  PortalSettings,
 } from "../src/portal/types";
 
 describe("REST API v1", () => {
@@ -252,9 +255,14 @@ describe("REST API v1", () => {
       "id",
       "relation_name_id",
       "from_interface_id",
+      "from_service_id",
       "to_interface_id",
+      "to_service_id",
       "from_label",
       "to_label",
+      "properties",
+      "port",
+      "protocol",
     ]);
   });
 
@@ -342,16 +350,21 @@ describe("REST API v1", () => {
         toLabel: "終点-",
       }),
     ]);
-    expect(() =>
-      database.database
-        .prepare(
-          `INSERT INTO relations
-            (relation_name_id, from_interface_id, to_interface_id,
-             from_label, to_label)
-           VALUES (1, 1, 2, '始点-', '終点-')`,
-        )
-        .run(),
-    ).toThrow();
+    // The rebuilt UNIQUE spans the nullable service columns, and
+    // SQLite treats NULLs as distinct there, so duplicate detection
+    // for relations is enforced by the API validation instead.
+    const duplicateResponse = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "既存関係",
+        fromInterfaceId: migrated.relations[0].fromInterfaceId,
+        toInterfaceId: migrated.relations[0].toInterfaceId,
+        fromLabel: "始点-",
+        toLabel: "終点-",
+      }),
+    });
+    expect(duplicateResponse.status).toBe(400);
   });
 
   it("assembles all redirect and monitor URLs like verify.py", async () => {
@@ -731,9 +744,13 @@ describe("REST API v1", () => {
     expect(indexColumns.map((column) => column.name)).toEqual([
       "relation_name_id",
       "from_interface_id",
+      "from_service_id",
       "to_interface_id",
+      "to_service_id",
       "from_label",
       "to_label",
+      "port",
+      "protocol",
     ]);
   });
 
@@ -765,7 +782,7 @@ describe("REST API v1", () => {
       format: string;
       relations: Array<Record<string, unknown>>;
     };
-    expect(document.format).toBe("ouchi-ledger/9");
+    expect(document.format).toBe("ouchi-ledger/13");
     expect(document.relations).toContainEqual(
       expect.objectContaining({
         relationName: "ポート接続",
@@ -815,6 +832,327 @@ describe("REST API v1", () => {
     }
   });
 
+  it("stores a structured relation port, distinguishes duplicates by port, and exports it to YAML", async () => {
+    await app.request("/api/relation-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "ポート確認",
+        color: "#0277bd",
+      }),
+    });
+    const create = (body: Record<string, unknown>) =>
+      app.request("/api/relations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          relationName: "ポート確認",
+          fromInterfaceId: 3,
+          toInterfaceId: 1,
+          ...body,
+        }),
+      });
+    const created = await create({ port: 5432, protocol: "tcp" });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toEqual(
+      expect.objectContaining({ port: 5432, protocol: "tcp" }),
+    );
+    // The same endpoints under another port are a different relation.
+    expect((await create({ port: 6379, protocol: "tcp" })).status).toBe(201);
+    // An exact duplicate, port included, is rejected.
+    expect((await create({ port: 5432, protocol: "tcp" })).status).toBe(400);
+    // Port and protocol are a pair.
+    expect((await create({ port: 8080 })).status).toBe(400);
+    expect((await create({ protocol: "udp" })).status).toBe(400);
+    // Out-of-range ports are rejected.
+    expect((await create({ port: 70000, protocol: "tcp" })).status).toBe(400);
+
+    const exported = await app.request("/api/export");
+    const document = parseYaml(await exported.text()) as {
+      format: string;
+      relations: Array<Record<string, unknown>>;
+    };
+    expect(document.format).toBe("ouchi-ledger/13");
+    expect(document.relations).toContainEqual(
+      expect.objectContaining({
+        relationName: "ポート確認",
+        port: 5432,
+        protocol: "tcp",
+      }),
+    );
+  });
+
+  it("stores relation properties, preserves them on partial updates, and round-trips them through YAML", async () => {
+    await app.request("/api/relation-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "メモ確認",
+        color: "#558b2f",
+      }),
+    });
+    const created = await app.request("/api/relations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        relationName: "メモ確認",
+        fromInterfaceId: 4,
+        toInterfaceId: 2,
+        fromLabel: "",
+        toLabel: "",
+        properties: { note: "結線メモ", cable: "cat6a" },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdRelation = await json<PortalApiRelation>(created);
+    expect(createdRelation.properties).toEqual({
+      note: "結線メモ",
+      cable: "cat6a",
+    });
+
+    const preserved = await app.request(
+      `/api/relations/${createdRelation.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          relationName: "メモ確認",
+          fromInterfaceId: 4,
+          toInterfaceId: 2,
+          fromLabel: "左",
+          toLabel: "",
+        }),
+      },
+    );
+    expect(preserved.status).toBe(200);
+    expect((await json<PortalApiRelation>(preserved)).properties).toEqual({
+      note: "結線メモ",
+      cable: "cat6a",
+    });
+
+    const replaced = await app.request(
+      `/api/relations/${createdRelation.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          relationName: "メモ確認",
+          fromInterfaceId: 4,
+          toInterfaceId: 2,
+          fromLabel: "左",
+          toLabel: "",
+          properties: { note: "差し替え" },
+        }),
+      },
+    );
+    expect(replaced.status).toBe(200);
+    expect((await json<PortalApiRelation>(replaced)).properties).toEqual({
+      note: "差し替え",
+    });
+
+    const exported = await app.request("/api/export");
+    const yaml = await exported.text();
+    const document = parseYaml(yaml) as {
+      relations: Array<Record<string, unknown>>;
+    };
+    expect(document.relations).toContainEqual(
+      expect.objectContaining({
+        relationName: "メモ確認",
+        properties: { note: "差し替え" },
+      }),
+    );
+
+    const importedFilename = join(directory, "relation-memo-import.sqlite");
+    const importedDatabase = new PortalDatabase({
+      filename: importedFilename,
+    });
+    try {
+      const importedApp = createApp(importedDatabase);
+      const response = await importedApp.request("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/yaml" },
+        body: yaml,
+      });
+      expect(response.status).toBe(200);
+      const portal = await json<PortalApiData>(
+        await importedApp.request("/api/portal"),
+      );
+      expect(
+        portal.relations.find(
+          (relation) => relation.relationName === "メモ確認",
+        )?.properties,
+      ).toEqual({ note: "差し替え" });
+    } finally {
+      importedDatabase.close();
+    }
+  });
+
+  it("stores network and ouchi properties, reorders networks, and round-trips them through YAML", async () => {
+    const created = await app.request("/api/networks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "メモ確認LAN",
+        cidr: "192.168.99.0/24",
+        accent: "#4ba755",
+        note: null,
+        properties: { 方針: "検証用", 担当: "自分" },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdNetwork = await json<PortalApiNetwork>(created);
+    expect(createdNetwork.properties).toEqual({
+      方針: "検証用",
+      担当: "自分",
+    });
+
+    const preserved = await app.request(
+      `/api/networks/${createdNetwork.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "メモ確認LAN",
+          cidr: "192.168.99.0/24",
+          accent: "#4ba755",
+          note: "補足",
+        }),
+      },
+    );
+    expect(preserved.status).toBe(200);
+    expect((await json<PortalApiNetwork>(preserved)).properties).toEqual({
+      方針: "検証用",
+      担当: "自分",
+    });
+
+    const replaced = await app.request(
+      `/api/networks/${createdNetwork.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "メモ確認LAN",
+          cidr: "192.168.99.0/24",
+          accent: "#4ba755",
+          note: "補足",
+          properties: { 方針: "差し替え" },
+        }),
+      },
+    );
+    expect(replaced.status).toBe(200);
+    expect((await json<PortalApiNetwork>(replaced)).properties).toEqual({
+      方針: "差し替え",
+    });
+
+    const settingsUpdate = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "あなたのホームラボ",
+        properties: { 運用: "メモ" },
+      }),
+    });
+    expect(settingsUpdate.status).toBe(200);
+    expect((await json<PortalSettings>(settingsUpdate)).properties).toEqual({
+      運用: "メモ",
+    });
+    const titleOnly = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "あなたのホームラボ" }),
+    });
+    expect((await json<PortalSettings>(titleOnly)).properties).toEqual({
+      運用: "メモ",
+    });
+
+    const before = await json<PortalApiNetwork[]>(
+      await app.request("/api/networks"),
+    );
+    expect(before[before.length - 1].id).toBe(createdNetwork.id);
+    const reversedIds = before.map((network) => network.id).reverse();
+    const reordered = await app.request("/api/networks/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reversedIds }),
+    });
+    expect(reordered.status).toBe(200);
+    const after = await json<PortalApiNetwork[]>(
+      await app.request("/api/networks"),
+    );
+    expect(after.map((network) => network.id)).toEqual(reversedIds);
+    const incomplete = await app.request("/api/networks/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reversedIds.slice(1) }),
+    });
+    expect(incomplete.status).toBe(400);
+
+    const exported = await app.request("/api/export");
+    const yaml = await exported.text();
+    const document = parseYaml(yaml) as {
+      format: string;
+      settings: { properties: Record<string, string> };
+      networks: Array<Record<string, unknown>>;
+    };
+    expect(document.format).toBe("ouchi-ledger/13");
+    expect(document.settings.properties).toEqual({ 運用: "メモ" });
+    expect(document.networks[0]).toEqual(
+      expect.objectContaining({
+        name: "メモ確認LAN",
+        properties: { 方針: "差し替え" },
+      }),
+    );
+
+    const importedFilename = join(directory, "network-memo-import.sqlite");
+    const importedDatabase = new PortalDatabase({
+      filename: importedFilename,
+    });
+    try {
+      const importedApp = createApp(importedDatabase);
+      const response = await importedApp.request("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/yaml" },
+        body: yaml,
+      });
+      expect(response.status).toBe(200);
+      const portal = await json<PortalApiData>(
+        await importedApp.request("/api/portal"),
+      );
+      expect(portal.settings.properties).toEqual({ 運用: "メモ" });
+      expect(portal.networks[0].name).toBe("メモ確認LAN");
+      expect(portal.networks[0].properties).toEqual({ 方針: "差し替え" });
+
+      const legacyDocument = parseYaml(yaml) as {
+        format: string;
+        settings: Record<string, unknown>;
+        networks: Array<Record<string, unknown>>;
+      };
+      legacyDocument.format = "ouchi-ledger/10";
+      delete legacyDocument.settings.properties;
+      for (const network of legacyDocument.networks) {
+        delete network.properties;
+      }
+      const legacyResponse = await importedApp.request("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/yaml" },
+        body: stringifyYaml(legacyDocument),
+      });
+      expect(legacyResponse.status).toBe(200);
+      const legacyPortal = await json<PortalApiData>(
+        await importedApp.request("/api/portal"),
+      );
+      expect(legacyPortal.settings.properties).toEqual({});
+      expect(
+        legacyPortal.networks.find(
+          (network) => network.name === "メモ確認LAN",
+        )?.properties,
+      ).toEqual({});
+      expect(legacyPortal.networks[0].name).toBe("メモ確認LAN");
+    } finally {
+      importedDatabase.close();
+    }
+  });
+
   it("returns null meters until the SSH collector is configured", async () => {
     const response = await app.request("/api/devices/4/meters");
     expect(response.status).toBe(200);
@@ -831,6 +1169,7 @@ describe("REST API v1", () => {
     expect(await json(await app.request("/api/settings"))).toEqual({
       domain: "ouchi.local",
       title: "あなたのホームラボ",
+      properties: {},
     });
 
     const update = await app.request("/api/settings", {
@@ -842,6 +1181,7 @@ describe("REST API v1", () => {
     expect(await json(update)).toEqual({
       domain: "ouchi.local",
       title: "我が家のポータル",
+      properties: {},
     });
 
     const portal = await json<PortalApiData>(
@@ -857,6 +1197,7 @@ describe("REST API v1", () => {
     expect(await json(await app.request("/api/settings"))).toEqual({
       domain: "ouchi.local",
       title: "我が家のポータル",
+      properties: {},
     });
   });
 
@@ -1540,7 +1881,7 @@ describe("REST API v1", () => {
       deviceKeys: unknown[];
     };
 
-    expect(document.format).toBe("ouchi-ledger/9");
+    expect(document.format).toBe("ouchi-ledger/13");
     expect(document.relationNames).toHaveLength(2);
     expect(document.relationNames[0]).toEqual(
       expect.objectContaining({
@@ -1552,6 +1893,7 @@ describe("REST API v1", () => {
     expect(document.settings).toEqual({
       domain: "ouchi.local",
       title: "あなたのホームラボ",
+      properties: {},
     });
     expect(document.networks[0]).not.toHaveProperty("id");
     expect(document.devices[0]).not.toHaveProperty("id");
@@ -1838,6 +2180,182 @@ describe("REST API v1", () => {
         toLabel: "旧終点",
       }),
     );
+  });
+
+  it("supports service relation endpoints, follows services on re-home, and cascades on service delete", async () => {
+    const postJson = (path: string, body: unknown) =>
+      app.request(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    await postJson("/api/relation-names", {
+      name: "連携",
+      color: "#7c3aed",
+    });
+
+    // Service (gitea, id 1 on device 1) -> interface 2 (device 2).
+    const mixedResponse = await postJson("/api/relations", {
+      relationName: "連携",
+      fromServiceId: 1,
+      toInterfaceId: 2,
+      fromLabel: "Webhook",
+      toLabel: "",
+    });
+    expect(mixedResponse.status).toBe(201);
+    const mixed = await json<PortalApiData["relations"][number]>(
+      mixedResponse,
+    );
+    expect(mixed).toEqual(
+      expect.objectContaining({
+        fromServiceId: 1,
+        fromInterfaceId: null,
+        fromServiceName: "おうちGit",
+        fromServiceSubdomain: "gitea",
+        fromDeviceId: 1,
+        toDeviceId: 2,
+      }),
+    );
+
+    // Service -> service on another device.
+    const servicePairResponse = await postJson("/api/relations", {
+      relationName: "連携",
+      fromServiceId: 1,
+      toServiceId: 4,
+      fromLabel: "",
+      toLabel: "",
+    });
+    expect(servicePairResponse.status).toBe(201);
+
+    // An interface relation pinned to gitea's current interface.
+    const pinnedResponse = await postJson("/api/relations", {
+      relationName: "連携",
+      fromInterfaceId: 1,
+      toInterfaceId: 2,
+      fromLabel: "DB接続",
+      toLabel: "5432/tcp",
+    });
+    expect(pinnedResponse.status).toBe(201);
+
+    // Duplicate (same name, endpoints, labels) is rejected.
+    expect(
+      (
+        await postJson("/api/relations", {
+          relationName: "連携",
+          fromServiceId: 1,
+          toInterfaceId: 2,
+          fromLabel: "Webhook",
+          toLabel: "",
+        })
+      ).status,
+    ).toBe(400);
+    // Both endpoint kinds on one side.
+    expect(
+      (
+        await postJson("/api/relations", {
+          relationName: "連携",
+          fromServiceId: 1,
+          fromInterfaceId: 1,
+          toInterfaceId: 2,
+        })
+      ).status,
+    ).toBe(400);
+    // No endpoint on one side.
+    expect(
+      (
+        await postJson("/api/relations", {
+          relationName: "連携",
+          toInterfaceId: 2,
+        })
+      ).status,
+    ).toBe(400);
+    // The same service on both sides.
+    expect(
+      (
+        await postJson("/api/relations", {
+          relationName: "連携",
+          fromServiceId: 1,
+          toServiceId: 1,
+        })
+      ).status,
+    ).toBe(400);
+
+    // YAML export writes service endpoints by subdomain.
+    const exported = await app.request("/api/export");
+    const document = parseYaml(await exported.text()) as {
+      relations: Array<Record<string, unknown>>;
+    };
+    expect(document.relations).toContainEqual(
+      expect.objectContaining({
+        relationName: "連携",
+        from: { service: "gitea" },
+        fromLabel: "Webhook",
+      }),
+    );
+    expect(document.relations).toContainEqual(
+      expect.objectContaining({
+        relationName: "連携",
+        from: { service: "gitea" },
+        to: { service: "proxmox" },
+      }),
+    );
+
+    // Re-home gitea to interface 3 (device 3): service endpoints
+    // follow the service, the interface endpoint stays pinned.
+    const beforeMove = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    const gitea = beforeMove.services.find((service) => service.id === 1)!;
+    const rehome = await app.request("/api/services/1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        interfaceId: 3,
+        subdomain: gitea.subdomain,
+        petname: gitea.petname,
+        description: gitea.description,
+        port: gitea.port,
+        protocol: gitea.protocol,
+        scheme: gitea.scheme,
+        topPath: gitea.topPath,
+        monitorPath: gitea.monitorPath,
+        serviceUrl: gitea.serviceUrl,
+        iconKey: gitea.iconKey,
+        enabled: gitea.enabled,
+      }),
+    });
+    expect(rehome.status).toBe(200);
+    const afterMove = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    const movedMixed = afterMove.relations.find(
+      (relation) => relation.id === mixed.id,
+    );
+    expect(movedMixed?.fromDeviceId).toBe(3);
+    const pinned = afterMove.relations.find(
+      (relation) => relation.fromLabel === "DB接続",
+    );
+    expect(pinned?.fromDeviceId).toBe(1);
+
+    // Deleting the service removes its endpoint relations only.
+    const deleted = await app.request("/api/services/1", {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+    const afterDelete = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(
+      afterDelete.relations.some(
+        (relation) =>
+          relation.fromServiceId === 1 || relation.toServiceId === 1,
+      ),
+    ).toBe(false);
+    expect(
+      afterDelete.relations.some(
+        (relation) => relation.fromLabel === "DB接続",
+      ),
+    ).toBe(true);
   });
 
   it("accepts legacy YAML without properties and rejects duplicate property keys", async () => {

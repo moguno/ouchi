@@ -123,6 +123,8 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       cidr: network.cidr ?? undefined,
       accent: normalizeAccent(network.accent),
       note: network.note ?? undefined,
+      properties: network.properties ?? {},
+      sortOrder: network.sortOrder,
     })),
     devices: data.devices.map((device) => ({
       id: String(device.id),
@@ -155,10 +157,25 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       relationName: relation.relationName,
       fromDeviceId: String(relation.fromDeviceId),
       toDeviceId: String(relation.toDeviceId),
-      fromInterfaceId: String(relation.fromInterfaceId),
-      toInterfaceId: String(relation.toInterfaceId),
+      fromInterfaceId:
+        relation.fromInterfaceId === null
+          ? null
+          : String(relation.fromInterfaceId),
+      toInterfaceId:
+        relation.toInterfaceId === null
+          ? null
+          : String(relation.toInterfaceId),
+      fromServiceId:
+        relation.fromServiceId === null
+          ? null
+          : String(relation.fromServiceId),
+      toServiceId:
+        relation.toServiceId === null ? null : String(relation.toServiceId),
       fromLabel: relation.fromLabel,
       toLabel: relation.toLabel,
+      port: relation.port,
+      protocol: relation.protocol,
+      properties: relation.properties,
       color: relation.color,
       lineStart: relation.lineStart,
       lineEnd: relation.lineEnd,
@@ -167,6 +184,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
     settings: {
       domain: data.settings.domain,
       title: data.settings.title,
+      properties: data.settings.properties ?? {},
     },
   };
 }
@@ -256,6 +274,13 @@ export function updateNetwork(
   return request(baseUrl, `/api/networks/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(input),
+  });
+}
+
+export function reorderNetworks(baseUrl: string, ids: string[]) {
+  return request(baseUrl, "/api/networks/order", {
+    method: "PUT",
+    body: JSON.stringify({ ids: ids.map((id) => Number(id)) }),
   });
 }
 
