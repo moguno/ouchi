@@ -1,4 +1,6 @@
 import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
+import { projectColorFromName } from "../src/portal/colorValue";
+import { accentColorIssue } from "../src/portal/validationFormats";
 import {
   isCidr,
   isIpWithinCidr,
@@ -7,6 +9,7 @@ import {
   validateDevicePayload,
   validateInterfacePayload,
   validateNetworkPayload,
+  validatePropertiesPayload,
   validateRelationNamePayload,
   validateRelationPayload,
   validateServicePayload,
@@ -15,12 +18,17 @@ import {
 import type {
   PortalDeviceInput,
   PortalInterfaceInput,
+  PortalProperties,
   PortalRelationInput,
   PortalServiceInput,
   PortalServiceProtocol,
   ValidationIssue,
 } from "../src/portal/types";
-import { LEDGER_FORMAT, LedgerValidationError } from "./ledgerTypes";
+import {
+  DEFAULT_PROJECT_TITLE,
+  LEDGER_FORMAT,
+  LedgerValidationError,
+} from "./ledgerTypes";
 import type {
   LedgerDevice,
   LedgerDeviceKey,
@@ -133,13 +141,45 @@ export function validateDocument(root: RecordValue): LedgerDocument {
       path: "settings.domain",
       message: "domainは必須です",
     });
-  } else {
+  } else if (
+    (root.settings as RecordValue).title === undefined &&
+    Object.hasOwn(root.settings, "properties")
+  ) {
+    // A document may omit the ouchi title (the default applies);
+    // only the memo map needs validating then.
+    issues.push(
+      ...validatePropertiesPayload(
+        (root.settings as RecordValue).properties,
+      ).map((issue) => ({
+        ...issue,
+        path: `settings.${issue.path}`,
+      })),
+    );
+  } else if ((root.settings as RecordValue).title !== undefined) {
     issues.push(
       ...validateSettingsPayload(root.settings).map((issue) => ({
         ...issue,
         path: `settings.${issue.path}`,
       })),
     );
+  }
+
+  if (isRecord(root.settings) && root.settings.color !== undefined) {
+    const colorIssue = accentColorIssue(root.settings.color, "settings.color");
+    if (colorIssue) {
+      issues.push(colorIssue);
+    }
+  }
+
+  // A /16 document is one project: the project name at the root and
+  // the ouchi (title + global memo) inside its settings. Every entity
+  // in the document belongs to that project.
+  const projectName = textValue(root.project);
+  if (!projectName) {
+    issues.push({
+      path: "project",
+      message: "プロジェクト名は必須です",
+    });
   }
 
   const networks: LedgerNetwork[] = [];
@@ -197,6 +237,9 @@ export function validateDocument(root: RecordValue): LedgerDocument {
           nullableText(iface.network) === null ? null : interfaceIndex + 1,
         ip: nullableText(iface.ip),
         mac: nullableText(iface.mac),
+        ...(iface.properties !== undefined
+          ? { properties: iface.properties as PortalProperties }
+          : {}),
       };
       issues.push(...validateInterfacePayload(synthetic).map((issue) => ({
         ...issue,
@@ -207,6 +250,7 @@ export function validateDocument(root: RecordValue): LedgerDocument {
         network: nullableText(iface.network),
         ip: nullableText(iface.ip),
         mac: nullableText(iface.mac),
+        properties: normalizeProperties(iface.properties),
       });
     });
     devices.push({
@@ -683,9 +727,15 @@ export function validateDocument(root: RecordValue): LedgerDocument {
   return {
     format: LEDGER_FORMAT,
     exportedAt: root.exportedAt as string,
+    project: projectName,
     settings: {
       domain: textValue((root.settings as RecordValue).domain),
-      title: textValue((root.settings as RecordValue).title),
+      title:
+        textValue((root.settings as RecordValue).title) ||
+        DEFAULT_PROJECT_TITLE,
+      color:
+        textValue((root.settings as RecordValue).color) ||
+        projectColorFromName(projectName),
       properties: normalizeProperties(
         (root.settings as RecordValue).properties,
       ),

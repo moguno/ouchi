@@ -6,11 +6,13 @@ import type {
   PortalApiDevice,
   PortalApiInterface,
   PortalApiNetwork,
+  PortalApiProject,
   PortalApiRelation,
   PortalApiRelationName,
   PortalApiService,
   PortalInterfaceInput,
   PortalNetworkInput,
+  PortalProjectInput,
   PortalProperties,
   PortalRelationInput,
   PortalRelationNameInput,
@@ -20,6 +22,7 @@ import type {
 } from "../src/portal/types";
 import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 import { buildMonitorUrl, buildServiceUrl } from "../src/portal/urls";
+import { projectColorFromName } from "../src/portal/colorValue";
 import { applySchemaAndMigrations, type DbOptions } from "./dbSchema";
 import {
   asNumber,
@@ -31,6 +34,7 @@ import {
   toApiDevice,
   toApiInterface,
   toApiNetwork,
+  toApiProject,
   toApiRelation,
   toApiRelationName,
   toApiService,
@@ -39,6 +43,7 @@ import type {
   DeviceRow,
   InterfaceRow,
   NetworkRow,
+  ProjectRow,
   RelationNameRow,
   RelationRow,
   ServiceRow,
@@ -70,11 +75,158 @@ export class PortalDatabase {
     this.database.close();
   }
 
+  listProjects(): PortalApiProject[] {
+    return (
+      this.database
+        .prepare(`SELECT id, name, title, color, properties FROM projects ORDER BY id`)
+        .all() as ProjectRow[]
+    ).map(toApiProject);
+  }
+
+  getProject(id: number): PortalApiProject | undefined {
+    const row = this.database
+      .prepare(`SELECT id, name, title, color, properties FROM projects WHERE id = ?`)
+      .get(id) as ProjectRow | undefined;
+    return row ? toApiProject(row) : undefined;
+  }
+
+  findProject(name: string): PortalApiProject | undefined {
+    const row = this.database
+      .prepare(`SELECT id, name, title, color, properties FROM projects WHERE name = ?`)
+      .get(name.trim()) as ProjectRow | undefined;
+    return row ? toApiProject(row) : undefined;
+  }
+
+  createProject(input: PortalProjectInput): PortalApiProject {
+    const result = this.database
+      .prepare(
+        `INSERT INTO projects (name, title, color, properties) VALUES (?, ?, ?, ?)`,
+      )
+      .run(
+        input.name.trim(),
+        input.title?.trim() || "あなたのホームラボ",
+        input.color?.trim() || projectColorFromName(input.name),
+        serializeProperties(input.properties ?? {}),
+      );
+    return this.getProject(asNumber(result.lastInsertRowid))!;
+  }
+
+  updateProject(
+    id: number,
+    input: PortalProjectInput,
+  ): PortalApiProject | undefined {
+    if (!this.getProject(id)) {
+      return undefined;
+    }
+    this.database
+      .prepare(
+        `UPDATE projects
+         SET name = ?,
+             title = COALESCE(?, title),
+             color = COALESCE(?, color),
+             properties = COALESCE(?, properties)
+         WHERE id = ?`,
+      )
+      .run(
+        input.name.trim(),
+        Object.hasOwn(input, "title")
+          ? (input.title?.trim() ?? null)
+          : null,
+        Object.hasOwn(input, "color")
+          ? (input.color?.trim() ?? null)
+          : null,
+        Object.hasOwn(input, "properties")
+          ? serializeProperties(input.properties)
+          : null,
+        id,
+      );
+    return this.getProject(id);
+  }
+
+  firstProject(): PortalApiProject | undefined {
+    return this.listProjects()[0];
+  }
+
+  /**
+   * Deletes a project with everything it holds: a project is one
+   * whole ouchi and shares nothing with the others, so the cascade
+   * is exactly the set of rows stamped with its id (plus the device
+   * key links of its devices). Deleting the last project is allowed
+   * and leaves an empty ledger.
+   */
+  deleteProject(id: number): boolean {
+    let transactionOpen = false;
+    this.database.exec("BEGIN IMMEDIATE");
+    transactionOpen = true;
+    try {
+      const project = this.database
+        .prepare("SELECT id FROM projects WHERE id = ?")
+        .get(id);
+      if (!project) {
+        this.database.exec("COMMIT");
+        transactionOpen = false;
+        return false;
+      }
+
+      this.database
+        .prepare(
+          `DELETE FROM relations
+           WHERE project_id = ?
+              OR from_interface_id IN (
+                SELECT id FROM interfaces WHERE project_id = ?
+              )
+              OR to_interface_id IN (
+                SELECT id FROM interfaces WHERE project_id = ?
+              )
+              OR from_service_id IN (
+                SELECT id FROM services WHERE project_id = ?
+              )
+              OR to_service_id IN (
+                SELECT id FROM services WHERE project_id = ?
+              )`,
+        )
+        .run(id, id, id, id, id);
+      this.database
+        .prepare("DELETE FROM relation_names WHERE project_id = ?")
+        .run(id);
+      this.database
+        .prepare("DELETE FROM services WHERE project_id = ?")
+        .run(id);
+      this.database
+        .prepare("DELETE FROM interfaces WHERE project_id = ?")
+        .run(id);
+      this.database
+        .prepare(
+          `DELETE FROM device_keys
+           WHERE device_id IN (SELECT id FROM devices WHERE project_id = ?)`,
+        )
+        .run(id);
+      this.database
+        .prepare("DELETE FROM devices WHERE project_id = ?")
+        .run(id);
+      this.database
+        .prepare("DELETE FROM networks WHERE project_id = ?")
+        .run(id);
+      const result = this.database
+        .prepare("DELETE FROM projects WHERE id = ?")
+        .run(id);
+
+      this.database.exec("COMMIT");
+      transactionOpen = false;
+      return asNumber(result.changes) > 0;
+    } catch (error) {
+      if (transactionOpen) {
+        this.database.exec("ROLLBACK");
+      }
+      throw error;
+    }
+  }
+
   listNetworks(): PortalApiNetwork[] {
     return (
       this.database
         .prepare(
-          `SELECT id, name, cidr, accent, note, properties, sort_order
+          `SELECT id, project_id, name, cidr, accent, note, properties, sort_order
            FROM networks ORDER BY sort_order, id`,
         )
         .all() as NetworkRow[]
@@ -84,7 +236,7 @@ export class PortalDatabase {
   getNetwork(id: number): PortalApiNetwork | undefined {
     const row = this.database
       .prepare(
-        `SELECT id, name, cidr, accent, note, properties, sort_order
+        `SELECT id, project_id, name, cidr, accent, note, properties, sort_order
          FROM networks WHERE id = ?`,
       )
       .get(id) as NetworkRow | undefined;
@@ -94,12 +246,13 @@ export class PortalDatabase {
   createNetwork(input: PortalNetworkInput): PortalApiNetwork {
     const result = this.database
       .prepare(
-        `INSERT INTO networks (name, cidr, accent, note, properties, sort_order)
-         VALUES (?, ?, ?, ?,
+        `INSERT INTO networks (project_id, name, cidr, accent, note, properties, sort_order)
+         VALUES (?, ?, ?, ?, ?,
                  ?,
                  (SELECT COALESCE(MAX(sort_order), 0) + 10 FROM networks))`,
       )
       .run(
+        input.projectId ?? 1,
         input.name.trim(),
         nullableText(input.cidr),
         input.accent.trim(),
@@ -116,11 +269,13 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE networks
-         SET name = ?, cidr = ?, accent = ?, note = ?,
+         SET project_id = COALESCE(?, project_id),
+             name = ?, cidr = ?, accent = ?, note = ?,
              properties = COALESCE(?, properties)
          WHERE id = ?`,
       )
       .run(
+        Object.hasOwn(input, "projectId") ? (input.projectId ?? null) : null,
         input.name.trim(),
         nullableText(input.cidr),
         input.accent.trim(),
@@ -176,14 +331,14 @@ export class PortalDatabase {
   listDevices(): PortalApiDevice[] {
     const rows = this.database
       .prepare(
-        `SELECT id, hostname, petname, category, ssh_user, ssh_port,
+        `SELECT id, project_id, hostname, petname, category, ssh_user, ssh_port,
                 meter_enabled, note, properties
          FROM devices ORDER BY id`,
       )
       .all() as DeviceRow[];
     const interfaceRows = this.database
       .prepare(
-        `SELECT id, device_id, name, network_id, ip, mac
+        `SELECT id, project_id, device_id, name, network_id, ip, mac, properties
          FROM interfaces ORDER BY id`,
       )
       .all() as InterfaceRow[];
@@ -206,11 +361,12 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO devices
-          (hostname, petname, category, ssh_user, ssh_port,
+          (project_id, hostname, petname, category, ssh_user, ssh_port,
            meter_enabled, note, properties)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        input.projectId ?? 1,
         input.hostname.trim(),
         nullableText(input.petname),
         input.category,
@@ -233,12 +389,14 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE devices
-         SET hostname = ?, petname = ?, category = ?, ssh_user = ?,
+         SET project_id = COALESCE(?, project_id),
+             hostname = ?, petname = ?, category = ?, ssh_user = ?,
              ssh_port = ?, meter_enabled = ?, note = ?,
              properties = COALESCE(?, properties)
          WHERE id = ?`,
       )
       .run(
+        Object.hasOwn(input, "projectId") ? (input.projectId ?? null) : null,
         input.hostname.trim(),
         nullableText(input.petname),
         input.category,
@@ -355,7 +513,7 @@ export class PortalDatabase {
     return (
       this.database
         .prepare(
-          `SELECT id, device_id, name, network_id, ip, mac
+          `SELECT id, project_id, device_id, name, network_id, ip, mac, properties
            FROM interfaces ORDER BY id`,
         )
         .all() as InterfaceRow[]
@@ -365,7 +523,7 @@ export class PortalDatabase {
   getInterface(id: number): PortalApiInterface | undefined {
     const row = this.database
       .prepare(
-        `SELECT id, device_id, name, network_id, ip, mac
+        `SELECT id, project_id, device_id, name, network_id, ip, mac, properties
          FROM interfaces WHERE id = ?`,
       )
       .get(id) as InterfaceRow | undefined;
@@ -373,17 +531,23 @@ export class PortalDatabase {
   }
 
   createInterface(input: PortalInterfaceInput): PortalApiInterface {
+    // An interface is part of its device: without an explicit
+    // projectId it inherits the device's project.
+    const projectId =
+      input.projectId ?? this.getDevice(input.deviceId)?.projectId ?? 1;
     const result = this.database
       .prepare(
-        `INSERT INTO interfaces (device_id, name, network_id, ip, mac)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO interfaces (project_id, device_id, name, network_id, ip, mac, properties)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        projectId,
         input.deviceId,
         input.name.trim(),
         input.networkId,
         nullableText(input.ip),
         nullableText(input.mac),
+        serializeProperties(input.properties ?? {}),
       );
     return this.getInterface(asNumber(result.lastInsertRowid))!;
   }
@@ -398,15 +562,21 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE interfaces
-         SET device_id = ?, name = ?, network_id = ?, ip = ?, mac = ?
+         SET project_id = COALESCE(?, project_id),
+             device_id = ?, name = ?, network_id = ?, ip = ?, mac = ?,
+             properties = COALESCE(?, properties)
          WHERE id = ?`,
       )
       .run(
+        Object.hasOwn(input, "projectId") ? (input.projectId ?? null) : null,
         input.deviceId,
         input.name.trim(),
         input.networkId,
         nullableText(input.ip),
         nullableText(input.mac),
+        Object.hasOwn(input, "properties")
+          ? serializeProperties(input.properties)
+          : null,
         id,
       );
     return this.getInterface(id);
@@ -445,7 +615,7 @@ export class PortalDatabase {
     return (
       this.database
         .prepare(
-          `SELECT s.id, s.interface_id, s.subdomain, s.petname,
+          `SELECT s.id, s.project_id, s.interface_id, s.subdomain, s.petname,
                   s.description, s.port, s.protocol, s.scheme, s.top_path,
                   s.monitor_path, s.service_url, s.icon_key, s.favicon_url,
                   s.properties, s.enabled,
@@ -466,12 +636,13 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO services
-          (interface_id, subdomain, petname, description, port, protocol,
+          (project_id, interface_id, subdomain, petname, description, port, protocol,
            scheme, top_path, monitor_path, service_url, icon_key,
            favicon_url, properties, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        input.projectId ?? 1,
         input.interfaceId,
         input.subdomain.trim().toLowerCase(),
         nullableText(input.petname),
@@ -504,7 +675,8 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE services
-         SET interface_id = ?, subdomain = ?, petname = ?,
+         SET project_id = COALESCE(?, project_id),
+             interface_id = ?, subdomain = ?, petname = ?,
              description = ?, port = ?, protocol = ?, scheme = ?,
              top_path = ?, monitor_path = ?, service_url = ?, icon_key = ?,
              favicon_url = ?, enabled = ?,
@@ -512,6 +684,7 @@ export class PortalDatabase {
          WHERE id = ?`,
       )
       .run(
+        Object.hasOwn(input, "projectId") ? (input.projectId ?? null) : null,
         input.interfaceId,
         input.subdomain.trim().toLowerCase(),
         nullableText(input.petname),
@@ -615,10 +788,11 @@ export class PortalDatabase {
   ): PortalApiRelationName {
     const result = this.database
       .prepare(
-        `INSERT INTO relation_names (name, color, line_start, line_end)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO relation_names (project_id, name, color, line_start, line_end)
+         VALUES (?, ?, ?, ?, ?)`,
       )
       .run(
+        input.projectId ?? 1,
         input.name.trim(),
         input.color.trim(),
         input.lineStart ?? "circle",
@@ -637,12 +811,14 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE relation_names
-         SET name = ?, color = ?,
+         SET project_id = COALESCE(?, project_id),
+             name = ?, color = ?,
              line_start = COALESCE(?, line_start),
              line_end = COALESCE(?, line_end)
          WHERE id = ?`,
       )
       .run(
+        Object.hasOwn(input, "projectId") ? (input.projectId ?? null) : null,
         input.name.trim(),
         input.color.trim(),
         input.lineStart ?? null,
@@ -680,12 +856,13 @@ export class PortalDatabase {
     const result = this.database
       .prepare(
         `INSERT INTO relations
-          (relation_name_id, from_interface_id, from_service_id,
+          (project_id, relation_name_id, from_interface_id, from_service_id,
            to_interface_id, to_service_id,
            from_label, to_label, port, protocol, properties)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
+        input.projectId ?? 1,
         relationName.id,
         input.fromInterfaceId ?? null,
         input.fromServiceId ?? null,
@@ -714,7 +891,8 @@ export class PortalDatabase {
     this.database
       .prepare(
         `UPDATE relations
-         SET relation_name_id = ?, from_interface_id = ?, from_service_id = ?,
+         SET project_id = COALESCE(?, project_id),
+             relation_name_id = ?, from_interface_id = ?, from_service_id = ?,
              to_interface_id = ?, to_service_id = ?,
              from_label = ?, to_label = ?,
              port = ?, protocol = ?,
@@ -722,6 +900,7 @@ export class PortalDatabase {
          WHERE id = ?`,
       )
       .run(
+        Object.hasOwn(input, "projectId") ? (input.projectId ?? null) : null,
         relationName.id,
         input.fromInterfaceId ?? null,
         input.fromServiceId ?? null,
@@ -827,16 +1006,19 @@ export class PortalDatabase {
     };
   }
 
+  // The settings view is the first project's ouchi (title + global
+  // memo) plus the deployment-wide domain: since migration 021 each
+  // project holds exactly one ouchi, and /api/settings keeps addressing
+  // the default one.
   getSettings(): PortalApiData["settings"] {
     const row = this.database
-      .prepare("SELECT domain, title, properties FROM settings WHERE id = 1")
-      .get() as
-      | { domain: string; title: string; properties: string }
-      | undefined;
+      .prepare("SELECT domain FROM settings WHERE id = 1")
+      .get() as { domain: string } | undefined;
+    const project = this.firstProject();
     return {
       domain: row?.domain ?? "ouchi.local",
-      title: row?.title ?? "あなたのホームラボ",
-      properties: parseProperties(row?.properties ?? "{}"),
+      title: project?.title ?? "あなたのホームラボ",
+      properties: project?.properties ?? {},
     };
   }
 
@@ -844,23 +1026,19 @@ export class PortalDatabase {
     title: string,
     properties?: PortalProperties,
   ): PortalApiData["settings"] {
-    if (properties === undefined) {
-      this.database
-        .prepare(
-          `INSERT INTO settings (id, domain, title)
-           VALUES (1, 'ouchi.local', ?)
-           ON CONFLICT(id) DO UPDATE SET title = excluded.title`,
-        )
-        .run(title.trim());
-    } else {
-      this.database
-        .prepare(
-          `INSERT INTO settings (id, domain, title, properties)
-           VALUES (1, 'ouchi.local', ?, ?)
-           ON CONFLICT(id) DO UPDATE
-           SET title = excluded.title, properties = excluded.properties`,
-        )
-        .run(title.trim(), serializeProperties(properties));
+    const project = this.firstProject();
+    if (project) {
+      if (properties === undefined) {
+        this.database
+          .prepare(`UPDATE projects SET title = ? WHERE id = ?`)
+          .run(title.trim(), project.id);
+      } else {
+        this.database
+          .prepare(
+            `UPDATE projects SET title = ?, properties = ? WHERE id = ?`,
+          )
+          .run(title.trim(), serializeProperties(properties), project.id);
+      }
     }
     return this.getSettings();
   }
@@ -868,6 +1046,7 @@ export class PortalDatabase {
   getPortalData(): PortalApiData {
     return {
       version: 2,
+      projects: this.listProjects(),
       networks: this.listNetworks(),
       devices: this.listDevices(),
       services: this.listServices(),

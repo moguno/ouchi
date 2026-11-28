@@ -63,6 +63,7 @@ export type PortalIconKind = "favicon" | "url" | "unset";
 export type PortalIconReference = "favicon" | `url:${string}`;
 
 export interface PortalNetwork {
+  projectId?: string;
   id: string;
   name: string;
   cidr?: string;
@@ -83,6 +84,7 @@ export interface PortalSshInfo {
 }
 
 export interface PortalDevice {
+  projectId?: string;
   id: string;
   name: string;
   petname?: string;
@@ -95,12 +97,14 @@ export interface PortalDevice {
 }
 
 export interface PortalInterface {
+  projectId?: string;
   id: string;
   deviceId: string;
   name: string;
   networkId: string | null;
   ip: string;
   mac?: string;
+  properties?: PortalProperties;
 }
 
 export type PortalLineEndpointShape =
@@ -111,6 +115,7 @@ export type PortalLineEndpointShape =
   | "diamond";
 
 export interface PortalRelationName {
+  projectId?: string;
   id: string;
   name: string;
   color: string;
@@ -120,6 +125,7 @@ export interface PortalRelationName {
 }
 
 export interface PortalRelation {
+  projectId?: string;
   id: string;
   relationNameId: string;
   relationName: string;
@@ -140,6 +146,7 @@ export interface PortalRelation {
 }
 
 export interface PortalService {
+  projectId?: string;
   id: string;
   interfaceId: string;
   subdomain: string;
@@ -165,6 +172,14 @@ export interface PortalSettings {
   properties?: PortalProperties;
 }
 
+export interface PortalProject {
+  id: string;
+  name: string;
+  title: string;
+  color: string;
+  properties: PortalProperties;
+}
+
 export interface PortalDataV2 {
   version: 2;
   networks: PortalNetwork[];
@@ -174,6 +189,7 @@ export interface PortalDataV2 {
   relations: PortalRelation[];
   services: PortalService[];
   settings?: PortalSettings;
+  projects?: PortalProject[];
 }
 
 export interface OuchiPortalProps {
@@ -207,8 +223,17 @@ export interface ValidationResult<T> {
  * REST API response model. IDs are SQLite INTEGER ids and are intentionally
  * kept numeric at the API boundary; the SPA stringifies them in its adapter.
  */
+export interface PortalApiProject {
+  id: number;
+  name: string;
+  title: string;
+  color: string;
+  properties: PortalProperties;
+}
+
 export interface PortalApiNetwork {
   id: number;
+  projectId: number;
   name: string;
   cidr: string | null;
   accent: string;
@@ -219,15 +244,18 @@ export interface PortalApiNetwork {
 
 export interface PortalApiInterface {
   id: number;
+  projectId: number;
   deviceId: number;
   name: string;
   networkId: number | null;
   ip: string | null;
   mac: string | null;
+  properties: PortalProperties;
 }
 
 export interface PortalApiDevice {
   id: number;
+  projectId: number;
   hostname: string;
   petname: string | null;
   properties: PortalProperties;
@@ -241,6 +269,7 @@ export interface PortalApiDevice {
 
 export interface PortalApiRelationName {
   id: number;
+  projectId: number;
   name: string;
   color: string;
   lineStart: PortalLineEndpointShape;
@@ -250,6 +279,7 @@ export interface PortalApiRelationName {
 
 export interface PortalApiRelation {
   id: number;
+  projectId: number;
   relationNameId: number;
   relationName: string;
   fromDeviceId: number;
@@ -276,6 +306,7 @@ export interface PortalApiRelation {
 
 export interface PortalApiService {
   id: number;
+  projectId: number;
   interfaceId: number;
   subdomain: string;
   petname: string | null;
@@ -296,6 +327,7 @@ export interface PortalApiService {
 
 export interface PortalApiData {
   version: 2;
+  projects: PortalApiProject[];
   networks: PortalApiNetwork[];
   devices: PortalApiDevice[];
   services: PortalApiService[];
@@ -309,7 +341,15 @@ export interface PortalSettingsInput {
   properties?: PortalProperties;
 }
 
+export interface PortalProjectInput {
+  name: string;
+  title?: string;
+  color?: string;
+  properties?: PortalProperties;
+}
+
 export interface PortalNetworkInput {
+  projectId?: number;
   name: string;
   cidr?: string | null;
   accent: string;
@@ -318,6 +358,7 @@ export interface PortalNetworkInput {
 }
 
 export interface PortalDeviceInput {
+  projectId?: number;
   hostname: string;
   petname?: string | null;
   properties?: PortalProperties;
@@ -329,14 +370,17 @@ export interface PortalDeviceInput {
 }
 
 export interface PortalInterfaceInput {
+  projectId?: number;
   deviceId: number;
   name: string;
   networkId: number | null;
   ip?: string | null;
   mac?: string | null;
+  properties?: PortalProperties;
 }
 
 export interface PortalRelationInput {
+  projectId?: number;
   relationName: string;
   fromInterfaceId?: number | null;
   toInterfaceId?: number | null;
@@ -350,6 +394,7 @@ export interface PortalRelationInput {
 }
 
 export interface PortalRelationNameInput {
+  projectId?: number;
   name: string;
   color: string;
   lineStart?: PortalLineEndpointShape;
@@ -357,6 +402,7 @@ export interface PortalRelationNameInput {
 }
 
 export interface PortalServiceInput {
+  projectId?: number;
   interfaceId: number;
   subdomain: string;
   petname?: string | null;

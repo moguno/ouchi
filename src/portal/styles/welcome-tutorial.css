@@ -1,0 +1,134 @@
+/* Getting-started panel for an empty project (WelcomeTutorial).
+   A single centered column: draw it yourself first, then the AI
+   route with its MCP settings always visible. */
+.ouchi-welcome {
+  max-width: 640px;
+  margin: 10px auto 0;
+  padding: 24px 8px 8px;
+}
+
+.ouchi-welcome-heading {
+  font-size: 27px;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.ouchi-welcome-sub {
+  color: #727983;
+  font-size: 14px;
+  margin: 0 0 26px;
+}
+
+.ouchi-welcome-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ouchi-welcome-card {
+  border: 1px solid #e2e7ec;
+  border-radius: 16px;
+  padding: 20px;
+  background: #fff;
+}
+
+.ouchi-welcome-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.ouchi-welcome-card p {
+  margin: 0 0 16px;
+  color: #727983;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ouchi-welcome-add {
+  border: none;
+  cursor: pointer;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background: #334155;
+}
+
+/* base.css's `.ouchi-portal button` reset (color: inherit and the
+   font shorthand, specificity 0,1,1) outranks a lone class and
+   left this button's label ink-dark on slate; pin its type with a
+   scoped rule, like the project sidebar does. */
+.ouchi-portal .ouchi-welcome-add {
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.ouchi-welcome-card .ouchi-welcome-after {
+  margin: 14px 0 0;
+}
+
+.ouchi-welcome-mcp {
+  border: 1px solid #e6e2f5;
+  background: #faf9ff;
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.ouchi-welcome-mcp-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #8a8496;
+  margin: 0 0 6px;
+}
+
+.ouchi-welcome-url {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13.5px;
+  background: #fff;
+  border: 1px solid #e2e7ec;
+  border-radius: 9px;
+  padding: 9px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+}
+
+/* The URL wraps inside its row on narrow screens instead of
+   pushing the copy button out of the box. */
+.ouchi-welcome-url span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ouchi-welcome-url button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+/* Scoped for the same base.css button-reset reason as the add
+   button above. */
+.ouchi-portal .ouchi-welcome-url button {
+  color: #463a75;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.ouchi-welcome-config {
+  margin: 12px 0 0;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 13px 15px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  overflow-x: auto;
+}
+
+.ouchi-welcome-card .ouchi-welcome-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+}

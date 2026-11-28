@@ -1,11 +1,13 @@
-format: ouchi-ledger/13
+format: ouchi-ledger/17
 exportedAt: "2026-11-21T09:00:00.000Z"
 settings:
   domain: ouchi.example
   title: あなたのおうち環境
+  color: '#c0a359'
   properties:
     運用方針: 架空のサンプル台帳。実在の機器・アドレスは含まれない
     バックアップ: 週1回、台帳YAMLをエクスポートして保管
+project: デフォルト
 networks:
   - name: 家族用LAN
     cidr: 198.51.100.0/24
@@ -45,6 +47,9 @@ devices:
       - name: eth0
         network: 家族用LAN
         ip: 198.51.100.1
+        properties:
+          役割: 家族用LAN向けのゲートウェイ
+          速度: 1Gbps
       - name: eth1
         network: ホームラボ
         ip: 203.0.113.1

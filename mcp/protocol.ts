@@ -25,13 +25,18 @@ function errorResult(error: unknown): CallToolResult {
       path: error.path,
       body: error.body,
     };
+    // 詳細（issues 等）は structuredContent 側に寄せ、text は1行だけにする。
+    const bodyError =
+      error.body !== null &&
+      typeof error.body === "object" &&
+      typeof (error.body as { error?: unknown }).error === "string"
+        ? `: ${(error.body as { error: string }).error}`
+        : "";
     return {
       content: [
         {
           type: "text",
-          text:
-            `REST API ${error.status} (${error.path})\n` +
-            JSON.stringify(error.body, null, 2),
+          text: `REST API ${error.status} (${error.path})${bodyError}`,
         },
       ],
       structuredContent: { error: details },

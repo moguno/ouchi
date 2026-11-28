@@ -9,9 +9,13 @@ describe("Pages sample ledger", () => {
       resolve(process.cwd(), "public/ouchi-ledger.sample.yaml"),
       "utf8",
     );
-    const ledger = parseLedgerYaml(yaml);
+    const documents = parseLedgerYaml(yaml);
+    expect(documents).toHaveLength(1);
+    const ledger = documents[0];
 
-    expect(ledger.format).toBe("ouchi-ledger/13");
+    expect(ledger.format).toBe("ouchi-ledger/17");
+    expect(ledger.settings.color).toBe("#c0a359");
+    expect(ledger.project).toBe("デフォルト");
     expect(ledger.settings.title).toBe("あなたのおうち環境");
     expect(ledger.networks).toHaveLength(6);
     expect(ledger.networks.map((network) => network.name)).toEqual([
@@ -38,6 +42,13 @@ describe("Pages sample ledger", () => {
       ledger.networks.find((network) => network.name === "ホームラボ")
         ?.properties,
     ).toEqual({ 方針: "検証はステージングで先に試してから本番へ" });
+    expect(
+      ledger.devices.find((device) => device.hostname === "l3-switch")
+        ?.interfaces[0]?.properties,
+    ).toEqual({
+      役割: "家族用LAN向けのゲートウェイ",
+      速度: "1Gbps",
+    });
     expect(ledger.devices).toHaveLength(25);
     expect(
       ledger.devices.flatMap((device) => device.interfaces),
@@ -527,5 +538,48 @@ describe("Pages sample ledger", () => {
           "url:https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/google-drive.svg",
       }),
     );
+  });
+});
+
+describe("per-project YAML documents", () => {
+  it("splits a /15 multi-project document into one document per project", async () => {
+    const { stringify: stringifyYaml } = await import("yaml");
+    const legacy = stringifyYaml({
+      format: "ouchi-ledger/15",
+      exportedAt: "2026-11-27T00:00:00.000Z",
+      settings: {
+        domain: "ouchi.local",
+        title: "既定のタイトル",
+        properties: { 既定メモ: "1" },
+      },
+      projects: [{ name: "デフォルト" }, { name: "実験" }],
+      networks: [
+        { name: "LAN-A", cidr: null, accent: "#111111", note: null },
+        {
+          name: "LAN-B",
+          cidr: null,
+          accent: "#222222",
+          note: null,
+          project: "実験",
+        },
+      ],
+      devices: [],
+      relationNames: [],
+      relations: [],
+      services: [],
+      sshKeys: [],
+      deviceKeys: [],
+    });
+    const documents = parseLedgerYaml(legacy);
+    expect(documents).toHaveLength(2);
+    expect(documents[0].project).toBe("デフォルト");
+    expect(documents[0].settings.title).toBe("既定のタイトル");
+    expect(documents[0].settings.properties).toEqual({ 既定メモ: "1" });
+    expect(documents[0].networks.map((n) => n.name)).toEqual(["LAN-A"]);
+    // The second project gets the default ouchi, not the first one's.
+    expect(documents[1].project).toBe("実験");
+    expect(documents[1].settings.title).toBe("あなたのホームラボ");
+    expect(documents[1].settings.properties).toEqual({});
+    expect(documents[1].networks.map((n) => n.name)).toEqual(["LAN-B"]);
   });
 });

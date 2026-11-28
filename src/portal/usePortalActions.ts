@@ -9,6 +9,7 @@ import {
   deleteDevice,
   deleteInterface,
   deleteNetwork,
+  deleteProject,
   deleteRelation,
   deleteRelationName,
   deleteService,
@@ -18,6 +19,7 @@ import {
   updateDevice,
   updateInterface,
   updateNetwork,
+  updateProject,
   updateRelation,
   updateRelationName,
   updateService,
@@ -29,6 +31,7 @@ import type { MemoTargetKind } from "./MemoView";
 import { sortNetworksForDisplay } from "./networkOrder";
 import {
   toDeviceInput,
+  toInterfaceInput,
   toRelationInput,
   toServiceInput,
 } from "./portalInputs";
@@ -51,7 +54,7 @@ export interface DialogState {
 export type ConfirmState =
   | {
       type: "delete";
-      kind: EntityKind | "relation" | "relationName";
+      kind: EntityKind | "relation" | "relationName" | "project";
       id: string;
     };
 
@@ -66,6 +69,15 @@ export interface PortalActionsDeps {
   demoMode: boolean;
   yamlUrl?: string;
   portalData: PortalDataV2;
+  /**
+   * The project the portal is currently switched to. New entities
+   * are created inside it, the title save and the ledger export
+   * address it. Undefined only for data without a project list.
+   */
+  activeProject?: { id: string; name: string };
+  /** Called after a project deletion succeeds, so the portal can
+   * drop the stored selection when the deleted project was active. */
+  onProjectDeleted?: (id: string) => void;
   reload: () => Promise<PortalDataV2 | undefined>;
   confirm: ConfirmState | null;
   selectedDeviceId?: string;
@@ -87,13 +99,16 @@ export interface PortalActionsDeps {
 }
 
   export function deleteKindLabel(
-    kind: EntityKind | "relation" | "relationName",
+    kind: EntityKind | "relation" | "relationName" | "project",
   ) {
     if (kind === "relation") {
       return "関係";
     }
     if (kind === "relationName") {
       return "関係名";
+    }
+    if (kind === "project") {
+      return "プロジェクト";
     }
     return KIND_LABELS[kind];
   }
@@ -109,11 +124,19 @@ export interface PortalActionsDeps {
   }
 
 export function usePortalActions(deps: PortalActionsDeps) {
+  // Creates land in the active project; updates never move entities
+  // between projects, so only create payloads are stamped.
+  const stampProject = <T extends object>(input: T): T & { projectId?: number } =>
+    deps.activeProject
+      ? { ...input, projectId: Number(deps.activeProject.id) }
+      : input;
   const {
     apiBaseUrl,
     demoMode,
     yamlUrl,
     portalData,
+    activeProject,
+    onProjectDeleted,
     reload,
     confirm,
     selectedDeviceId,
@@ -138,7 +161,10 @@ export function usePortalActions(deps: PortalActionsDeps) {
       }
 
       try {
-        if (confirm.kind === "relation") {
+        if (confirm.kind === "project") {
+          await deleteProject(apiBaseUrl, confirm.id);
+          onProjectDeleted?.(confirm.id);
+        } else if (confirm.kind === "relation") {
           await deleteRelation(apiBaseUrl, confirm.id);
         } else if (confirm.kind === "relationName") {
           await deleteRelationName(apiBaseUrl, confirm.id);
@@ -165,12 +191,13 @@ export function usePortalActions(deps: PortalActionsDeps) {
     }
 
     async function handleExportLedger() {
+      // Exports are per project: the active project's document.
       const download = demoMode && yamlUrl
         ? {
             filename: "ouchi-ledger-demo.yaml",
             yaml: await fetchDemoLedgerYaml(yamlUrl),
           }
-        : await exportLedger(apiBaseUrl);
+        : await exportLedger(apiBaseUrl, activeProject?.id);
       if (typeof document === "undefined") {
         return download.filename;
       }
@@ -214,7 +241,16 @@ export function usePortalActions(deps: PortalActionsDeps) {
       if (demoMode) {
         return;
       }
-      await updateSettings(apiBaseUrl, { title });
+      if (activeProject) {
+        // The title is the active project's ouchi title; the
+        // settings endpoint only ever addresses the first project.
+        await updateProject(apiBaseUrl, activeProject.id, {
+          name: activeProject.name,
+          title,
+        });
+      } else {
+        await updateSettings(apiBaseUrl, { title });
+      }
       await reload();
       setMessage("ポータルタイトルを保存しました。");
     }
@@ -235,7 +271,7 @@ export function usePortalActions(deps: PortalActionsDeps) {
           if (portalData.networks.some((item) => item.id === network.id)) {
             await updateNetwork(apiBaseUrl, network.id, input);
           } else {
-            await createNetwork(apiBaseUrl, input);
+            await createNetwork(apiBaseUrl, stampProject(input));
           }
         } else if (kind === "service") {
           const service = entity as PortalService;
@@ -243,7 +279,7 @@ export function usePortalActions(deps: PortalActionsDeps) {
           if (portalData.services.some((item) => item.id === service.id)) {
             await updateService(apiBaseUrl, service.id, input);
           } else {
-            await createService(apiBaseUrl, input);
+            await createService(apiBaseUrl, stampProject(input));
           }
         } else {
           const mutation = entity as DeviceMutation;
@@ -278,7 +314,7 @@ export function usePortalActions(deps: PortalActionsDeps) {
           } else {
             const created = (await createDevice(
               apiBaseUrl,
-              deviceInput,
+              stampProject(deviceInput),
             )) as { id: number };
             savedDeviceId = String(created.id);
           }
@@ -330,7 +366,7 @@ export function usePortalActions(deps: PortalActionsDeps) {
         ) {
           await updateRelation(apiBaseUrl, relation.id, input);
         } else {
-          await createRelation(apiBaseUrl, input);
+          await createRelation(apiBaseUrl, stampProject(input));
         }
         setRelationDialog(null);
         setMessage("関係を保存しました。");
@@ -486,6 +522,15 @@ export function usePortalActions(deps: PortalActionsDeps) {
             ...toDeviceInput(device),
             properties,
           });
+        } else if (kind === "interface") {
+          const iface = portalData.interfaces.find((item) => item.id === id);
+          if (!iface) {
+            return false;
+          }
+          await updateInterface(apiBaseUrl, id, {
+            ...toInterfaceInput(iface),
+            properties,
+          });
         } else if (kind === "service") {
           const service = portalData.services.find((item) => item.id === id);
           if (!service) {
@@ -517,7 +562,19 @@ export function usePortalActions(deps: PortalActionsDeps) {
             note: network.note || null,
             properties,
           });
+        } else if (kind === "project" && id !== "settings") {
+          const project = portalData.projects?.find((item) => item.id === id);
+          if (!project) {
+            return false;
+          }
+          await updateProject(apiBaseUrl, id, {
+            name: project.name,
+            title: project.title,
+            properties,
+          });
         } else {
+          // The settings fallback entry (data without a project list)
+          // addresses the default project's ouchi via /api/settings.
           await updateSettings(apiBaseUrl, {
             title: portalData.settings?.title ?? "あなたのホームラボ",
             properties,
@@ -606,7 +663,7 @@ export function usePortalActions(deps: PortalActionsDeps) {
         ) {
           await updateRelationName(apiBaseUrl, relationName.id, input);
         } else {
-          await createRelationName(apiBaseUrl, input);
+          await createRelationName(apiBaseUrl, stampProject(input));
         }
         setMessage("関係名を保存しました。");
         await reload();

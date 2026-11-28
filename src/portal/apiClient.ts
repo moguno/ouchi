@@ -1,12 +1,14 @@
 import {
   type PortalApiData,
   type PortalApiDevice,
+  type PortalApiProject,
   type PortalApiService,
   type PortalDataV2,
   type PortalDeviceInput,
   type PortalInterface,
   type PortalInterfaceInput,
   type PortalNetworkInput,
+  type PortalProjectInput,
   type PortalRelationInput,
   type PortalRelationNameInput,
   type PortalServiceInput,
@@ -15,7 +17,10 @@ import {
   type ValidationIssue,
 } from "./types";
 import { normalizeServiceIconReference } from "./iconCatalog";
-import { normalizeNetworkAccent } from "./colorValue";
+import {
+  normalizeNetworkAccent,
+  projectColorFromName,
+} from "./colorValue";
 
 export class PortalApiError extends Error {
   readonly status: number;
@@ -82,18 +87,21 @@ function interfacesFrom(
 ): PortalInterface[] {
   return devices.flatMap((device) =>
     device.interfaces.map((iface) => ({
+      projectId: String(iface.projectId),
       id: String(iface.id),
       deviceId: String(iface.deviceId),
       name: iface.name,
       networkId: iface.networkId === null ? null : String(iface.networkId),
       ip: iface.ip ?? "",
       mac: iface.mac ?? undefined,
+      properties: iface.properties ?? {},
     })),
   );
 }
 
 function serviceFrom(service: PortalApiService) {
   return {
+    projectId: String(service.projectId),
     id: String(service.id),
     interfaceId: String(service.interfaceId),
     subdomain: service.subdomain,
@@ -118,6 +126,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
   return {
     version: 2,
     networks: data.networks.map((network) => ({
+      projectId: String(network.projectId),
       id: String(network.id),
       name: network.name,
       cidr: network.cidr ?? undefined,
@@ -127,6 +136,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       sortOrder: network.sortOrder,
     })),
     devices: data.devices.map((device) => ({
+      projectId: String(device.projectId),
       id: String(device.id),
       name: device.hostname,
       petname: device.petname ?? undefined,
@@ -144,6 +154,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
     })),
     interfaces: interfacesFrom(data.devices),
     relationNames: data.relationNames.map((relationName) => ({
+      projectId: String(relationName.projectId),
       id: String(relationName.id),
       name: relationName.name,
       color: relationName.color,
@@ -152,6 +163,7 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       relationCount: relationName.relationCount,
     })),
     relations: data.relations.map((relation) => ({
+      projectId: String(relation.projectId),
       id: String(relation.id),
       relationNameId: String(relation.relationNameId),
       relationName: relation.relationName,
@@ -186,6 +198,13 @@ export function normalizePortalData(data: PortalApiData): PortalDataV2 {
       title: data.settings.title,
       properties: data.settings.properties ?? {},
     },
+    projects: (data.projects ?? []).map((project) => ({
+      id: String(project.id),
+      name: project.name,
+      title: project.title,
+      color: project.color || projectColorFromName(project.name),
+      properties: project.properties ?? {},
+    })),
   };
 }
 
@@ -220,10 +239,18 @@ export interface LedgerImportResult {
 
 export async function exportLedger(
   baseUrl = "",
+  projectId?: string,
 ): Promise<LedgerDownload> {
-  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/api/export`, {
-    headers: { Accept: "application/yaml" },
-  });
+  const query =
+    projectId !== undefined
+      ? `?project=${encodeURIComponent(projectId)}`
+      : "";
+  const response = await fetch(
+    `${normalizeBaseUrl(baseUrl)}/api/export${query}`,
+    {
+      headers: { Accept: "application/yaml" },
+    },
+  );
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as
       | { error?: string; issues?: ValidationIssue[] }
@@ -432,5 +459,36 @@ export function updateSettings(
   return request<PortalSettings>(baseUrl, "/api/settings", {
     method: "PUT",
     body: JSON.stringify(input),
+  });
+}
+
+export function createProject(
+  baseUrl: string,
+  input: PortalProjectInput,
+) {
+  return request<PortalApiProject>(baseUrl, "/api/projects", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateProject(
+  baseUrl: string,
+  id: string,
+  input: PortalProjectInput,
+) {
+  return request<PortalApiProject>(
+    baseUrl,
+    `/api/projects/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function deleteProject(baseUrl: string, id: string) {
+  return request(baseUrl, `/api/projects/${encodeURIComponent(id)}`, {
+    method: "DELETE",
   });
 }

@@ -1,11 +1,16 @@
 import { LEGACY_ACCENT_COLORS } from "../src/portal/colorValue";
 import {
+  DEFAULT_PROJECT_NAME,
   LEDGER_FORMAT,
   LEGACY_LEDGER_FORMAT,
   PREVIOUS_LEDGER_FORMAT,
   V10_LEDGER_FORMAT,
   V11_LEDGER_FORMAT,
   V12_LEDGER_FORMAT,
+  V13_LEDGER_FORMAT,
+  V14_LEDGER_FORMAT,
+  V16_LEDGER_FORMAT,
+  V15_LEDGER_FORMAT,
   V2_LEDGER_FORMAT,
   V4_LEDGER_FORMAT,
   V5_LEDGER_FORMAT,
@@ -443,6 +448,154 @@ export function upgradeV12LedgerDocument(
   }
   return {
     ...root,
+    format: V13_LEDGER_FORMAT,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/13: the ledger gains projects.
+ * A projects list appears holding the single default project, and
+ * every entity implicitly belongs to it (an entity names its project
+ * with an optional project key only when it is not the first project
+ * in the list), so this step only adds the list and advances the
+ * format.
+ */
+export function upgradeV13LedgerDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V13_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
+    format: V14_LEDGER_FORMAT,
+    projects: [{ name: DEFAULT_PROJECT_NAME }],
+  };
+}
+
+export function upgradeV14LedgerDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V14_LEDGER_FORMAT) {
+    return root;
+  }
+  // /15 only adds the optional interface properties key; documents
+  // without it parse with empty properties, so nothing to rewrite.
+  return {
+    ...root,
+    format: V15_LEDGER_FORMAT,
+  };
+}
+
+const PROJECT_COLLECTIONS = [
+  "networks",
+  "devices",
+  "relationNames",
+  "relations",
+  "services",
+] as const;
+
+/**
+ * Splits a flat /15 document into one /16 document per project.
+ * /15 keeps every project in a single document; /16 gives each
+ * project its own document so projects stay maximally independent.
+ * The settings ouchi (title + global memo) belongs to the first
+ * project, the domain is shared, and entities name their project
+ * with the project key (absent = the first project). Documents of
+ * any other format pass through as a single-element list.
+ */
+/**
+ * /17 gives each project's document its color (settings.color,
+ * decided at the project's creation from its name). /16 documents
+ * carry no color; the value is derived from the project name when
+ * the document is validated, so nothing needs rewriting here.
+ */
+export function upgradeV16LedgerDocument(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V16_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
     format: LEDGER_FORMAT,
   };
+}
+
+export function splitV15LedgerDocuments(
+  root: RecordValue,
+): RecordValue[] {
+  if (root.format !== V15_LEDGER_FORMAT) {
+    return [root];
+  }
+  const settings = isRecord(root.settings) ? root.settings : {};
+  const projectList =
+    Array.isArray(root.projects) && root.projects.length > 0
+      ? root.projects
+      : [{ name: DEFAULT_PROJECT_NAME }];
+  const names = projectList.map((item) =>
+    isRecord(item)
+      ? textValue(item.name) || DEFAULT_PROJECT_NAME
+      : DEFAULT_PROJECT_NAME,
+  );
+  const firstName = names[0];
+  const projectOf = (entity: unknown): string => {
+    if (!isRecord(entity)) {
+      return firstName;
+    }
+    const name = textValue(entity.project);
+    return name && names.includes(name) ? name : firstName;
+  };
+  const strip = (entity: unknown): unknown => {
+    if (!isRecord(entity)) {
+      return entity;
+    }
+    const { project, ...rest } = entity;
+    return rest;
+  };
+  const deviceProject = new Map<string, string>();
+  for (const device of arrayValue(root.devices)) {
+    if (isRecord(device)) {
+      deviceProject.set(textValue(device.hostname), projectOf(device));
+    }
+  }
+  return projectList.map((item, index) => {
+    const name = names[index];
+    const record = isRecord(item) ? item : {};
+    const title = record.title ?? (index === 0 ? settings.title : undefined);
+    const properties =
+      record.properties ?? (index === 0 ? settings.properties : undefined);
+    const doc: RecordValue = {
+      format: LEDGER_FORMAT,
+      exportedAt: root.exportedAt,
+      project: name,
+      settings: {
+        domain: settings.domain,
+        ...(title !== undefined ? { title } : {}),
+        ...(properties !== undefined ? { properties } : {}),
+      },
+      sshKeys: [],
+      deviceKeys: [],
+    };
+    for (const field of PROJECT_COLLECTIONS) {
+      doc[field] = arrayValue(root[field])
+        .filter((entity) => projectOf(entity) === name)
+        .map(strip);
+    }
+    const deviceKeys = arrayValue(root.deviceKeys).filter(
+      (deviceKey) =>
+        isRecord(deviceKey) &&
+        deviceProject.get(textValue(deviceKey.device)) === name,
+    );
+    doc.deviceKeys = deviceKeys;
+    const usedKeys = new Set(
+      deviceKeys.map((deviceKey) =>
+        isRecord(deviceKey) ? textValue(deviceKey.publicKey) : "",
+      ),
+    );
+    doc.sshKeys = arrayValue(root.sshKeys).filter(
+      (key) => isRecord(key) && usedKeys.has(textValue(key.publicKey)),
+    );
+    return doc;
+  });
 }

@@ -14,6 +14,7 @@ import {
   type ValidationIssue,
 } from "./types";
 import { normalizeServiceIconReference } from "./iconCatalog";
+import { projectColorFromName } from "./colorValue";
 import { buildMonitorUrl, buildServiceUrl } from "./urls";
 import {
   normalizeProperties,
@@ -36,6 +37,10 @@ import {
   upgradeV10Document,
   upgradeV11Document,
   upgradeV12Document,
+  upgradeV13Document,
+  upgradeV14Document,
+  upgradeV15Document,
+  upgradeV16Document,
   upgradeV2Document,
   upgradeV3Document,
   upgradeV4Document,
@@ -72,7 +77,11 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     );
   }
 
-  const root = upgradeV12Document(
+  const root = upgradeV16Document(
+    upgradeV15Document(
+    upgradeV14Document(
+    upgradeV13Document(
+    upgradeV12Document(
     upgradeV11Document(
     upgradeV10Document(
     upgradeV9Document(
@@ -89,6 +98,10 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
           ),
         ),
       ),
+    ),
+    ),
+    ),
+    ),
     ),
     ),
     ),
@@ -121,6 +134,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     }
     return {
       id: `network-${index + 1}`,
+      projectId: "project-1",
       name,
       cidr: nullableText(network.cidr),
       accent: normalizeAccent(network.accent),
@@ -171,6 +185,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
 
     const portalDevice: PortalDevice = {
       id: `device-${index + 1}`,
+      projectId: "project-1",
       name: hostname,
       petname: nullableText(device.petname),
       properties: normalizeProperties(device.properties),
@@ -228,14 +243,24 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
           message: `ネットワーク「${networkName}」が存在しません`,
         });
       }
+      if (iface.properties !== undefined) {
+        issues.push(
+          ...validatePropertiesPayload(
+            iface.properties,
+            `${interfacePath}.properties`,
+          ),
+        );
+      }
 
       const portalInterface: PortalInterface = {
         id: `interface-${interfaces.length + 1}`,
+        projectId: "project-1",
         deviceId: portalDevice.id,
         name: interfaceName,
         networkId: network?.id ?? null,
         ip: text(iface.ip),
         mac: nullableText(iface.mac),
+        properties: normalizeProperties(iface.properties),
       };
       interfaces.push(portalInterface);
       if (hostname && interfaceName) {
@@ -272,6 +297,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
       }
       const portalRelationName: PortalRelationName = {
         id: `relation-name-${index + 1}`,
+        projectId: "project-1",
         name,
         color: text(relationName.color),
         lineStart: lineEndpointShape(relationName.lineStart),
@@ -394,6 +420,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     }
     return {
       id: `relation-${index + 1}`,
+      projectId: "project-1",
       relationNameId: relationName?.id ?? "",
       relationName: relationNameText,
       fromDeviceId: fromResolved.deviceId,
@@ -457,6 +484,7 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
 
     const portalService: PortalService = {
       id: `service-${index + 1}`,
+      projectId: "project-1",
       interfaceId: iface?.id ?? "",
       subdomain: text(service.subdomain).toLowerCase(),
       petname: nullableText(service.petname),
@@ -483,6 +511,9 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     return portalService;
   });
 
+  // A /16 document describes exactly one project; its settings
+  // carry that project's ouchi (title + global memo).
+  const projectName = text(root.project) || "デフォルト";
   const data: PortalDataV2 = {
     version: 2,
     networks,
@@ -493,9 +524,18 @@ export function ledgerYamlToPortalData(input: string): PortalDataV2 {
     services,
     settings: {
       domain: text(settings.domain),
-      title: text(settings.title),
+      title: text(settings.title) || "あなたのホームラボ",
       properties: normalizeProperties(settings.properties),
     },
+    projects: [
+      {
+        id: "project-1",
+        name: projectName,
+        title: text(settings.title) || "あなたのホームラボ",
+        color: text(settings.color) || projectColorFromName(projectName),
+        properties: normalizeProperties(settings.properties),
+      },
+    ],
   };
 
   if (issues.length === 0) {

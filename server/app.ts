@@ -3,6 +3,7 @@ import type {
   PortalDeviceInput,
   PortalInterfaceInput,
   PortalNetworkInput,
+  PortalProjectInput,
   PortalProperties,
   PortalRelationInput,
   PortalRelationNameInput,
@@ -14,6 +15,7 @@ import {
   validateDevicePayload,
   validateInterfacePayload,
   validateNetworkPayload,
+  validateProjectPayload,
   validateRelationPayload,
   validateRelationNamePayload,
   validateServicePayload,
@@ -93,11 +95,35 @@ export function createApp(
   );
 
   app.get("/api/export", (context) => {
+    // Exports are per project: ?project=<id> picks the project,
+    // omitted exports the first project.
+    const projectParam = context.req.query("project");
+    let projectId: number | undefined;
+    if (projectParam !== undefined) {
+      const parsed = Number(projectParam);
+      if (!Number.isInteger(parsed) || !database.getProject(parsed)) {
+        return context.json(
+          {
+            issues: [
+              {
+                path: "project",
+                message: "プロジェクトが存在しません",
+              },
+            ],
+          },
+          404,
+        );
+      }
+      projectId = parsed;
+    }
     const timestamp = new Date()
       .toISOString()
       .replace(/[-:]/g, "")
       .replace(/\.\d{3}Z$/, "Z");
-    return context.body(exportLedgerYaml(database.database), 200, {
+    return context.body(
+      exportLedgerYaml(database.database, new Date(), projectId),
+      200,
+      {
       "Content-Type": "application/yaml; charset=utf-8",
       "Content-Disposition":
         `attachment; filename="ouchi-ledger-${timestamp}.yaml"`,
@@ -119,9 +145,124 @@ export function createApp(
     }
   });
 
+  // A well-formed projectId must name an existing project. Malformed
+  // values (non-integer etc.) are already flagged by the shared
+  // payload validators; this adds the existence check.
+  const projectExistenceIssues = (input: unknown): ValidationIssue[] => {
+    if (typeof input !== "object" || input === null) {
+      return [];
+    }
+    const projectId = (input as { projectId?: unknown }).projectId;
+    if (
+      typeof projectId === "number" &&
+      Number.isInteger(projectId) &&
+      projectId > 0 &&
+      !database.getProject(projectId)
+    ) {
+      return [
+        { path: "projectId", message: "プロジェクトが存在しません" },
+      ];
+    }
+    return [];
+  };
+
   app.get("/api/settings", (context) =>
     context.json(database.getSettings()),
   );
+
+  app.get("/api/projects", (context) =>
+    context.json(database.listProjects()),
+  );
+
+  app.get("/api/projects/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const project = database.getProject(id);
+    return project
+      ? context.json(project)
+      : context.json({ error: "プロジェクトが見つかりません" }, 404);
+  });
+
+  const projectIssues = (
+    input: unknown,
+    editingId?: number,
+  ): ValidationIssue[] => {
+    const issues = validateProjectPayload(input);
+    if (
+      issues.length > 0 ||
+      typeof input !== "object" ||
+      input === null
+    ) {
+      return issues;
+    }
+    const value = input as PortalProjectInput;
+    const duplicate = database.findProject(value.name);
+    if (duplicate && duplicate.id !== editingId) {
+      issues.push({
+        path: "name",
+        message: "同じプロジェクト名が登録されています",
+      });
+    }
+    if (editingId && !database.getProject(editingId)) {
+      issues.push({ path: "id", message: "プロジェクトが見つかりません" });
+    }
+    return issues;
+  };
+
+  app.post("/api/projects", async (context) => {
+    const input = await jsonBody(context);
+    const issues = projectIssues(input);
+    if (issues.length > 0) {
+      const failure = invalid(issues);
+      return context.json(failure.body, failure.status);
+    }
+    try {
+      return context.json(
+        database.createProject(input as PortalProjectInput),
+        201,
+      );
+    } catch (error) {
+      const failure = databaseConflict(error);
+      return context.json(failure.body, failure.status);
+    }
+  });
+
+  app.put("/api/projects/:id", async (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    const input = await jsonBody(context);
+    const issues = projectIssues(input, id);
+    if (issues.length > 0) {
+      const failure = invalid(issues);
+      return context.json(failure.body, failure.status);
+    }
+    try {
+      const project = database.updateProject(
+        id,
+        input as PortalProjectInput,
+      );
+      return project
+        ? context.json(project)
+        : context.json({ error: "プロジェクトが見つかりません" }, 404);
+    } catch (error) {
+      const failure = databaseConflict(error);
+      return context.json(failure.body, failure.status);
+    }
+  });
+
+  app.delete("/api/projects/:id", (context) => {
+    const id = parseId(context.req.param("id"));
+    if (!id) {
+      return context.json({ error: "IDが不正です" }, 400);
+    }
+    return database.deleteProject(id)
+      ? context.json({ ok: true })
+      : context.json({ error: "プロジェクトが見つかりません" }, 404);
+  });
 
   app.put("/api/settings", async (context) => {
     const input = await jsonBody(context);
@@ -151,6 +292,7 @@ export function createApp(
   app.post("/api/networks", async (context) => {
     const input = await jsonBody(context);
     const issues = validateNetworkPayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
@@ -196,6 +338,7 @@ export function createApp(
     }
     const input = await jsonBody(context);
     const issues = validateNetworkPayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
@@ -247,6 +390,7 @@ export function createApp(
   app.post("/api/devices", async (context) => {
     const input = await jsonBody(context);
     const issues = validateDevicePayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
@@ -269,6 +413,7 @@ export function createApp(
     }
     const input = await jsonBody(context);
     const issues = validateDevicePayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0) {
       const failure = invalid(issues);
       return context.json(failure.body, failure.status);
@@ -320,6 +465,7 @@ export function createApp(
     existingId?: number,
   ): ValidationIssue[] => {
     const issues = validateInterfacePayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0 || typeof input !== "object" || input === null) {
       return issues;
     }
@@ -446,6 +592,7 @@ export function createApp(
     existingId?: number,
   ): ValidationIssue[] => {
     const issues = validateServicePayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0 || typeof input !== "object" || input === null) {
       return issues;
     }
@@ -539,6 +686,7 @@ export function createApp(
     editingId?: number,
   ): ValidationIssue[] => {
     const issues = validateRelationNamePayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (
       issues.length > 0 ||
       typeof input !== "object" ||
@@ -632,6 +780,7 @@ export function createApp(
     editingId?: number,
   ): ValidationIssue[] => {
     const issues = validateRelationPayload(input);
+    issues.push(...projectExistenceIssues(input));
     if (issues.length > 0 || typeof input !== "object" || input === null) {
       return issues;
     }

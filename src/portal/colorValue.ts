@@ -43,6 +43,40 @@ const BASIC_NAMED_COLORS: Record<string, string> = {
   yellow: "#ffff00",
 };
 
+function hslToHex(hue: number, saturation: number, lightness: number) {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = l - chroma / 2;
+  const sector = Math.floor(hue / 60) % 6;
+  const [r, g, b] = [
+    [chroma, x, 0],
+    [x, chroma, 0],
+    [0, chroma, x],
+    [0, x, chroma],
+    [x, 0, chroma],
+    [chroma, 0, x],
+  ][sector];
+  return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+}
+
+/**
+ * The color a project is born with: a deterministic function of its
+ * name (FNV-1a over the name's code points, mapped to a hue), stored
+ * in the project's color column at creation time. Renaming a project
+ * never recolors it — afterwards the color is just a stored value,
+ * editable like a network accent.
+ */
+export function projectColorFromName(name: string): string {
+  let hash = 2166136261;
+  for (const char of name.trim()) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hslToHex((hash >>> 0) % 360, 45, 55);
+}
+
 function rgbToHex(red: number, green: number, blue: number) {
   const channel = (value: number) =>
     Math.max(0, Math.min(255, Math.round(value)))

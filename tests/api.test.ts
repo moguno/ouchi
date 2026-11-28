@@ -2,6 +2,7 @@
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,11 +12,17 @@ import { PortalDatabase } from "../server/db";
 import type {
   PortalApiData,
   PortalApiDevice,
+  PortalApiProject,
+  PortalApiInterface,
   PortalApiNetwork,
   PortalApiRelation,
   PortalApiService,
   PortalSettings,
 } from "../src/portal/types";
+
+const fixtureSeedPath = fileURLToPath(
+  new URL("./fixtures/home-lab-seed.sql", import.meta.url),
+);
 
 describe("REST API v1", () => {
   let directory: string;
@@ -24,7 +31,7 @@ describe("REST API v1", () => {
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "ouchi-api-test-"));
-    database = new PortalDatabase({
+    database = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: join(directory, "ledger.sqlite"),
     });
     app = createApp(database);
@@ -39,49 +46,79 @@ describe("REST API v1", () => {
     return (await response.json()) as T;
   }
 
-  it("returns the v0.4 seed as a PortalDataV2-shaped snapshot", async () => {
-    const response = await app.request("/api/portal");
-    expect(response.status).toBe(200);
-    const data = await json<PortalApiData>(response);
+  it("returns the sample seed as a PortalDataV2-shaped snapshot", async () => {
+    // This test intentionally uses the production seed (no fixture):
+    // a fresh install starts with an EMPTY default project (so the
+    // getting-started tutorial shows) and the minimal sample ledger
+    // in its own project.
+    const seedDatabase = new PortalDatabase({
+      filename: join(directory, "seed-check.sqlite"),
+    });
+    const seedApp = createApp(seedDatabase);
+    try {
+      const response = await seedApp.request("/api/portal");
+      expect(response.status).toBe(200);
+      const data = await json<PortalApiData>(response);
 
-    expect(data.version).toBe(2);
-    expect(data.settings.domain).toBe("ouchi.local");
-    expect(data.settings.title).toBe("あなたのホームラボ");
-    expect(data.networks).toHaveLength(3);
-    expect(data.devices).toHaveLength(16);
-    expect(data.devices.flatMap((device) => device.interfaces)).toHaveLength(
-      17,
-    );
-    expect(data.relations).toHaveLength(5);
-    expect(data.relationNames).toHaveLength(2);
-    expect(
-      data.relationNames.map((relationName) => ({
-        name: relationName.name,
-        relationCount: relationName.relationCount,
-      })),
-    ).toEqual([
-      { name: "ホストOS", relationCount: 4 },
-      { name: "バックアップ先", relationCount: 1 },
-    ]);
-    expect(data.services).toHaveLength(9);
-    expect(
-      data.devices.find((device) => device.hostname === "nanopi-r2s")?.petname,
-    ).toBe("門番");
-    expect(data.devices.every((device) => device.petname)).toBe(true);
-    const servicePetnames = new Set(
-      data.services.map((service) => service.petname),
-    );
-    expect(
-      data.devices.filter((device) =>
-        servicePetnames.has(device.petname),
-      ),
-    ).toEqual([]);
-    expect(
-      Object.hasOwn(data.services[0] as object, "status"),
-    ).toBe(false);
-    expect(
-      data.devices.find((device) => device.hostname === "notion")?.category,
-    ).toBe("service");
+      expect(data.version).toBe(2);
+      expect(data.settings.domain).toBe("ouchi.local");
+      expect(data.settings.title).toBe("あなたのホームラボ");
+      expect(data.projects?.map((project) => project.name)).toEqual([
+        "デフォルト",
+        "サンプル",
+      ]);
+      const sampleProjectId = data.projects?.[1]?.id;
+      expect(
+        data.networks.filter(
+          (network) => network.projectId !== sampleProjectId,
+        ),
+      ).toHaveLength(0);
+      expect(data.networks.map((network) => network.name)).toEqual([
+        "サンプルネットワーク",
+      ]);
+      expect(
+        data.networks.every(
+          (network) => network.projectId === sampleProjectId,
+        ),
+      ).toBe(true);
+      expect(
+        data.devices.every(
+          (device) => device.projectId === sampleProjectId,
+        ),
+      ).toBe(true);
+      expect(
+        data.services.every(
+          (service) => service.projectId === sampleProjectId,
+        ),
+      ).toBe(true);
+      expect(
+        data.devices.map((device) => ({
+          hostname: device.hostname,
+          petname: device.petname,
+        })),
+      ).toEqual([
+        { hostname: "sample-device-1", petname: "サンプルデバイス1" },
+        { hostname: "sample-device-2", petname: "サンプルデバイス2" },
+      ]);
+      expect(
+        data.devices.flatMap((device) => device.interfaces),
+      ).toHaveLength(2);
+      expect(data.relationNames).toHaveLength(1);
+      expect(data.relationNames[0]?.name).toBe("サンプル");
+      expect(data.relationNames[0]?.relationCount).toBe(1);
+      expect(data.relations).toHaveLength(1);
+      expect(data.relations[0]?.fromLabel).toBe("始点");
+      expect(data.relations[0]?.toLabel).toBe("終点");
+      expect(data.services.map((service) => service.petname)).toEqual([
+        "サンプルサービス1",
+        "サンプルサービス2",
+      ]);
+      expect(
+        Object.hasOwn(data.services[0] as object, "status"),
+      ).toBe(false);
+    } finally {
+      seedDatabase.close();
+    }
   });
 
   it("migrates pre-properties databases without changing existing rows", async () => {
@@ -114,7 +151,7 @@ describe("REST API v1", () => {
     `);
     legacyDatabase.close();
 
-    database = new PortalDatabase({ filename: legacyFilename });
+    database = new PortalDatabase({ seedPath: fixtureSeedPath, filename: legacyFilename });
     app = createApp(database);
     const migrated = await json<PortalApiData>(
       await app.request("/api/portal"),
@@ -226,7 +263,7 @@ describe("REST API v1", () => {
     `);
     legacyDatabase.close();
 
-    database = new PortalDatabase({ filename: legacyFilename });
+    database = new PortalDatabase({ seedPath: fixtureSeedPath, filename: legacyFilename });
     app = createApp(database);
     const migrated = await json<PortalApiData>(
       await app.request("/api/portal"),
@@ -263,6 +300,7 @@ describe("REST API v1", () => {
       "properties",
       "port",
       "protocol",
+      "project_id",
     ]);
   });
 
@@ -323,7 +361,7 @@ describe("REST API v1", () => {
     `);
     legacyDatabase.close();
 
-    database = new PortalDatabase({ filename: legacyFilename });
+    database = new PortalDatabase({ seedPath: fixtureSeedPath, filename: legacyFilename });
     app = createApp(database);
     const migrated = await json<PortalApiData>(
       await app.request("/api/portal"),
@@ -342,7 +380,7 @@ describe("REST API v1", () => {
       .all() as Array<{ name: string }>;
     expect(
       relationNameColumns.map((column) => column.name),
-    ).toEqual(["id", "name", "color", "line_start", "line_end"]);
+    ).toEqual(["id", "name", "color", "line_start", "line_end", "project_id"]);
     expect(migrated.relations).toEqual([
       expect.objectContaining({
         id: 7,
@@ -782,7 +820,7 @@ describe("REST API v1", () => {
       format: string;
       relations: Array<Record<string, unknown>>;
     };
-    expect(document.format).toBe("ouchi-ledger/13");
+    expect(document.format).toBe("ouchi-ledger/17");
     expect(document.relations).toContainEqual(
       expect.objectContaining({
         relationName: "ポート接続",
@@ -792,7 +830,7 @@ describe("REST API v1", () => {
     );
 
     const importedFilename = join(directory, "label-import.sqlite");
-    const importedDatabase = new PortalDatabase({
+    const importedDatabase = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: importedFilename,
     });
     try {
@@ -872,7 +910,7 @@ describe("REST API v1", () => {
       format: string;
       relations: Array<Record<string, unknown>>;
     };
-    expect(document.format).toBe("ouchi-ledger/13");
+    expect(document.format).toBe("ouchi-ledger/17");
     expect(document.relations).toContainEqual(
       expect.objectContaining({
         relationName: "ポート確認",
@@ -963,7 +1001,7 @@ describe("REST API v1", () => {
     );
 
     const importedFilename = join(directory, "relation-memo-import.sqlite");
-    const importedDatabase = new PortalDatabase({
+    const importedDatabase = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: importedFilename,
     });
     try {
@@ -1094,7 +1132,7 @@ describe("REST API v1", () => {
       settings: { properties: Record<string, string> };
       networks: Array<Record<string, unknown>>;
     };
-    expect(document.format).toBe("ouchi-ledger/13");
+    expect(document.format).toBe("ouchi-ledger/17");
     expect(document.settings.properties).toEqual({ 運用: "メモ" });
     expect(document.networks[0]).toEqual(
       expect.objectContaining({
@@ -1104,7 +1142,7 @@ describe("REST API v1", () => {
     );
 
     const importedFilename = join(directory, "network-memo-import.sqlite");
-    const importedDatabase = new PortalDatabase({
+    const importedDatabase = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: importedFilename,
     });
     try {
@@ -1178,7 +1216,7 @@ describe("REST API v1", () => {
     expect(portal.settings.title).toBe("我が家のポータル");
 
     database.close();
-    database = new PortalDatabase({
+    database = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: join(directory, "ledger.sqlite"),
     });
     app = createApp(database);
@@ -1209,6 +1247,641 @@ describe("REST API v1", () => {
       );
     }
     expect(await json(await app.request("/api/settings"))).toEqual(before);
+  });
+
+  it("seeds the default project and defaults every entity to it", async () => {
+    const projects = await json<Array<{ id: number; name: string }>>(
+      await app.request("/api/projects"),
+    );
+    expect(projects).toEqual([
+      { id: 1, name: "デフォルト", title: "あなたのホームラボ", color: "#c0a359", properties: {} },
+    ]);
+
+    const data = await json<PortalApiData>(await app.request("/api/portal"));
+    expect(data.projects).toEqual([
+      { id: 1, name: "デフォルト", title: "あなたのホームラボ", color: "#c0a359", properties: {} },
+    ]);
+    for (const entity of [
+      ...data.networks,
+      ...data.devices,
+      ...data.services,
+      ...data.relationNames,
+      ...data.relations,
+    ]) {
+      expect(entity.projectId).toBe(1);
+    }
+    for (const device of data.devices) {
+      for (const iface of device.interfaces) {
+        expect(iface.projectId).toBe(1);
+      }
+    }
+  });
+
+  it("creates projects and stores entities under them", async () => {
+    const projectResponse = await app.request("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "L2実験" }),
+    });
+    expect(projectResponse.status).toBe(201);
+    const project = await json<{ id: number; name: string }>(projectResponse);
+    expect(project).toEqual({
+      id: 2,
+      name: "L2実験",
+      title: "あなたのホームラボ",
+      color: "#59c0b4",
+      properties: {},
+    });
+
+    const duplicate = await app.request("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "L2実験" }),
+    });
+    expect(duplicate.status).toBe(400);
+
+    const deviceResponse = await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: project.id,
+        hostname: "exp-switch",
+        category: "network",
+        meterEnabled: false,
+      }),
+    });
+    expect(deviceResponse.status).toBe(201);
+    const device = await json<PortalApiDevice>(deviceResponse);
+    expect(device.projectId).toBe(2);
+
+    // Interfaces inherit their device's project when projectId is omitted.
+    const interfaceResponse = await app.request("/api/interfaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.id,
+        name: "ポート1",
+        networkId: null,
+      }),
+    });
+    expect(interfaceResponse.status).toBe(201);
+    const iface = await json<{ projectId: number }>(interfaceResponse);
+    expect(iface.projectId).toBe(2);
+
+    // An unknown projectId is a validation failure, not a silent default.
+    const rejected = await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: 999,
+        hostname: "ghost",
+        category: "vm",
+        meterEnabled: false,
+      }),
+    });
+    expect(rejected.status).toBe(400);
+    expect(
+      await json<{ issues: Array<{ path: string }> }>(rejected),
+    ).toEqual(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: "projectId" }),
+        ]),
+      }),
+    );
+
+    // Renaming a project keeps entity assignments (they key on the ID).
+    const rename = await app.request(`/api/projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "L2検証" }),
+    });
+    expect(rename.status).toBe(200);
+    const after = await json<PortalApiDevice>(
+      await app.request(`/api/devices/${device.id}`),
+    );
+    expect(after.projectId).toBe(2);
+  });
+
+  it("deletes a project with all of its contents and leaves other projects untouched", async () => {
+    const project = await json<PortalApiProject>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "削除テスト" }),
+      }),
+    );
+    const network = await json<PortalApiNetwork>(
+      await app.request("/api/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          name: "削除テストLAN",
+          cidr: "10.0.0.0/24",
+          accent: "#5b9bd6",
+        }),
+      }),
+    );
+    const device = await json<PortalApiDevice>(
+      await app.request("/api/devices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          hostname: "doomed-box",
+          category: "physical",
+          meterEnabled: false,
+        }),
+      }),
+    );
+    const iface = await json<PortalApiInterface>(
+      await app.request("/api/interfaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: device.id,
+          name: "eth0",
+          networkId: network.id,
+          ip: "10.0.0.2",
+        }),
+      }),
+    );
+    expect(iface.projectId).toBe(project.id);
+    const serviceResponse = await app.request("/api/services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: project.id,
+        interfaceId: iface.id,
+        subdomain: "doomed",
+        petname: "削除予定サービス",
+        description: null,
+        port: 8080,
+        protocol: "tcp",
+        scheme: "http",
+        topPath: "/",
+        monitorPath: "/",
+        serviceUrl: null,
+        iconKey: "generic:monitor",
+        enabled: true,
+      }),
+    });
+    expect(serviceResponse.status).toBe(201);
+    const service = await json<PortalApiService>(serviceResponse);
+    expect(service.projectId).toBe(project.id);
+
+    const before = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    const projectOneNetworks = before.networks.filter(
+      (item) => item.projectId === 1,
+    );
+    expect(projectOneNetworks.length).toBeGreaterThan(0);
+
+    const deleted = await app.request(`/api/projects/${project.id}`, {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+    expect(
+      (await app.request(`/api/projects/${project.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/devices/${device.id}`)).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/services/${service.id}`)).status,
+    ).toBe(404);
+
+    const after = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(after.projects.map((item) => item.id)).toEqual([1]);
+    expect(
+      after.networks.filter((item) => item.projectId === project.id),
+    ).toEqual([]);
+    expect(after.networks).toEqual(projectOneNetworks);
+    expect(
+      after.devices.some((item) => item.hostname === "doomed-box"),
+    ).toBe(false);
+
+    // Deleting an unknown (or already deleted) project is a 404.
+    const missing = await app.request(`/api/projects/${project.id}`, {
+      method: "DELETE",
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("deletes the last project and does not resurrect the seed on reopen", async () => {
+    const filename = join(directory, "delete-all.sqlite");
+    const first = new PortalDatabase({
+      seedPath: fixtureSeedPath,
+      filename,
+    });
+    const firstApp = createApp(first);
+    const projects = await json<PortalApiProject[]>(
+      await firstApp.request("/api/projects"),
+    );
+    expect(projects).toHaveLength(1);
+    const deleted = await firstApp.request(
+      `/api/projects/${projects[0]!.id}`,
+      { method: "DELETE" },
+    );
+    expect(deleted.status).toBe(200);
+    const empty = await json<PortalApiData>(
+      await firstApp.request("/api/portal"),
+    );
+    expect(empty.projects).toEqual([]);
+    expect(empty.networks).toEqual([]);
+    first.close();
+
+    // A restart must not bring the seed back: deleting everything
+    // was a deliberate act, not a fresh install.
+    const second = new PortalDatabase({
+      seedPath: fixtureSeedPath,
+      filename,
+    });
+    try {
+      const reopened = await json<PortalApiData>(
+        await createApp(second).request("/api/portal"),
+      );
+      expect(reopened.projects).toEqual([]);
+      expect(reopened.networks).toEqual([]);
+      expect(reopened.devices).toEqual([]);
+    } finally {
+      second.close();
+    }
+  });
+
+  it("stores an explicit project color, keeps it across renames, and updates it on demand", async () => {
+    const createdResponse = await app.request("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "色テスト", color: "#123456" }),
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = await json<PortalApiProject>(createdResponse);
+    expect(created.color).toBe("#123456");
+
+    // Renaming never recolors: the color is a stored value, decided
+    // at creation (here: given explicitly) and changed only directly.
+    const renamed = await json<PortalApiProject>(
+      await app.request(`/api/projects/${created.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "色テスト改" }),
+      }),
+    );
+    expect(renamed.name).toBe("色テスト改");
+    expect(renamed.color).toBe("#123456");
+
+    const recolored = await json<PortalApiProject>(
+      await app.request(`/api/projects/${created.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "色テスト改", color: "#abcdef" }),
+      }),
+    );
+    expect(recolored.color).toBe("#abcdef");
+  });
+
+  it("imports a project document without touching other projects", async () => {
+    const projectB = await json<{ id: number }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "独立B",
+          title: "Bのおうち",
+          properties: { 方針: "B" },
+        }),
+      }),
+    );
+    await app.request("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: projectB.id,
+        hostname: "keep-me",
+        category: "vm",
+        meterEnabled: false,
+      }),
+    });
+
+    // A title-only project update preserves the memo map.
+    const retitled = await json<PortalApiProject>(
+      await app.request(`/api/projects/${projectB.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "独立B", title: "Bのおうち改" }),
+      }),
+    );
+    expect(retitled.title).toBe("Bのおうち改");
+    expect(retitled.properties).toEqual({ 方針: "B" });
+
+    const documentYaml = stringifyYaml({
+      format: "ouchi-ledger/16",
+      exportedAt: "2026-11-27T00:00:00.000Z",
+      project: "独立C",
+      settings: {
+        domain: "ouchi.local",
+        title: "Cのおうち",
+        properties: {},
+      },
+      networks: [
+        {
+          name: "C-LAN",
+          cidr: null,
+          accent: "#123456",
+          note: null,
+          properties: {},
+        },
+      ],
+      devices: [],
+      relationNames: [],
+      relations: [],
+      services: [],
+      sshKeys: [],
+      deviceKeys: [],
+    });
+    const imported = await json<{ imported: { projects: number } }>(
+      await app.request("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/yaml" },
+        body: documentYaml,
+      }),
+    );
+    expect(imported.imported.projects).toBe(1);
+
+    const data = await json<PortalApiData>(await app.request("/api/portal"));
+    expect(data.projects.map((project) => project.name)).toEqual([
+      "デフォルト",
+      "独立B",
+      "独立C",
+    ]);
+    expect(
+      data.projects.find((project) => project.name === "独立C")?.title,
+    ).toBe("Cのおうち");
+    // Project B and its device survived the import of project C.
+    expect(
+      data.devices.find((device) => device.hostname === "keep-me")
+        ?.projectId,
+    ).toBe(projectB.id);
+    expect(
+      data.networks.some((network) => network.name === "C-LAN"),
+    ).toBe(true);
+
+    const missing = await app.request("/api/export?project=9999");
+    expect(missing.status).toBe(404);
+  });
+
+  it("round-trips project assignments through YAML and upgrades /13", async () => {
+    const project = await json<{ id: number }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "電源系統" }),
+      }),
+    );
+    const device = await json<PortalApiDevice>(
+      await app.request("/api/devices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          hostname: "ups-1",
+          category: "physical",
+          meterEnabled: false,
+        }),
+      }),
+    );
+    await app.request("/api/interfaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.id,
+        name: "eth0",
+        networkId: null,
+      }),
+    });
+
+    // Exports are per project: the default export is the first
+    // project's document and never mentions the other project.
+    const exportedDefault = await (
+      await app.request("/api/export")
+    ).text();
+    const defaultDocument = parseYaml(exportedDefault) as {
+      format: string;
+      project: string;
+      devices: Array<{ hostname: string; project?: string }>;
+    };
+    expect(defaultDocument.format).toBe("ouchi-ledger/17");
+    expect(defaultDocument.project).toBe("デフォルト");
+    expect(
+      defaultDocument.devices.some((item) => item.hostname === "ups-1"),
+    ).toBe(false);
+
+    const exportedProject = await (
+      await app.request(`/api/export?project=${project.id}`)
+    ).text();
+    const projectDocument = parseYaml(exportedProject) as {
+      format: string;
+      project: string;
+      devices: Array<{ hostname: string; project?: string }>;
+    };
+    expect(projectDocument.project).toBe("電源系統");
+    const upsEntry = projectDocument.devices.find(
+      (item) => item.hostname === "ups-1",
+    );
+    expect(upsEntry).toBeDefined();
+    // Inside its own document the entity carries no project key.
+    expect(upsEntry?.project).toBeUndefined();
+
+    const imported = await json<{ imported: { projects: number } }>(
+      await app.request("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/yaml" },
+        body: exportedProject,
+      }),
+    );
+    expect(imported.imported.projects).toBe(1);
+    const data = await json<PortalApiData>(await app.request("/api/portal"));
+    const ups = data.devices.find((item) => item.hostname === "ups-1");
+    expect(ups?.projectId).toBe(project.id);
+    expect(ups?.interfaces).toHaveLength(1);
+    expect(ups?.interfaces[0].projectId).toBe(ups?.projectId);
+
+    // A /13 document upgrades: everything lands in the default
+    // project, and the other project is left untouched.
+    const legacyDocument = parseYaml(exportedDefault) as Record<
+      string,
+      unknown
+    >;
+    legacyDocument.format = "ouchi-ledger/13";
+    delete legacyDocument.project;
+    const legacyImport = await app.request("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: stringifyYaml(legacyDocument),
+    });
+    expect(legacyImport.status).toBe(200);
+    const legacyData = await json<PortalApiData>(
+      await app.request("/api/portal"),
+    );
+    expect(legacyData.projects).toEqual([
+      { id: 1, name: "デフォルト", title: "あなたのホームラボ", color: "#c0a359", properties: {} },
+      expect.objectContaining({ name: "電源系統" }),
+    ]);
+    expect(
+      legacyData.devices
+        .filter((item) => item.hostname !== "ups-1")
+        .every((item) => item.projectId === 1),
+    ).toBe(true);
+    expect(
+      legacyData.devices.find((item) => item.hostname === "ups-1")
+        ?.projectId,
+    ).toBe(project.id);
+  });
+
+  it("round-trips interface properties through the API and YAML", async () => {
+    const device = await json<PortalApiDevice>(
+      await app.request("/api/devices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hostname: "iface-memo-host",
+          petname: null,
+          category: "physical",
+          sshUser: null,
+          sshPort: null,
+          meterEnabled: false,
+          note: null,
+        }),
+      }),
+    );
+    const created = await app.request("/api/interfaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.id,
+        name: "eth0",
+        networkId: 1,
+        ip: "192.168.0.77",
+        mac: null,
+        properties: { 役割: "管理用", 速度: "1Gbps" },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const iface = await json<PortalApiInterface>(created);
+    expect(iface.properties).toEqual({ 役割: "管理用", 速度: "1Gbps" });
+
+    // A full interface update without properties keeps the memo.
+    const keptResponse = await app.request(`/api/interfaces/${iface.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.id,
+        name: "eth0",
+        networkId: 1,
+        ip: "192.168.0.78",
+        mac: null,
+      }),
+    });
+    expect(keptResponse.status).toBe(200);
+    expect((await json<PortalApiInterface>(keptResponse)).properties).toEqual(
+      { 役割: "管理用", 速度: "1Gbps" },
+    );
+
+    // An update carrying properties replaces the whole map.
+    const replacedResponse = await app.request(
+      `/api/interfaces/${iface.id}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: device.id,
+          name: "eth0",
+          networkId: 1,
+          ip: "192.168.0.78",
+          mac: null,
+          properties: { 備考: "差し替え" },
+        }),
+      },
+    );
+    expect(replacedResponse.status).toBe(200);
+    expect(
+      (await json<PortalApiInterface>(replacedResponse)).properties,
+    ).toEqual({ 備考: "差し替え" });
+
+    // Invalid property values are rejected.
+    const invalid = await app.request("/api/interfaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceId: device.id,
+        name: "eth1",
+        networkId: 1,
+        ip: null,
+        mac: null,
+        properties: { 数値: 42 },
+      }),
+    });
+    expect(invalid.status).toBe(400);
+
+    // The YAML export carries the memo on the interface entry, and an
+    // import restores it.
+    const exported = await (await app.request("/api/export")).text();
+    expect(exported).toContain("差し替え");
+    const fresh = createApp(
+      new PortalDatabase({ seedPath: fixtureSeedPath, filename: ":memory:" }),
+    );
+    const imported = await fresh.request("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: exported,
+    });
+    expect(imported.status).toBe(200);
+    const freshData = await json<PortalApiData>(
+      await fresh.request("/api/portal"),
+    );
+    const freshDevice = freshData.devices.find(
+      (item) => item.hostname === "iface-memo-host",
+    );
+    expect(freshDevice?.interfaces[0]?.properties).toEqual({
+      備考: "差し替え",
+    });
+
+    // A /14 document (no interface properties anywhere) imports with
+    // empty interface memos.
+    const legacyDocument = parseYaml(exported) as {
+      format: string;
+      devices: Array<{ interfaces: Array<Record<string, unknown>> }>;
+    };
+    legacyDocument.format = "ouchi-ledger/14";
+    for (const device of legacyDocument.devices) {
+      for (const iface of device.interfaces) {
+        delete iface.properties;
+      }
+    }
+    const legacyApp = createApp(
+      new PortalDatabase({ seedPath: fixtureSeedPath, filename: ":memory:" }),
+    );
+    const legacyImport = await legacyApp.request("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: stringifyYaml(legacyDocument),
+    });
+    expect(legacyImport.status).toBe(200);
+    const legacyData = await json<PortalApiData>(
+      await legacyApp.request("/api/portal"),
+    );
+    expect(
+      legacyData.devices.every((item) =>
+        item.interfaces.every(
+          (entry) => Object.keys(entry.properties).length === 0,
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("cascades device relations, services, and interfaces atomically", async () => {
@@ -1869,7 +2542,7 @@ describe("REST API v1", () => {
       deviceKeys: unknown[];
     };
 
-    expect(document.format).toBe("ouchi-ledger/13");
+    expect(document.format).toBe("ouchi-ledger/17");
     expect(document.relationNames).toHaveLength(2);
     expect(document.relationNames[0]).toEqual(
       expect.objectContaining({
@@ -1881,6 +2554,7 @@ describe("REST API v1", () => {
     expect(document.settings).toEqual({
       domain: "ouchi.local",
       title: "あなたのホームラボ",
+      color: "#c0a359",
       properties: {},
     });
     expect(document.networks[0]).not.toHaveProperty("id");
@@ -1951,7 +2625,9 @@ describe("REST API v1", () => {
       .prepare("INSERT INTO device_keys (device_id, key_id) VALUES (?, ?)")
       .run(device.id, Number(keyResult.lastInsertRowid));
     database.database
-      .prepare("UPDATE settings SET title = ? WHERE id = 1")
+      .prepare(
+        "UPDATE projects SET title = ? WHERE id = (SELECT MIN(id) FROM projects)",
+      )
       .run("移行先ポータル");
     database.database
       .prepare("UPDATE devices SET properties = ? WHERE hostname = ?")
@@ -1975,7 +2651,7 @@ describe("REST API v1", () => {
     const firstExport = await app.request("/api/export");
     const firstYaml = await firstExport.text();
 
-    const roundTripDatabase = new PortalDatabase({
+    const roundTripDatabase = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: join(directory, "round-trip.sqlite"),
     });
     const roundTripApp = createApp(roundTripDatabase);
@@ -2462,7 +3138,7 @@ describe("REST API v1", () => {
     legacyDatabase.close();
 
     database.close();
-    database = new PortalDatabase({ filename: legacyPath });
+    database = new PortalDatabase({ seedPath: fixtureSeedPath, filename: legacyPath });
     app = createApp(database);
 
     const columns = database.database
@@ -2585,7 +3261,7 @@ describe("REST API v1", () => {
       ),
     ).toBe(true);
 
-    const targetDatabase = new PortalDatabase({
+    const targetDatabase = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: join(directory, "icon-round-trip.sqlite"),
     });
     const targetApp = createApp(targetDatabase);

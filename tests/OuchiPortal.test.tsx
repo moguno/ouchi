@@ -196,8 +196,12 @@ const portalData: PortalDataV2 = {
 
 const apiData: PortalApiData = {
   version: 2,
+  projects: [
+    { id: 1, name: "デフォルト", title: "あなたのホームラボ", color: "#c39a4a", properties: {} },
+  ],
   networks: portalData.networks.map((network, index) => ({
     id: index + 1,
+    projectId: 1,
     name: network.name,
     cidr: network.cidr ?? null,
     accent: network.accent,
@@ -207,6 +211,7 @@ const apiData: PortalApiData = {
   })),
   devices: portalData.devices.map((device, index) => ({
     id: index + 1,
+    projectId: 1,
     hostname: device.name,
     petname: device.petname ?? null,
     properties: device.properties ?? {},
@@ -219,15 +224,18 @@ const apiData: PortalApiData = {
       .filter((iface) => iface.deviceId === device.id)
       .map((iface) => ({
         id: Number(iface.id),
+        projectId: 1,
         deviceId: index + 1,
         name: iface.name,
         networkId: iface.networkId ? Number(iface.networkId) : null,
         ip: iface.ip || null,
         mac: iface.mac ?? null,
+        properties: iface.properties ?? {},
       })),
   })),
   services: portalData.services.map((item, index) => ({
     id: index + 1,
+    projectId: 1,
     interfaceId: Number(item.interfaceId),
     subdomain: item.subdomain,
     petname: item.petname ?? null,
@@ -246,6 +254,7 @@ const apiData: PortalApiData = {
   })),
   relationNames: portalData.relationNames.map((relationName, index) => ({
     id: index + 1,
+    projectId: 1,
     name: relationName.name,
     color: relationName.color,
     lineStart: relationName.lineStart,
@@ -254,6 +263,7 @@ const apiData: PortalApiData = {
   })),
   relations: portalData.relations.map((relation, index) => ({
     id: index + 1,
+    projectId: 1,
     relationNameId: Number(relation.relationNameId),
     relationName: relation.relationName,
     fromDeviceId: Number(relation.fromDeviceId),
@@ -2125,20 +2135,20 @@ describe("OuchiPortal", () => {
     const fetchMock = vi.fn(
       (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
-        if (url.endsWith("/api/settings") && init?.method === "PUT") {
+        if (url.endsWith("/api/projects/1") && init?.method === "PUT") {
           currentTitle = JSON.parse(String(init.body)).title;
           return jsonResponse({
-            domain: "ouchi.local",
+            id: 1,
+            name: "デフォルト",
             title: currentTitle,
+            color: "#c0a359",
+            properties: {},
           });
         }
-        return jsonResponse({
-          ...structuredClone(apiData),
-          settings: {
-            domain: "ouchi.local",
-            title: currentTitle,
-          },
-        });
+        const snapshot = structuredClone(apiData);
+        snapshot.projects[0].title = currentTitle;
+        snapshot.settings.title = currentTitle;
+        return jsonResponse(snapshot);
       },
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -2166,10 +2176,11 @@ describe("OuchiPortal", () => {
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(
         ([request, init]) =>
-          String(request).endsWith("/api/settings") &&
+          String(request).endsWith("/api/projects/1") &&
           init?.method === "PUT",
       );
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        name: "デフォルト",
         title: "我が家のポータル",
       });
     });
@@ -2627,6 +2638,7 @@ describe("OuchiPortal", () => {
       if (portalReadCount > 1) {
         next.networks.push({
           id: 4,
+          projectId: 1,
           name: "ゲストWi-Fi",
           cidr: null,
           accent: "#4ba755",
@@ -2671,6 +2683,7 @@ describe("OuchiPortal", () => {
       cidr: null,
       accent: "#4ba755",
       note: null,
+      projectId: 1,
     });
   });
 
@@ -2709,6 +2722,242 @@ describe("OuchiPortal", () => {
     );
     expect(ipField).toHaveFocus();
     vi.useRealTimers();
+  });
+
+  it("starts with the project side menu collapsed by default", () => {
+    window.localStorage.clear();
+    const { container } = render(
+      <OuchiPortal
+        data={{
+          ...portalData,
+          projects: [
+            {
+              id: "1",
+              name: "自宅",
+              title: "自宅のおうち",
+              color: "#b3543f",
+              properties: {},
+            },
+          ],
+        }}
+      />,
+    );
+    expect(
+      container.querySelector(".ouchi-project-sidebar.is-collapsed"),
+    ).not.toBeNull();
+    expect(screen.queryByText("自宅")).not.toBeInTheDocument();
+  });
+
+  it("switches the whole board when another project is picked in the side menu", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const twoProjects: PortalDataV2 = {
+      ...portalData,
+      projects: [
+        {
+          id: "1",
+          name: "自宅",
+          title: "自宅のおうち",
+          color: "#b3543f",
+          properties: {},
+        },
+        {
+          id: "2",
+          name: "実家",
+          title: "実家のおうち",
+          color: "#3f6fb5",
+          properties: {},
+        },
+      ],
+      networks: [
+        {
+          id: "1",
+          projectId: "1",
+          name: "自宅LAN",
+          cidr: "192.168.0.0/24",
+          accent: "blue",
+          sortOrder: 10,
+        },
+        {
+          id: "2",
+          projectId: "2",
+          name: "実家LAN",
+          cidr: "192.168.1.0/24",
+          accent: "green",
+          sortOrder: 10,
+        },
+      ],
+      devices: [
+        {
+          id: "1",
+          projectId: "1",
+          name: "home-box",
+          category: "physical",
+          meterEnabled: false,
+        },
+        {
+          id: "2",
+          projectId: "2",
+          name: "jikka-box",
+          category: "physical",
+          meterEnabled: false,
+        },
+      ],
+      interfaces: [
+        {
+          id: "10",
+          projectId: "1",
+          deviceId: "1",
+          name: "eth0",
+          networkId: "1",
+          ip: "192.168.0.2",
+        },
+        {
+          id: "11",
+          projectId: "2",
+          deviceId: "2",
+          name: "eth0",
+          networkId: "2",
+          ip: "192.168.1.2",
+        },
+      ],
+      relationNames: [],
+      relations: [],
+      services: [],
+    };
+    render(<OuchiPortal data={twoProjects} />);
+    expect(screen.getByText("自宅LAN")).toBeVisible();
+    expect(screen.queryByText("実家LAN")).not.toBeInTheDocument();
+
+    // The side menu always starts collapsed; open it to pick a row.
+    await user.click(
+      screen.getByRole("button", { name: "サイドメニューを開く" }),
+    );
+    await user.click(screen.getByText("実家"));
+
+    expect(screen.getByText("実家LAN")).toBeVisible();
+    expect(screen.queryByText("自宅LAN")).not.toBeInTheDocument();
+  });
+
+  it("deletes a project from the side menu after a confirmation", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const remaining = structuredClone(apiData);
+    const twoProjects = structuredClone(apiData);
+    twoProjects.projects.push({
+      id: 2,
+      name: "実家",
+      title: "実家のおうち",
+      color: "#3f6fb5",
+      properties: {},
+    });
+    let deleted = false;
+    const fetchMock = vi.fn(
+      (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/projects/2") && init?.method === "DELETE") {
+          deleted = true;
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse(deleted ? remaining : twoProjects);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OuchiPortal />);
+
+    // The side menu always starts collapsed; open it to reach the row.
+    await user.click(
+      await screen.findByRole("button", { name: "サイドメニューを開く" }),
+    );
+    expect(await screen.findByText("実家")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "実家のメニュー" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "削除" }));
+    expect(
+      screen.getByText(/中のネットワーク・デバイス・サービス・関係もすべて削除されます/),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "削除する" }));
+
+    await waitFor(() => {
+      expect(deleted).toBe(true);
+      expect(screen.queryByText("実家")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows a blank pane inviting a new project when no projects exist", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(
+      <OuchiPortal
+        data={{
+          ...portalData,
+          projects: [],
+          networks: [],
+          devices: [],
+          interfaces: [],
+          relationNames: [],
+          relations: [],
+          services: [],
+        }}
+      />,
+    );
+    expect(
+      screen.getByText("プロジェクトを追加してください"),
+    ).toBeVisible();
+    // The side menu always starts collapsed; open it for the labeled
+    // add button.
+    await user.click(
+      screen.getByRole("button", { name: "サイドメニューを開く" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "＋ プロジェクトを追加" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "管理" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the getting-started tutorial while the project is empty", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const emptyProject: PortalDataV2 = {
+      ...portalData,
+      projects: [
+        {
+          id: "1",
+          name: "プロジェクト2",
+          title: "あなたのホームラボ",
+          color: "#79c059",
+          properties: {},
+        },
+      ],
+      networks: [],
+      devices: [],
+      interfaces: [],
+      services: [],
+      relationNames: [],
+      relations: [],
+    };
+    render(<OuchiPortal data={emptyProject} />);
+
+    expect(screen.getByText("さぁ、はじめよう！")).toBeVisible();
+    expect(screen.getByText("自分で描く")).toBeVisible();
+    expect(
+      screen.getByText("まずはネットワークを作りましょう。"),
+    ).toBeVisible();
+    expect(screen.getByText("AIに描いてもらう")).toBeVisible();
+    // The MCP settings are always visible, no toggle.
+    expect(screen.getByText("http://localhost:3333/mcp")).toBeVisible();
+    expect(screen.getByText(/"mcpServers"/)).toBeVisible();
+
+    // The add button opens the management screen (networks tab).
+    await user.click(
+      screen.getByRole("button", { name: "ネットワークを追加" }),
+    );
+    expect(
+      await screen.findByRole("tab", { name: /ネットワーク/ }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 
   it("has no detectable structural accessibility violations", async () => {

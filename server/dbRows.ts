@@ -2,6 +2,7 @@ import type {
   PortalApiDevice,
   PortalApiInterface,
   PortalApiNetwork,
+  PortalApiProject,
   PortalApiRelation,
   PortalApiRelationName,
   PortalApiService,
@@ -13,8 +14,17 @@ import { normalizeServiceIconReference } from "../src/portal/iconCatalog";
 import { buildMonitorUrl, buildServiceUrl } from "../src/portal/urls";
 import { normalizeProperties } from "../src/portal/validation";
 
+export type ProjectRow = {
+  id: number;
+  name: string;
+  title: string;
+  color: string;
+  properties: string;
+};
+
 export type NetworkRow = {
   id: number;
+  project_id: number;
   name: string;
   cidr: string | null;
   accent: string;
@@ -25,6 +35,7 @@ export type NetworkRow = {
 
 export type DeviceRow = {
   id: number;
+  project_id: number;
   hostname: string;
   petname: string | null;
   category: PortalApiDevice["category"];
@@ -37,15 +48,18 @@ export type DeviceRow = {
 
 export type InterfaceRow = {
   id: number;
+  project_id: number;
   device_id: number;
   name: string;
   network_id: number | null;
   ip: string | null;
   mac: string | null;
+  properties: string;
 };
 
 export type ServiceRow = {
   id: number;
+  project_id: number;
   interface_id: number;
   subdomain: string;
   petname: string | null;
@@ -65,6 +79,7 @@ export type ServiceRow = {
 
 export type RelationRow = {
   id: number;
+  project_id: number;
   relation_name_id: number;
   relation_name: string;
   line_start: PortalLineEndpointShape;
@@ -91,6 +106,7 @@ export type RelationRow = {
 
 export type RelationNameRow = {
   id: number;
+  project_id: number;
   name: string;
   color: string;
   line_start: PortalLineEndpointShape;
@@ -121,9 +137,20 @@ export function serializeProperties(value: unknown): string {
   return JSON.stringify(normalizeProperties(value));
 }
 
+export function toApiProject(row: ProjectRow): PortalApiProject {
+  return {
+    id: asNumber(row.id),
+    name: row.name,
+    title: row.title,
+    color: row.color,
+    properties: parseProperties(row.properties),
+  };
+}
+
 export function toApiNetwork(row: NetworkRow): PortalApiNetwork {
   return {
     id: asNumber(row.id),
+    projectId: asNumber(row.project_id),
     name: row.name,
     cidr: row.cidr,
     accent: row.accent,
@@ -136,11 +163,13 @@ export function toApiNetwork(row: NetworkRow): PortalApiNetwork {
 export function toApiInterface(row: InterfaceRow): PortalApiInterface {
   return {
     id: asNumber(row.id),
+    projectId: asNumber(row.project_id),
     deviceId: asNumber(row.device_id),
     name: row.name,
     networkId: row.network_id === null ? null : asNumber(row.network_id),
     ip: row.ip,
     mac: row.mac,
+    properties: parseProperties(row.properties),
   };
 }
 
@@ -150,6 +179,7 @@ export function toApiDevice(
 ): PortalApiDevice {
   return {
     id: asNumber(row.id),
+    projectId: asNumber(row.project_id),
     hostname: row.hostname,
     petname: row.petname,
     category: row.category,
@@ -172,6 +202,7 @@ export function toApiService(row: ServiceRow): PortalApiService {
   };
   return {
     id: asNumber(row.id),
+    projectId: asNumber(row.project_id),
     interfaceId: asNumber(row.interface_id),
     subdomain: row.subdomain,
     petname: row.petname,
@@ -197,6 +228,7 @@ export function nullableNumber(value: number | bigint | null): number | null {
 export function toApiRelation(row: RelationRow): PortalApiRelation {
   return {
     id: asNumber(row.id),
+    projectId: asNumber(row.project_id),
     relationNameId: asNumber(row.relation_name_id),
     relationName: row.relation_name,
     fromDeviceId: asNumber(row.from_device_id),
@@ -225,6 +257,7 @@ export function toApiRelation(row: RelationRow): PortalApiRelation {
 export function toApiRelationName(row: RelationNameRow): PortalApiRelationName {
   return {
     id: asNumber(row.id),
+    projectId: asNumber(row.project_id),
     name: row.name,
     color: row.color,
     lineStart: row.line_start,
@@ -234,7 +267,7 @@ export function toApiRelationName(row: RelationNameRow): PortalApiRelationName {
 }
 
 export const RELATION_SELECT = `
-  SELECT r.id, n.id AS relation_name_id, n.name AS relation_name,
+  SELECT r.id, r.project_id, n.id AS relation_name_id, n.name AS relation_name,
          n.color, n.line_start, n.line_end,
          COALESCE(fi.device_id, fsi.device_id) AS from_device_id,
          COALESCE(ti.device_id, tsi.device_id) AS to_device_id,
@@ -257,7 +290,7 @@ export const RELATION_SELECT = `
 `;
 
 export const RELATION_NAME_SELECT = `
-  SELECT n.id, n.name, n.color, n.line_start, n.line_end,
+  SELECT n.id, n.project_id, n.name, n.color, n.line_start, n.line_end,
          COUNT(r.id) AS relation_count
   FROM relation_names n
   LEFT JOIN relations r ON r.relation_name_id = n.id

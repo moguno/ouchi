@@ -3,11 +3,13 @@ import type {
   PortalApiDevice,
   PortalApiInterface,
   PortalApiNetwork,
+  PortalApiProject,
   PortalApiRelation,
   PortalApiService,
   PortalDeviceInput,
   PortalInterfaceInput,
   PortalNetworkInput,
+  PortalProjectInput,
   PortalRelationInput,
   PortalRelationNameInput,
   PortalServiceInput,
@@ -101,6 +103,25 @@ export class LedgerRestClient {
 
   getPortalData(): Promise<PortalApiData> {
     return this.request<PortalApiData>("/api/portal");
+  }
+
+  listProjects(): Promise<PortalApiProject[]> {
+    return this.request<PortalApiProject[]>("/api/projects");
+  }
+
+  async getProject(id: number): Promise<PortalApiProject | undefined> {
+    return (await this.listProjects()).find((project) => project.id === id);
+  }
+
+  createProject(input: PortalProjectInput): Promise<PortalApiProject> {
+    return this.write("POST", "/api/projects", input);
+  }
+
+  updateProject(
+    id: number,
+    input: PortalProjectInput,
+  ): Promise<PortalApiProject> {
+    return this.write("PUT", `/api/projects/${id}`, input);
   }
 
   getSettings(): Promise<PortalSettings> {
@@ -278,8 +299,12 @@ export class LedgerRestClient {
     );
   }
 
-  exportYaml(): Promise<string> {
-    return this.request<string>("/api/export");
+  exportYaml(projectId?: number): Promise<string> {
+    return this.request<string>(
+      projectId === undefined
+        ? "/api/export"
+        : `/api/export?project=${encodeURIComponent(projectId)}`,
+    );
   }
 
   importYaml(yaml: string): Promise<{

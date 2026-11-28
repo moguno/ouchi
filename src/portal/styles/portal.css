@@ -1,7 +1,9 @@
 /* Portal data v2 / design update */
 .ouchi-portal {
   max-width: 1500px;
-  padding: 30px 34px 24px;
+  /* No sheet padding: the project side menu sits flush against the
+     top and left edges (mock18); the main pane carries the inset. */
+  padding: 0;
   border-color: #e8ebf0;
   box-shadow:
     0 24px 70px rgba(37, 48, 61, 0.1),

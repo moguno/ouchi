@@ -580,7 +580,7 @@ describe("YAML data source", () => {
   it("converts legacy accent tone names when upgrading from /6", () => {
     const data = ledgerYamlToPortalData(
       sampleYaml
-        .replace("format: ouchi-ledger/13", "format: ouchi-ledger/6")
+        .replace("format: ouchi-ledger/17", "format: ouchi-ledger/6")
         .replace('accent: "#5b9bd6"', "accent: blue"),
     );
     expect(
@@ -591,7 +591,7 @@ describe("YAML data source", () => {
   it("upgrades /8 documents and keeps relation-name endpoint shapes", () => {
     const data = ledgerYamlToPortalData(
       sampleYaml
-        .replace("format: ouchi-ledger/13", "format: ouchi-ledger/8")
+        .replace("format: ouchi-ledger/17", "format: ouchi-ledger/8")
         .replace(
           '  - name: VM\n    color: "#d48a2f"',
           '  - name: VM\n    color: "#d48a2f"\n    lineEnd: arrow',
@@ -608,7 +608,7 @@ describe("YAML data source", () => {
 
   it("upgrades /10 documents and defaults relation properties to empty", () => {
     const data = ledgerYamlToPortalData(
-      sampleYaml.replace("format: ouchi-ledger/13", "format: ouchi-ledger/10"),
+      sampleYaml.replace("format: ouchi-ledger/17", "format: ouchi-ledger/10"),
     );
     expect(data.relations.length).toBeGreaterThan(0);
     for (const relation of data.relations) {
@@ -618,7 +618,7 @@ describe("YAML data source", () => {
 
   it("upgrades /12 documents and keeps structured relation ports", () => {
     const data = ledgerYamlToPortalData(
-      sampleYaml.replace("format: ouchi-ledger/13", "format: ouchi-ledger/12"),
+      sampleYaml.replace("format: ouchi-ledger/17", "format: ouchi-ledger/12"),
     );
     const db = data.relations.find((item) => item.relationName === "DB");
     expect(db?.port).toBe(5432);
@@ -631,14 +631,51 @@ describe("YAML data source", () => {
     expect(postgres?.url).toBeNull();
   });
 
+  it("upgrades /13 documents (projects are accepted and ignored)", () => {
+    const data = ledgerYamlToPortalData(
+      sampleYaml.replace("format: ouchi-ledger/17", "format: ouchi-ledger/13"),
+    );
+    expect(data.networks.length).toBeGreaterThan(0);
+    expect(data.devices.length).toBeGreaterThan(0);
+  });
+
+  it("upgrades /14 documents and reads interface properties", () => {
+    const upgraded = ledgerYamlToPortalData(
+      sampleYaml.replace("format: ouchi-ledger/17", "format: ouchi-ledger/14"),
+    );
+    expect(upgraded.devices.length).toBeGreaterThan(0);
+    const current = ledgerYamlToPortalData(sampleYaml);
+    const gateway = current.interfaces.find(
+      (iface) => iface.ip === "198.51.100.1",
+    );
+    expect(gateway?.properties).toEqual({
+      役割: "家族用LAN向けのゲートウェイ",
+      速度: "1Gbps",
+    });
+    const plain = current.interfaces.find(
+      (iface) => iface.ip === "203.0.113.1",
+    );
+    expect(plain?.properties).toEqual({});
+  });
+
+  it("upgrades /16 documents and derives the project color from its name", () => {
+    const data = ledgerYamlToPortalData(
+      sampleYaml
+        .replace("format: ouchi-ledger/17", "format: ouchi-ledger/16")
+        .replace("  color: '#c0a359'\n", ""),
+    );
+    expect(data.projects?.[0]?.name).toBe("デフォルト");
+    expect(data.projects?.[0]?.color).toBe("#c0a359");
+  });
+
   it("rejects unknown ledger format versions", () => {
     expect(() =>
       ledgerYamlToPortalData(
         sampleYaml.replace(
-          "format: ouchi-ledger/13",
+          "format: ouchi-ledger/17",
           "format: ouchi-ledger/99",
         ),
       ),
-    ).toThrow(/formatは「ouchi-ledger\/13」/);
+    ).toThrow(/formatは「ouchi-ledger\/17」/);
   });
 });

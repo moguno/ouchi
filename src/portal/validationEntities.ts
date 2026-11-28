@@ -3,6 +3,7 @@ import type {
   PortalDevice,
   PortalInterface,
   PortalNetwork,
+  PortalProject,
   PortalRelation,
   PortalRelationName,
   PortalService,
@@ -471,6 +472,53 @@ export function validatePortalData(
     }
   }
 
+  if (input.projects !== undefined) {
+    if (!Array.isArray(input.projects)) {
+      issues.push({
+        path: "projects",
+        message: "projectsは配列で指定してください",
+      });
+    } else {
+      input.projects.forEach((project, index) => {
+        const path = `projects[${index}]`;
+        if (!isRecord(project)) {
+          issues.push({ path, message: "プロジェクトの形式が不正です" });
+          return;
+        }
+        if (!isNonEmptyString(project.id)) {
+          issues.push({ path: `${path}.id`, message: "IDは必須です" });
+        }
+        if (!isNonEmptyString(project.name)) {
+          issues.push({
+            path: `${path}.name`,
+            message: "プロジェクト名は必須です",
+          });
+        }
+        if (typeof project.title !== "string") {
+          issues.push({
+            path: `${path}.title`,
+            message: "タイトルが不正です",
+          });
+        }
+        const colorIssue = accentColorIssue(project.color, `${path}.color`);
+        if (colorIssue) {
+          issues.push({
+            path: `${path}.color`,
+            message: "プロジェクトの色が不正です",
+          });
+        }
+        if (project.properties !== undefined) {
+          issues.push(
+            ...validatePropertiesPayload(
+              project.properties,
+              `${path}.properties`,
+            ),
+          );
+        }
+      });
+    }
+  }
+
   if (issues.length > 0) {
     return { issues };
   }
@@ -515,6 +563,9 @@ export function validatePortalData(
     services: services as PortalService[],
     ...(input.settings !== undefined
       ? { settings: input.settings as unknown as PortalSettings }
+      : {}),
+    ...(Array.isArray(input.projects)
+      ? { projects: input.projects as PortalProject[] }
       : {}),
   };
   issues.push(...duplicateIssues(data.networks, "networks"));

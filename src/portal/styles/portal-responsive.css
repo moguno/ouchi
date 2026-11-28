@@ -4,13 +4,17 @@
   }
 
   .ouchi-portal {
-    padding: 27px 25px 22px;
+    padding: 0;
   }
 }
 
 @media (max-width: 760px) {
   .ouchi-portal {
-    padding: 20px 14px 17px;
+    padding: 0;
+  }
+
+  .ouchi-portal-main {
+    padding: 16px 14px 17px;
   }
 
   .ouchi-canvas {

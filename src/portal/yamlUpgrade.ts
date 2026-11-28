@@ -8,7 +8,11 @@ import {
 } from "./colorValue";
 import { isLineEndpointShape } from "./validation";
 
-export const LEDGER_FORMAT = "ouchi-ledger/13";
+export const LEDGER_FORMAT = "ouchi-ledger/17";
+export const V16_LEDGER_FORMAT = "ouchi-ledger/16";
+export const V15_LEDGER_FORMAT = "ouchi-ledger/15";
+export const V14_LEDGER_FORMAT = "ouchi-ledger/14";
+export const V13_LEDGER_FORMAT = "ouchi-ledger/13";
 export const V12_LEDGER_FORMAT = "ouchi-ledger/12";
 export const V11_LEDGER_FORMAT = "ouchi-ledger/11";
 export const V10_LEDGER_FORMAT = "ouchi-ledger/10";
@@ -470,6 +474,82 @@ export function upgradeV12Document(
   }
   return {
     ...root,
+    format: V13_LEDGER_FORMAT,
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/13: the ledger gains projects.
+ * A projects list appears holding the single default project, and
+ * every entity implicitly belongs to it (an entity names its project
+ * with an optional project key only when it is not the first project
+ * in the list), so this step only adds the list and advances the
+ * format. The demo data source ignores project assignments; they
+ * matter to the server import.
+ */
+export function upgradeV13Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V13_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
+    format: V14_LEDGER_FORMAT,
+    projects: [{ name: "デフォルト" }],
+  };
+}
+
+/**
+ * One-step upgrade from ouchi-ledger/14: interfaces gain an optional
+ * properties memo map. Existing documents carry no such key, which
+ * /15 reads as an empty map, so this step only advances the format.
+ */
+export function upgradeV14Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V14_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
+    format: V15_LEDGER_FORMAT,
+  };
+}
+
+export function upgradeV15Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V15_LEDGER_FORMAT) {
+    return root;
+  }
+  // /16 is one document per project. The demo renders a single
+  // board, so the first project becomes the document's project and
+  // everything else carries over (per-entity project keys, when
+  // present, are ignored by the demo parser).
+  const projects = Array.isArray(root.projects) ? root.projects : [];
+  const first = isRecord(projects[0]) ? projects[0] : {};
+  const { projects: _projects, ...rest } = root;
+  return {
+    ...rest,
+    format: LEDGER_FORMAT,
+    project: text(first.name) || "デフォルト",
+  };
+}
+
+/**
+ * /17 adds the project color (settings.color). /16 documents carry
+ * none; the parser derives it from the project name, so this step
+ * only advances the format.
+ */
+export function upgradeV16Document(
+  root: RecordValue,
+): RecordValue {
+  if (root.format !== V16_LEDGER_FORMAT) {
+    return root;
+  }
+  return {
+    ...root,
     format: LEDGER_FORMAT,
   };
 }
@@ -499,10 +579,3 @@ export function upgradeV7Document(
     devices,
   };
 }
-
-/**
- * Convert the natural-key `ouchi-ledger/6` export into the SPA display model.
- * Legacy `ouchi-ledger/1`, `/2`, `/3`, `/4` and `/5` documents are upgraded one
- * step at a time before validation.
- * This is the YAML counterpart to `normalizePortalData` in apiClient.ts.
- */

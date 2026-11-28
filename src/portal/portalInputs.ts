@@ -1,12 +1,27 @@
 import type {
   PortalDevice,
   PortalDeviceInput,
+  PortalInterface,
+  PortalInterfaceInput,
   PortalProperties,
   PortalRelation,
   PortalRelationInput,
   PortalService,
   PortalServiceInput,
 } from "./types";
+
+export function toInterfaceInput(
+  iface: PortalInterface,
+): PortalInterfaceInput {
+  return {
+    deviceId: Number(iface.deviceId),
+    name: iface.name.trim(),
+    networkId: iface.networkId === null ? null : Number(iface.networkId),
+    ip: iface.ip || null,
+    mac: iface.mac || null,
+    properties: iface.properties ?? {},
+  };
+}
 
 export function toDeviceInput(device: PortalDevice): PortalDeviceInput {
   return {

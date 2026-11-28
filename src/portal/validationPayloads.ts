@@ -28,11 +28,45 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+export function projectIdIssue(input: Record<string, unknown>): ValidationIssue[] {
+  if (input.projectId !== undefined && !isPositiveInteger(input.projectId)) {
+    return [{ path: "projectId", message: "プロジェクトIDが不正です" }];
+  }
+  return [];
+}
+
+export function validateProjectPayload(input: unknown): ValidationIssue[] {
+  if (!isRecord(input)) {
+    return [{ path: "root", message: "プロジェクトの形式が不正です" }];
+  }
+  const issues: ValidationIssue[] = [];
+  if (!isNonEmptyString(input.name)) {
+    issues.push({ path: "name", message: "プロジェクト名は必須です" });
+  }
+  if (input.title !== undefined && !isNonEmptyString(input.title)) {
+    issues.push({ path: "title", message: "タイトルが不正です" });
+  }
+  if (input.color !== undefined) {
+    const colorIssue = accentColorIssue(input.color, "color");
+    if (colorIssue) {
+      issues.push({
+        path: "color",
+        message: "プロジェクトの色が不正です",
+      });
+    }
+  }
+  if (Object.hasOwn(input, "properties")) {
+    issues.push(...validatePropertiesPayload(input.properties));
+  }
+  return issues;
+}
+
 export function validateNetworkPayload(input: unknown): ValidationIssue[] {
   if (!isRecord(input)) {
     return [{ path: "root", message: "ネットワークの形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
+  issues.push(...projectIdIssue(input));
   if (!isNonEmptyString(input.name)) {
     issues.push({ path: "name", message: "ネットワーク名は必須です" });
   }
@@ -62,6 +96,7 @@ export function validateDevicePayload(input: unknown): ValidationIssue[] {
     return [{ path: "root", message: "デバイスの形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
+  issues.push(...projectIdIssue(input));
   if (!isNonEmptyString(input.hostname)) {
     issues.push({ path: "hostname", message: "ホスト名は必須です" });
   }
@@ -104,6 +139,7 @@ export function validateInterfacePayload(input: unknown): ValidationIssue[] {
     return [{ path: "root", message: "インターフェースの形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
+  issues.push(...projectIdIssue(input));
   if (!isPositiveInteger(input.deviceId)) {
     issues.push({ path: "deviceId", message: "デバイスIDが不正です" });
   }
@@ -128,6 +164,9 @@ export function validateInterfacePayload(input: unknown): ValidationIssue[] {
   if (input.mac !== undefined && !isNullableString(input.mac)) {
     issues.push({ path: "mac", message: "MACアドレスが不正です" });
   }
+  if (Object.hasOwn(input, "properties")) {
+    issues.push(...validatePropertiesPayload(input.properties));
+  }
   return issues;
 }
 
@@ -136,6 +175,7 @@ export function validateRelationPayload(input: unknown): ValidationIssue[] {
     return [{ path: "root", message: "関係の形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
+  issues.push(...projectIdIssue(input));
   const endpoint = (side: "from" | "to", sideLabel: string) => {
     const interfaceId = input[`${side}InterfaceId`];
     const serviceId = input[`${side}ServiceId`];
@@ -207,6 +247,7 @@ export function validateRelationNamePayload(
     return [{ path: "root", message: "関係名の形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
+  issues.push(...projectIdIssue(input));
   if (!isNonEmptyString(input.name)) {
     issues.push({ path: "name", message: "関係名は必須です" });
   }
@@ -238,6 +279,7 @@ export function validateServicePayload(input: unknown): ValidationIssue[] {
     return [{ path: "root", message: "サービスの形式が不正です" }];
   }
   const issues: ValidationIssue[] = [];
+  issues.push(...projectIdIssue(input));
   if (!isPositiveInteger(input.interfaceId)) {
     issues.push({
       path: "interfaceId",

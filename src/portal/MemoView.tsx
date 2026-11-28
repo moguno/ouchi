@@ -8,9 +8,10 @@ import {
 import { sortNetworksForDisplay } from "./networkOrder";
 
 export type MemoTargetKind =
-  | "global"
+  | "project"
   | "network"
   | "device"
+  | "interface"
   | "service"
   | "relation";
 
@@ -24,17 +25,19 @@ interface MemoEntry {
 }
 
 const GROUPS: { kind: MemoTargetKind; label: string }[] = [
-  { kind: "global", label: "ouchi" },
+  { kind: "project", label: "ouchi" },
   { kind: "network", label: "ネットワーク" },
   { kind: "device", label: "デバイス" },
+  { kind: "interface", label: "インターフェース" },
   { kind: "service", label: "サービス" },
   { kind: "relation", label: "関係" },
 ];
 
 const GROUP_LABELS: Record<MemoTargetKind, string> = {
-  global: "ouchi",
+  project: "ouchi",
   network: "ネットワーク",
   device: "デバイス",
+  interface: "インターフェース",
   service: "サービス",
   relation: "関係",
 };
@@ -48,17 +51,39 @@ function buildEntries(data: PortalDataV2): MemoEntry[] {
     return device ? device.petname || device.name : id;
   };
   const entries: MemoEntry[] = [];
-  entries.push({
-    kind: "global",
-    id: "global",
-    title: data.settings?.title || "ouchi",
-    sub: data.settings?.domain ?? "",
-    meta: [data.settings?.title ?? "", data.settings?.domain ?? ""]
-      .filter(Boolean)
-      .join(" ・ "),
-    properties: data.settings?.properties ?? {},
-  });
+  // The memo view is scoped to the first project. Other projects are
+  // not visible here at all — a project is a separate partition
+  // holding exactly one ouchi (its title and global memo).
+  const scopeId = data.projects?.[0]?.id;
+  const inScope = (projectId?: string) =>
+    projectId === undefined || scopeId === undefined || projectId === scopeId;
+  const projects =
+    data.projects && data.projects.length > 0
+      ? data.projects.filter((project) => project.id === scopeId)
+      : [
+          {
+            id: "settings",
+            name: "",
+            title: data.settings?.title || "ouchi",
+            properties: data.settings?.properties ?? {},
+          },
+        ];
+  for (const project of projects) {
+    entries.push({
+      kind: "project",
+      id: project.id,
+      title: project.title || "ouchi",
+      sub: project.name,
+      meta: [project.name, project.title, data.settings?.domain ?? ""]
+        .filter(Boolean)
+        .join(" ・ "),
+      properties: project.properties ?? {},
+    });
+  }
   for (const network of sortNetworksForDisplay(data.networks)) {
+    if (!inScope(network.projectId)) {
+      continue;
+    }
     const deviceCount = new Set(
       data.interfaces
         .filter((i) => i.networkId === network.id)
@@ -76,6 +101,9 @@ function buildEntries(data: PortalDataV2): MemoEntry[] {
     });
   }
   for (const device of data.devices) {
+    if (!inScope(device.projectId)) {
+      continue;
+    }
     const ifaces = data.interfaces.filter((i) => i.deviceId === device.id);
     const networks = [
       ...new Set(
@@ -103,7 +131,35 @@ function buildEntries(data: PortalDataV2): MemoEntry[] {
       properties: device.properties ?? {},
     });
   }
+  for (const iface of data.interfaces) {
+    if (!inScope(iface.projectId)) {
+      continue;
+    }
+    const device = deviceById.get(iface.deviceId);
+    const network = iface.networkId
+      ? networkById.get(iface.networkId)
+      : undefined;
+    entries.push({
+      kind: "interface",
+      id: iface.id,
+      title: `${device ? device.petname || device.name : iface.deviceId} / ${iface.name}`,
+      sub: device ? device.name : "",
+      meta: [
+        device ? device.petname || device.name : "",
+        iface.name,
+        network?.name ?? "",
+        iface.ip,
+        iface.mac ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ・ "),
+      properties: iface.properties ?? {},
+    });
+  }
   for (const service of data.services) {
+    if (!inScope(service.projectId)) {
+      continue;
+    }
     const iface = interfaceById.get(service.interfaceId);
     const device = iface ? deviceById.get(iface.deviceId) : undefined;
     entries.push({
@@ -124,6 +180,9 @@ function buildEntries(data: PortalDataV2): MemoEntry[] {
     });
   }
   for (const relation of data.relations) {
+    if (!inScope(relation.projectId)) {
+      continue;
+    }
     const side = (
       deviceId: string,
       interfaceId: string | null,

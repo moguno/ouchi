@@ -47,11 +47,19 @@ jobs:
           {
             echo "tags<<EOF_TAGS"
             echo "ghcr.io/${{ github.repository }}:${V}"
-            # プレリリース（例: 2.0.0-beta.1）では latest を動かさない
-            case "$V" in
-              *-*) ;;
-              *) echo "ghcr.io/${{ github.repository }}:latest" ;;
-            esac
+            # latest はプレリリースかどうかで決める（バージョン文字列
+            # のハイフン有無では決めない）。手動実行では従来どおり
+            # ハイフンなしの版だけ latest を付ける。
+            if [ "${{ github.event_name }}" = "release" ]; then
+              if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+                echo "ghcr.io/${{ github.repository }}:latest"
+              fi
+            else
+              case "$V" in
+                *-*) ;;
+                *) echo "ghcr.io/${{ github.repository }}:latest" ;;
+              esac
+            fi
             echo "EOF_TAGS"
           } >> "$GITHUB_OUTPUT"
 

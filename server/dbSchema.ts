@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { projectColorFromName } from "../src/portal/colorValue";
 
 export type DbOptions = {
   filename?: string;
@@ -22,6 +23,11 @@ export type DbOptions = {
   networkSortOrderMigrationPath?: string;
   relationServiceEndpointsMigrationPath?: string;
   relationPortMigrationPath?: string;
+  projectsMigrationPath?: string;
+  interfacePropertiesMigrationPath?: string;
+  projectOuchiMigrationPath?: string;
+  projectColorMigrationPath?: string;
+  metaMigrationPath?: string;
 };
 
 export function applySchemaAndMigrations(
@@ -347,10 +353,122 @@ export function applySchemaAndMigrations(
         database.exec(readFileSync(relationPortMigrationPath, "utf8"));
       }
 
+      const projectsTable = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
+        )
+        .get() as { name: string } | undefined;
+      if (!projectsTable) {
+        const projectsMigrationPath =
+          options.projectsMigrationPath ??
+          resolve(
+            root,
+            "contract-v1",
+            "migrations",
+            "019_projects.sql",
+          );
+        database.exec(readFileSync(projectsMigrationPath, "utf8"));
+      }
+
+      const interfaceColumnsCurrent = database
+        .prepare("PRAGMA table_info(interfaces)")
+        .all() as Array<{ name: string }>;
+      if (
+        !interfaceColumnsCurrent.some((column) => column.name === "properties")
+      ) {
+        const interfacePropertiesMigrationPath =
+          options.interfacePropertiesMigrationPath ??
+          resolve(
+            root,
+            "contract-v1",
+            "migrations",
+            "020_interface_properties.sql",
+          );
+        database.exec(
+          readFileSync(interfacePropertiesMigrationPath, "utf8"),
+        );
+      }
+
+      const projectColumnsCurrent = database
+        .prepare("PRAGMA table_info(projects)")
+        .all() as Array<{ name: string }>;
+      if (
+        !projectColumnsCurrent.some((column) => column.name === "title")
+      ) {
+        const projectOuchiMigrationPath =
+          options.projectOuchiMigrationPath ??
+          resolve(
+            root,
+            "contract-v1",
+            "migrations",
+            "021_project_ouchi.sql",
+          );
+        database.exec(readFileSync(projectOuchiMigrationPath, "utf8"));
+      }
+
+      const projectColumnsWithColor = database
+        .prepare("PRAGMA table_info(projects)")
+        .all() as Array<{ name: string }>;
+      if (
+        !projectColumnsWithColor.some((column) => column.name === "color")
+      ) {
+        const projectColorMigrationPath =
+          options.projectColorMigrationPath ??
+          resolve(
+            root,
+            "contract-v1",
+            "migrations",
+            "022_project_color.sql",
+          );
+        database.exec(readFileSync(projectColorMigrationPath, "utf8"));
+      }
+      // Backfill: a project's color is decided at creation from its
+      // name. Rows that predate the column (or a seed) carry the
+      // empty default and receive the same derivation here.
+      const colorlessProjects = database
+        .prepare("SELECT id, name FROM projects WHERE color = ''")
+        .all() as Array<{ id: number; name: string }>;
+      const backfillColor = database.prepare(
+        "UPDATE projects SET color = ? WHERE id = ?",
+      );
+      for (const project of colorlessProjects) {
+        backfillColor.run(projectColorFromName(project.name), project.id);
+      }
+
+      const metaTable = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'",
+        )
+        .get() as { name: string } | undefined;
+      if (!metaTable) {
+        const metaMigrationPath =
+          options.metaMigrationPath ??
+          resolve(root, "contract-v1", "migrations", "023_meta.sql");
+        database.exec(readFileSync(metaMigrationPath, "utf8"));
+      }
+
+      // The seed is a first-run convenience only. Once a ledger has
+      // been seeded (or populated), the 'seeded' marker keeps it from
+      // ever coming back — even when the user deletes every project
+      // and network on purpose.
+      const seeded = database
+        .prepare("SELECT value FROM meta WHERE key = 'seeded'")
+        .get() as { value: string } | undefined;
       const row = database
         .prepare("SELECT COUNT(*) AS count FROM networks")
         .get() as { count: number };
-      if (row.count === 0) {
+      if (row.count === 0 && !seeded) {
         database.exec(readFileSync(seedPath, "utf8"));
+        database
+          .prepare(
+            "INSERT OR IGNORE INTO meta (key, value) VALUES ('seeded', '1')",
+          )
+          .run();
+      } else if (row.count > 0 && !seeded) {
+        database
+          .prepare(
+            "INSERT OR IGNORE INTO meta (key, value) VALUES ('seeded', '1')",
+          )
+          .run();
       }
 }

@@ -1,0 +1,316 @@
+/* Project side menu: sits inside the portal sheet, left of the board.
+   Switching a project switches the whole ouchi. */
+.ouchi-portal-body {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.ouchi-portal-main {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 24px 22px;
+}
+
+.ouchi-project-sidebar {
+  width: 218px;
+  flex: none;
+  background: #f7f5ff;
+  border-right: 1px solid #e6e2f5;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ouchi-project-sidebar.is-collapsed {
+  width: 52px;
+  padding: 10px 0;
+  align-items: center;
+}
+
+.ouchi-project-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 2px;
+}
+
+.ouchi-project-sidebar.is-collapsed .ouchi-project-sidebar-head {
+  justify-content: center;
+  padding: 0;
+}
+
+.ouchi-project-sidebar-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #8a90a6;
+}
+
+.ouchi-project-handle {
+  border: none;
+  background: transparent;
+  color: #463a75;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 7px;
+}
+
+.ouchi-project-handle:hover {
+  background: #ece8fb;
+}
+
+.ouchi-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ouchi-project-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 7px;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.ouchi-project-row:hover {
+  background: #f3f0ff;
+}
+
+.ouchi-project-row.is-active {
+  background: #efeaff;
+  border-color: #7c6aa8;
+}
+
+.ouchi-project-disc {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 9px;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ouchi-project-names {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-project-name {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ouchi-project-ptitle {
+  font-size: 10.5px;
+  color: #8a90a6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Edit and delete live in a single ⋯ menu at the row's right end.
+   The button is always visible on every device (user decision,
+   2026-11-28): touch has no hover to reveal it with, and one small
+   button costs less room than the two it replaces. */
+.ouchi-project-menubtn {
+  margin-left: auto;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #ddd6f3;
+  color: #463a75;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ouchi-project-menubtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ouchi-project-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 7px;
+  z-index: 30;
+  width: 148px;
+  background: #fff;
+  border: 1px solid #e2e7ec;
+  border-radius: 11px;
+  box-shadow: 0 14px 34px rgba(31, 48, 62, 0.2);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ouchi-project-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: #20252c;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ouchi-project-menu button:hover {
+  background: #f3f1fb;
+}
+
+.ouchi-project-menu button.is-delete {
+  color: #b3372f;
+}
+
+.ouchi-project-menu button.is-delete:hover {
+  background: #fdf0ef;
+}
+
+/* Shown in place of the whole main pane when every project has been
+   deleted: no header, no board, just the invitation to start over. */
+.ouchi-project-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 340px;
+  font-size: 15px;
+  color: #8a90a6;
+}
+
+.ouchi-project-add {
+  margin-top: 2px;
+  border: 1.5px dashed #b7aee0;
+  background: transparent;
+  color: #463a75;
+  border-radius: 11px;
+  padding: 9px 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ouchi-project-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ouchi-project-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+
+/* Same box as the open row's disc (24px, radius 9) so the rail
+   and the list read as the same objects (user request). */
+.ouchi-project-rail-icon {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* The rail letters are white on the project color, with the same
+   type as the open row's disc. These scoped rules exist because
+   base.css's `.ouchi-portal button` rules (color: inherit and the
+   font shorthand, both specificity 0,1,1) outrank lone class
+   selectors and turned the letters ink-dark at 16px/400. Every
+   sidebar button therefore re-pins its declared type here. */
+.ouchi-project-sidebar .ouchi-project-rail-icon {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ouchi-project-sidebar .ouchi-project-handle,
+.ouchi-project-sidebar .ouchi-project-rail-add {
+  color: #463a75;
+}
+
+.ouchi-project-sidebar .ouchi-project-rail-add {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.ouchi-project-sidebar .ouchi-project-menubtn {
+  color: #463a75;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ouchi-project-sidebar .ouchi-project-menu button {
+  font-size: 13.5px;
+}
+
+.ouchi-project-sidebar .ouchi-project-add {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Selected in the rail: no frame — a slight enlargement and a
+   shadow kept subtle so it does not spill onto the icon below. */
+.ouchi-project-rail-icon.is-active {
+  box-shadow: 0 3px 8px rgba(30, 41, 59, 0.28);
+  transform: scale(1.14);
+}
+
+.ouchi-project-rail-add {
+  width: 24px;
+  height: 24px;
+  border-radius: 9px;
+  border: 1.5px dashed #b7aee0;
+  background: #fff;
+  color: #463a75;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ouchi-project-rail-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 720px) {
+  .ouchi-project-sidebar {
+    width: 168px;
+  }
+}

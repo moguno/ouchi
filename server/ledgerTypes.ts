@@ -6,7 +6,11 @@ import type {
   ValidationIssue,
 } from "../src/portal/types";
 
-export const LEDGER_FORMAT = "ouchi-ledger/13";
+export const LEDGER_FORMAT = "ouchi-ledger/17";
+export const V16_LEDGER_FORMAT = "ouchi-ledger/16";
+export const V15_LEDGER_FORMAT = "ouchi-ledger/15";
+export const V14_LEDGER_FORMAT = "ouchi-ledger/14";
+export const V13_LEDGER_FORMAT = "ouchi-ledger/13";
 export const V12_LEDGER_FORMAT = "ouchi-ledger/12";
 export const V11_LEDGER_FORMAT = "ouchi-ledger/11";
 export const V10_LEDGER_FORMAT = "ouchi-ledger/10";
@@ -20,11 +24,15 @@ export const PREVIOUS_LEDGER_FORMAT = "ouchi-ledger/3";
 export const V2_LEDGER_FORMAT = "ouchi-ledger/2";
 export const LEGACY_LEDGER_FORMAT = "ouchi-ledger/1";
 
+export const DEFAULT_PROJECT_NAME = "デフォルト";
+export const DEFAULT_PROJECT_TITLE = "あなたのホームラボ";
+
 export interface LedgerInterface {
   name: string;
   network: string | null;
   ip: string | null;
   mac: string | null;
+  properties: PortalProperties;
 }
 
 export interface LedgerDevice {
@@ -105,9 +113,12 @@ export interface LedgerDeviceKey {
 export interface LedgerDocument {
   format: typeof LEDGER_FORMAT;
   exportedAt: string;
+  /** The one project this document describes (its name). */
+  project: string;
   settings: {
     domain: string;
     title: string;
+    color: string;
     properties: PortalProperties;
   };
   networks: LedgerNetwork[];
@@ -120,6 +131,7 @@ export interface LedgerDocument {
 }
 
 export interface LedgerImportCounts {
+  projects: number;
   networks: number;
   devices: number;
   interfaces: number;

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { request as httpRequest, type OutgoingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Duplex } from "node:stream";
 import { createAdaptorServer } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -25,6 +26,9 @@ import {
   type FetchImplementation,
 } from "../mcp/restClient";
 import { callTool } from "../mcp/tools";
+const fixtureSeedPath = fileURLToPath(
+  new URL("./fixtures/home-lab-seed.sql", import.meta.url),
+);
 
 type JsonRpcResponse = {
   jsonrpc: "2.0";
@@ -156,7 +160,7 @@ describe("MCP block", () => {
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "ouchi-mcp-test-"));
-    database = new PortalDatabase({
+    database = new PortalDatabase({ seedPath: fixtureSeedPath,
       filename: join(directory, "ledger.sqlite"),
     });
     restApp = createApp(database);
@@ -438,6 +442,45 @@ describe("MCP block", () => {
     });
   });
 
+  it("manages projects and passes projectId through entity tools", async () => {
+    const listed = (await callMcpTool("list_projects", {}))
+      .structuredContent?.result as Array<{ id: number; name: string }>;
+    expect(listed).toEqual([
+      { id: 1, name: "デフォルト", title: "あなたのホームラボ", color: "#c0a359", properties: {} },
+    ]);
+
+    const project = (await callMcpTool("create_project", {
+      name: "MCP実験",
+      title: "実験用のおうち",
+      properties: { 方針: "MCP" },
+    })).structuredContent?.result as { id: number; name: string };
+    expect(project).toEqual({
+      id: 2,
+      name: "MCP実験",
+      title: "実験用のおうち",
+      color: "#79c059",
+      properties: { 方針: "MCP" },
+    });
+
+    const device = (await callMcpTool("create_device", {
+      projectId: project.id,
+      hostname: "mcp-exp",
+      category: "vm",
+      meterEnabled: false,
+    })).structuredContent?.result as { id: number; projectId: number };
+    expect(device.projectId).toBe(2);
+
+    const fetched = (await callMcpTool("get_project", { id: project.id }))
+      .structuredContent?.result as { id: number; name: string };
+    expect(fetched.name).toBe("MCP実験");
+
+    const renamed = (await callMcpTool("update_project", {
+      id: project.id,
+      name: "MCP実験2",
+    })).structuredContent?.result as { id: number; name: string };
+    expect(renamed.name).toBe("MCP実験2");
+  });
+
   it("round-trips network, device, interface, service, and relation CRUD", async () => {
     const network = (await callMcpTool("create_network", {
       name: "MCP検証網",
@@ -677,6 +720,42 @@ describe("MCP block", () => {
     });
   });
 
+  it("carries interface properties through interface tools", async () => {
+    const device = (await callMcpTool("create_device", {
+      hostname: "mcp-iface-memo",
+      petname: null,
+      category: "physical",
+      sshUser: null,
+      sshPort: null,
+      meterEnabled: false,
+      note: null,
+    })).structuredContent?.result as { id: number };
+    const iface = (await callMcpTool("create_interface", {
+      deviceId: device.id,
+      name: "eth0",
+      networkId: null,
+      ip: null,
+      mac: null,
+      properties: { 役割: "管理用" },
+    })).structuredContent?.result as {
+      id: number;
+      properties: Record<string, string>;
+    };
+    expect(iface.properties).toEqual({ 役割: "管理用" });
+
+    const updated = (await callMcpTool("update_interface", {
+      id: iface.id,
+      deviceId: device.id,
+      name: "eth0",
+      networkId: null,
+      ip: "192.168.0.99",
+      mac: null,
+    })).structuredContent?.result as {
+      properties: Record<string, string>;
+    };
+    expect(updated.properties).toEqual({ 役割: "管理用" });
+  });
+
   it("cascades device children through delete_device", async () => {
     const device = (await callMcpTool("create_device", {
       hostname: "mcp-delete-cascade",
@@ -870,10 +949,10 @@ describe("MCP block", () => {
     });
   });
 
-  it("exports and replaces the ledger through the YAML tools", async () => {
+  it("exports and replaces one project through the YAML tools", async () => {
     const exported = await callMcpTool("export_ledger_yaml", {});
     expect(exported.isError).toBe(false);
-    const yaml = exported.structuredContent?.yaml;
+    const yaml = exported.content?.[0]?.text;
     expect(typeof yaml).toBe("string");
     const document = parseYaml(yaml as string) as {
       exportedAt: string;
@@ -971,7 +1050,7 @@ describe("MCP block", () => {
         "import_ledger_yaml",
       ]),
     );
-    expect(listed.result?.tools).toHaveLength(40);
+    expect(listed.result?.tools).toHaveLength(44);
 
     const mapResponse = await httpRequestToApp(actualMcpApp.fetch, {
       method: "POST",
@@ -1017,7 +1096,7 @@ describe("MCP block", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(40);
+      expect(tools.tools).toHaveLength(44);
       expect(tools.tools.map((tool) => tool.name)).toContain(
         "get_network_map",
       );

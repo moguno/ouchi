@@ -209,7 +209,7 @@ describe("MemoView", () => {
     fireEvent.change(globalValue, { target: { value: "月次バックアップ" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() =>
-      expect(onSaveMemo).toHaveBeenCalledWith("global", "global", {
+      expect(onSaveMemo).toHaveBeenCalledWith("project", "settings", {
         運用: "月次バックアップ",
       }),
     );
@@ -284,5 +284,64 @@ describe("MemoView", () => {
     expect(textarea.readOnly).toBe(true);
     expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
     expect(screen.getByText(/デモモードでは保存されません/)).toBeTruthy();
+  });
+});
+
+describe("MemoView project scoping", () => {
+  it("自プロジェクト以外のプロジェクトは表示しない", () => {
+    const scoped: PortalDataV2 = {
+      ...data,
+      projects: [
+        {
+          id: "p1",
+          name: "自宅",
+          title: "自宅のおうち",
+          color: "#b3543f",
+          properties: { 運用: "自宅用" },
+        },
+        {
+          id: "p2",
+          name: "実家",
+          title: "実家のおうち",
+          color: "#3f6fb5",
+          properties: { 運用: "実家用" },
+        },
+      ],
+      networks: [
+        {
+          id: "n1",
+          projectId: "p1",
+          name: "自宅LAN",
+          accent: "#000000",
+          properties: { 方針: "自宅" },
+        },
+        {
+          id: "n2",
+          projectId: "p2",
+          name: "実家LAN",
+          accent: "#000000",
+          properties: { 方針: "実家" },
+        },
+      ],
+      devices: [],
+      interfaces: [],
+      relationNames: [],
+      relations: [],
+      services: [],
+    };
+    const { container } = render(
+      <MemoView
+        data={scoped}
+        onBack={() => undefined}
+        onSaveMemo={async () => true}
+      />,
+    );
+    const titles = [...container.querySelectorAll(".ouchi-memo-iname")].map(
+      (node) => node.textContent,
+    );
+    expect(titles).toContain("自宅のおうち");
+    expect(titles).toContain("自宅LAN");
+    expect(titles).not.toContain("実家のおうち");
+    expect(titles).not.toContain("実家LAN");
   });
 });

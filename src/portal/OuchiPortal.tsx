@@ -32,6 +32,19 @@ import { ServiceMemoDialog } from "./ServiceMemoDialog";
 import { ServiceTopDialog } from "./ServiceTopDialog";
 import { ServiceIconDialog } from "./ServiceIconDialog";
 import { ManageView } from "./ManageView";
+import { ProjectSidebar } from "./ProjectSidebar";
+import { WelcomeTutorial } from "./WelcomeTutorial";
+import { ProjectDialog } from "./ProjectDialog";
+import {
+  clearActiveProjectId,
+  loadActiveProjectId,
+  saveActiveProjectId,
+} from "./projectSelection";
+import {
+  PortalApiError,
+  createProject,
+  updateProject,
+} from "./apiClient";
 import { MemoView, type MemoTargetKind } from "./MemoView";
 import {
   PortalConnectorLayer,
@@ -53,6 +66,8 @@ import {
   type PortalDeviceInput,
   type PortalDataV2,
   type PortalNetwork,
+  type PortalProject,
+  type PortalProjectInput,
   type PortalProperties,
   type PortalRelation,
   type PortalRelationInput,
@@ -115,8 +130,62 @@ export function OuchiPortal({
     reload,
   } = usePortalData({ seed, apiBaseUrl, yamlUrl, onDataChange });
   const portalData = loadedData ?? EMPTY_DATA;
+  const [storedProjectId, setStoredProjectId] = useState<
+    string | undefined
+  >(loadActiveProjectId);
+  // The side menu always starts collapsed and its open state is
+  // deliberately not remembered (user decision, 2026-11-28):
+  // toggling lasts for this view only, a reload starts collapsed.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [projectDialog, setProjectDialog] = useState<{
+    editing?: PortalProject;
+  } | null>(null);
+  const projects = portalData.projects ?? [];
+  const activeProject =
+    projects.find((project) => project.id === storedProjectId) ??
+    projects[0];
+  // A project is one whole ouchi and shares nothing with the
+  // others: every view below works on the active project's slice.
+  const scopedData: PortalDataV2 = useMemo(() => {
+    if (!activeProject) {
+      return portalData;
+    }
+    return {
+      ...portalData,
+      networks: portalData.networks.filter(
+        (item) => item.projectId === activeProject.id,
+      ),
+      devices: portalData.devices.filter(
+        (item) => item.projectId === activeProject.id,
+      ),
+      interfaces: portalData.interfaces.filter(
+        (item) => item.projectId === activeProject.id,
+      ),
+      relationNames: portalData.relationNames.filter(
+        (item) => item.projectId === activeProject.id,
+      ),
+      relations: portalData.relations.filter(
+        (item) => item.projectId === activeProject.id,
+      ),
+      services: portalData.services.filter(
+        (item) => item.projectId === activeProject.id,
+      ),
+      settings: {
+        domain: portalData.settings?.domain ?? "ouchi.local",
+        title: activeProject.title,
+        properties: activeProject.properties ?? {},
+      },
+      projects: [activeProject],
+    };
+  }, [portalData, activeProject]);
   const portalTitle =
-    portalData.settings?.title.trim() || DEFAULT_PORTAL_TITLE;
+    scopedData.settings?.title.trim() || DEFAULT_PORTAL_TITLE;
+  // Every project deleted: the main pane goes blank (mock20) — the
+  // side menu's add button is the only way forward.
+  const noProjects =
+    portalData.projects !== undefined &&
+    projects.length === 0 &&
+    Boolean(loadedData);
 
   const [viewMode, setViewMode] = useState<ViewMode>("icons");
   const [manageOpen, setManageOpen] = useState(false);
@@ -166,7 +235,7 @@ export function OuchiPortal({
     relationConnectors,
   } = usePortalConnectors({
     canvasRef,
-    data: portalData,
+    data: scopedData,
     layoutMode: viewMode,
     relationModes,
     selectedDeviceId,
@@ -234,6 +303,65 @@ export function OuchiPortal({
     setMessage(undefined);
   }
 
+  function selectProject(id: string) {
+    setStoredProjectId(id);
+    saveActiveProjectId(id);
+    setSelectedDeviceId(undefined);
+    setSelectedServiceId(undefined);
+    setMessage(undefined);
+  }
+
+  function requestDeleteProject(project: PortalProject) {
+    setMessage(undefined);
+    setConfirm({ type: "delete", kind: "project", id: project.id });
+  }
+
+  function handleProjectDeleted(id: string) {
+    if (id !== activeProject?.id) {
+      return;
+    }
+    // The active ouchi is gone: fall back to the first remaining
+    // project (or to the empty state when none are left).
+    setStoredProjectId(undefined);
+    clearActiveProjectId();
+    setSelectedDeviceId(undefined);
+    setSelectedServiceId(undefined);
+  }
+
+  function toggleSidebar() {
+    setSidebarCollapsed((current) => !current);
+  }
+
+  async function handleSaveProject(
+    input: PortalProjectInput,
+  ): Promise<boolean> {
+    if (demoMode) {
+      return false;
+    }
+    try {
+      if (projectDialog?.editing) {
+        await updateProject(apiBaseUrl, projectDialog.editing.id, input);
+        setMessage("プロジェクトを保存しました。");
+      } else {
+        const created = await createProject(apiBaseUrl, input);
+        setStoredProjectId(String(created.id));
+        saveActiveProjectId(String(created.id));
+        setMessage("プロジェクトを追加しました。");
+      }
+      await reload();
+      return true;
+    } catch (cause) {
+      if (cause instanceof PortalApiError && cause.issues.length > 0) {
+        setMessage(cause.issues.map((issue) => issue.message).join(" / "));
+      } else {
+        setMessage(
+          cause instanceof Error ? cause.message : "API操作に失敗しました",
+        );
+      }
+      return false;
+    }
+  }
+
   function openAddRelation() {
     setRelationDialog({});
     setMessage(undefined);
@@ -281,9 +409,12 @@ export function OuchiPortal({
   }
 
   function entityName(
-    kind: EntityKind | "relation" | "relationName",
+    kind: EntityKind | "relation" | "relationName" | "project",
     id: string,
   ) {
+    if (kind === "project") {
+      return projects.find((item) => item.id === id)?.name ?? "";
+    }
     if (kind === "network") {
       return portalData.networks.find((item) => item.id === id)?.name ?? "";
     }
@@ -313,10 +444,13 @@ export function OuchiPortal({
     return service ? serviceName(service) : "";
   }
   function deleteConfirmationDescription(
-    kind: EntityKind | "relation" | "relationName",
+    kind: EntityKind | "relation" | "relationName" | "project",
     id: string,
   ) {
     const target = `「${entityName(kind, id)}」を削除します。`;
+    if (kind === "project") {
+      return `${target}中のネットワーク・デバイス・サービス・関係もすべて削除されます。この操作は元に戻せません。`;
+    }
     if (kind !== "device") {
       return `${target}この操作は元に戻せません。`;
     }
@@ -364,6 +498,10 @@ export function OuchiPortal({
     demoMode,
     yamlUrl,
     portalData,
+    activeProject: activeProject
+      ? { id: activeProject.id, name: activeProject.name }
+      : undefined,
+    onProjectDeleted: handleProjectDeleted,
     reload,
     confirm,
     selectedDeviceId,
@@ -396,44 +534,44 @@ export function OuchiPortal({
   }
 
 
-  const vmCount = portalData.devices.filter(
+  const vmCount = scopedData.devices.filter(
     (device) => device.category === "vm",
   ).length;
-  const screenReaderSummary = `${portalData.networks.length}ネットワーク、${portalData.devices.length}デバイス（VM ${vmCount}）、${portalData.interfaces.length}インターフェース、${portalData.relations.length}関係、${portalData.services.length}サービス`;
+  const screenReaderSummary = `${scopedData.networks.length}ネットワーク、${scopedData.devices.length}デバイス（VM ${vmCount}）、${scopedData.interfaces.length}インターフェース、${scopedData.relations.length}関係、${scopedData.services.length}サービス`;
   const memoNetwork = networkMemoId
-    ? portalData.networks.find((item) => item.id === networkMemoId)
+    ? scopedData.networks.find((item) => item.id === networkMemoId)
     : undefined;
   const memoDevice = deviceMemoId
-    ? portalData.devices.find((item) => item.id === deviceMemoId)
+    ? scopedData.devices.find((item) => item.id === deviceMemoId)
     : undefined;
   const memoService = serviceMemoId
-    ? portalData.services.find((item) => item.id === serviceMemoId)
+    ? scopedData.services.find((item) => item.id === serviceMemoId)
     : undefined;
   const memoRelation = relationMemoId
-    ? portalData.relations.find((item) => item.id === relationMemoId)
+    ? scopedData.relations.find((item) => item.id === relationMemoId)
     : undefined;
   const memoRelationTitle = memoRelation
     ? `${memoRelation.relationName}（${
-        portalData.devices.find(
+        scopedData.devices.find(
           (device) => device.id === memoRelation.fromDeviceId,
         )?.name ?? "不明なデバイス"
       } → ${
-        portalData.devices.find(
+        scopedData.devices.find(
           (device) => device.id === memoRelation.toDeviceId,
         )?.name ?? "不明なデバイス"
       }）のメモ`
     : "";
   const topService = serviceTopId
-    ? portalData.services.find((item) => item.id === serviceTopId)
+    ? scopedData.services.find((item) => item.id === serviceTopId)
     : undefined;
   const iconService = serviceIconId
-    ? portalData.services.find((item) => item.id === serviceIconId)
+    ? scopedData.services.find((item) => item.id === serviceIconId)
     : undefined;
   const dialogs = (
     <>
       {canOpenManage && dialog && (
         <EntityDialog
-          data={portalData}
+          data={scopedData}
           editingId={dialog.editingId}
           kind={dialog.kind}
           onClose={() => setDialog(null)}
@@ -444,10 +582,10 @@ export function OuchiPortal({
 
       {canOpenManage && relationDialog && (
         <RelationDialog
-          data={portalData}
+          data={scopedData}
           editing={
             relationDialog.editingId
-              ? portalData.relations.find(
+              ? scopedData.relations.find(
                   (relation) => relation.id === relationDialog.editingId,
                 )
               : undefined
@@ -533,7 +671,7 @@ export function OuchiPortal({
   if (canOpenManage && memoOpen) {
     return (
       <MemoView
-        data={portalData}
+        data={scopedData}
         onBack={() => setMemoOpen(false)}
         onSaveMemo={handleSaveMemoProperties}
         saveDisabled={demoMode}
@@ -546,7 +684,7 @@ export function OuchiPortal({
       <>
         <ManageView
           activeTab={manageTab}
-          data={portalData}
+          data={scopedData}
           message={message}
           onAdd={openAdd}
           onAddRelation={openAddRelation}
@@ -625,6 +763,27 @@ export function OuchiPortal({
       }}
       ref={portalRef}
     >
+      <div className="ouchi-portal-body">
+        {portalData.projects !== undefined && (
+          <ProjectSidebar
+            actionsDisabled={demoMode}
+            activeProjectId={activeProject?.id}
+            collapsed={sidebarCollapsed}
+            onAdd={() => setProjectDialog({})}
+            onDelete={requestDeleteProject}
+            onEdit={(project) => setProjectDialog({ editing: project })}
+            onSelect={selectProject}
+            onToggleCollapsed={toggleSidebar}
+            projects={projects}
+          />
+        )}
+        <div className="ouchi-portal-main">
+      {noProjects ? (
+        <div className="ouchi-project-empty">
+          プロジェクトを追加してください
+        </div>
+      ) : (
+        <>
       <header
         className={`ouchi-portal-header${
           showTitle || portalTitle ? "" : " ouchi-portal-header--actions-only"
@@ -716,7 +875,7 @@ export function OuchiPortal({
       <RelationFilterBar
         modes={relationModes}
         onCycle={cycleRelationMode}
-        relationNames={portalData.relationNames}
+        relationNames={scopedData.relationNames}
       />
 
       <div className="ouchi-canvas" ref={canvasRef}>
@@ -748,24 +907,16 @@ export function OuchiPortal({
               再読み込み
             </button>
           </div>
-        ) : portalData.networks.length === 0 ? (
-          <div className="ouchi-global-empty">
-            <strong>デバイス未登録</strong>
-            <p>「管理」から最初のネットワークを追加してください。</p>
-            <button
-              className="ouchi-primary-button"
-              onClick={() => {
-                openManagement();
-                openAdd("network");
-              }}
-              type="button"
-            >
-              ネットワークを追加
-            </button>
-          </div>
+        ) : scopedData.networks.length === 0 ? (
+          <WelcomeTutorial
+            onAddNetwork={() => {
+              setManageTab("networks");
+              openManagement();
+            }}
+          />
         ) : viewMode === "icons" ? (
           <IconBoard
-            data={portalData}
+            data={scopedData}
             relationModes={relationModes}
             demoMode={isReadOnly}
             allowRemoteIcons={!isReadOnly}
@@ -778,7 +929,7 @@ export function OuchiPortal({
           />
         ) : (
           <ListBoard
-            data={portalData}
+            data={scopedData}
             relationModes={relationModes}
             demoMode={isReadOnly}
             onDemoServiceClick={() => setDemoServiceNoticeOpen(true)}
@@ -789,8 +940,22 @@ export function OuchiPortal({
           />
         )}
       </div>
+        </>
+      )}
+        </div>
+      </div>
 
       {dialogs}
+
+      {projectDialog && (
+        <ProjectDialog
+          editing={projectDialog.editing}
+          onClose={() => setProjectDialog(null)}
+          onSave={handleSaveProject}
+          projects={projects}
+          saveDisabled={demoMode}
+        />
+      )}
 
       {isReadOnly && demoServiceNoticeOpen && (
         <DemoServiceLinkDialog
